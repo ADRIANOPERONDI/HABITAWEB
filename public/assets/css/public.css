@@ -1,0 +1,187 @@
+:root {
+    --primary-color: #6366f1;
+    --secondary-color: #a855f7;
+    --text-dark: #222222;
+    --text-muted: #717171;
+    --bg-light: #f7f7f7;
+    --border-radius-xl: 32px;
+    --border-radius-lg: 24px;
+    --shadow-soft: 0 6px 16px rgba(0, 0, 0, 0.08);
+    --shadow-hover: 0 12px 24px rgba(0, 0, 0, 0.12);
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    color: var(--text-dark);
+}
+
+h1,
+h2,
+h3,
+h4,
+.fw-bold {
+    font-family: 'Inter', sans-serif;
+    letter-spacing: -0.02em;
+}
+
+/* Airbnb Style Cards */
+.property-card {
+    border-radius: 16px !important;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: none !important;
+}
+
+.property-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-hover) !important;
+}
+
+.property-card .card-img-top-wrapper {
+    position: relative;
+    padding-top: 75%;
+    /* 4:3 Aspect Ratio */
+    overflow: hidden;
+}
+
+.property-card .card-img-top {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Floating Search Bar */
+.search-container-floating {
+    background: #fff;
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-soft);
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    max-width: 850px;
+    margin: -40px auto 0;
+    position: relative;
+    z-index: 10;
+    border: 1px solid #ebebeb;
+}
+
+.search-item {
+    flex: 1;
+    padding: 12px 24px;
+    border-right: 1px solid #ebebeb;
+}
+
+.search-item:last-of-type {
+    border-right: none;
+}
+
+.search-item label {
+    display: block;
+    font-size: 12px;
+    font-weight: 800;
+    color: #000;
+    margin-bottom: 2px;
+}
+
+.search-item input,
+.search-item select {
+    border: none;
+    padding: 0;
+    font-size: 14px;
+    color: var(--text-muted);
+    width: 100%;
+    background: transparent;
+}
+
+.search-item input:focus,
+.search-item select:focus {
+    outline: none;
+    color: #000;
+}
+
+.btn-search-round {
+    background: var(--primary-color);
+    color: #fff;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    transition: opacity 0.3s;
+}
+
+.btn-search-round:hover {
+    opacity: 0.9;
+    color: #fff;
+}
+
+/* Partners Section */
+.partner-card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    border: 1px solid #f0f0f0;
+}
+
+.partner-card:hover {
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow-soft);
+}
+
+.partner-logo {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    margin-bottom: 12px;
+    border-radius: 50%;
+    background: #f8f9fa;
+    padding: 10px;
+}
+
+/* Section Titles */
+.section-title {
+    font-size: 32px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.section-subtitle {
+    color: var(--text-muted);
+    font-size: 18px;
+    margin-bottom: 40px;
+}
+
+/* Hero Section Refined */
+.hero-section-clean {
+    height: 500px;
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #fff;
+}
+
+.hero-section-clean::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.hero-text-content {
+    position: relative;
+    z-index: 2;
+}
