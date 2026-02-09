@@ -62,13 +62,17 @@ class LeadService
                 $lead->user_id_responsavel   = $property->user_id_responsavel;
             }
         }
-
+        
         if (empty($lead->status)) {
             $lead->status = 'NOVO';
         }
+        if (empty($lead->tipo_lead)) {
+            $lead->tipo_lead = 'MSG';
+        }
 
         if ($this->leadModel->save($lead)) {
-            $savedLead = $this->leadModel->find($lead->id ?? $this->leadModel->getInsertID());
+            $leadId = $lead->id ?? $this->leadModel->getInsertID();
+            $savedLead = $this->leadModel->find($leadId);
             
             // Incrementa contador de leads no imóvel
             if (!$existingLead) {

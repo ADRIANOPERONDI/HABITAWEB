@@ -172,4 +172,105 @@ class PropertyController extends BaseController
         
         return $this->respondSuccess($result);
     }
+    /**
+     * POST /api/v1/properties/(:id)/media
+     * Upload de imagem para o imóvel
+     */
+    public function uploadMedia($id = null)
+    {
+        if (!$id) {
+            return $this->respondError('ID do imóvel é obrigatório.', 400);
+        }
+
+        // Validação de acesso
+        $propertyModel = model('App\\Models\\PropertyModel');
+        $property = $propertyModel->find($id);
+
+        if (!$property) {
+            return $this->failNotFound('Imóvel não encontrado.');
+        }
+
+        $accountId = $this->request->account_id ?? null;
+        if ($accountId && $property->account_id != $accountId) {
+            return $this->failForbidden('Acesso negado.');
+        }
+
+        $file = $this->request->getFile('file');
+
+        if (!$file) {
+            return $this->respondError('Arquivo não enviado.', 400);
+        }
+
+        $result = $this->propertyService->addMedia($id, $file);
+
+        if ($result['success']) {
+            return $this->respondCreated($result);
+        }
+
+        return $this->respondError($result['message'], 400);
+    }
+
+    /**
+     * DELETE /api/v1/properties/(:id)/media/(:mediaId)
+     * Remove uma imagem do imóvel
+     */
+    public function deleteMedia($id = null, $mediaId = null)
+    {
+        if (!$id || !$mediaId) {
+            return $this->respondError('IDs obrigatórios.', 400);
+        }
+
+        // Validação de acesso
+        $propertyModel = model('App\\Models\\PropertyModel');
+        $property = $propertyModel->find($id);
+
+        if (!$property) {
+            return $this->failNotFound('Imóvel não encontrado.');
+        }
+
+        $accountId = $this->request->account_id ?? null;
+        if ($accountId && $property->account_id != $accountId) {
+            return $this->failForbidden('Acesso negado.');
+        }
+
+        $result = $this->propertyService->deleteMedia($id, $mediaId);
+
+        if ($result['success']) {
+            return $this->respondSuccess($result);
+        }
+
+        return $this->respondError($result['message'], 400);
+    }
+
+    /**
+     * POST /api/v1/properties/(:id)/media/(:mediaId)/main
+     * Define imagem como capa
+     */
+    public function setMainMedia($id = null, $mediaId = null)
+    {
+        if (!$id || !$mediaId) {
+            return $this->respondError('IDs obrigatórios.', 400);
+        }
+
+        // Validação de acesso
+        $propertyModel = model('App\\Models\\PropertyModel');
+        $property = $propertyModel->find($id);
+
+        if (!$property) {
+            return $this->failNotFound('Imóvel não encontrado.');
+        }
+
+        $accountId = $this->request->account_id ?? null;
+        if ($accountId && $property->account_id != $accountId) {
+            return $this->failForbidden('Acesso negado.');
+        }
+
+        $result = $this->propertyService->setMainMedia($id, $mediaId);
+
+        if ($result['success']) {
+            return $this->respondSuccess($result);
+        }
+
+        return $this->respondError($result['message'], 400);
+    }
 }

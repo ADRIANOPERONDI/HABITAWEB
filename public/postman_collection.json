@@ -1,0 +1,221 @@
+{
+    "info": {
+        "_postman_id": "8c6c5d0a-aa27-46a1-b455-be334dd8baad",
+        "name": "Habitaweb API v1 - Full",
+        "description": "Coleção COMPLETA para Integração Comercial (Leads, Imóveis, Contas, Webhooks, Exportação).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Imóveis",
+            "item": [
+                {
+                    "name": "Listar Imóveis",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": "{{baseUrl}}/properties"
+                    }
+                },
+                {
+                    "name": "Cadastrar Imóvel",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"titulo\": \"Nova Propriedade API\",\n    \"tipo_imovel\": \"casa\",\n    \"tipo_negocio\": \"venda\",\n    \"preco\": 350000.00,\n    \"cidade\": \"São Paulo\",\n    \"bairro\": \"Centro\"\n}"
+                        },
+                        "url": "{{baseUrl}}/properties"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Leads",
+            "item": [
+                {
+                    "name": "Listar Leads",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": "{{baseUrl}}/leads"
+                    }
+                },
+                {
+                    "name": "Criar Lead (Público)",
+                    "request": {
+                        "method": "POST",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"property_id\": 6,\n    \"nome_visitante\": \"João Carlos\",\n    \"email_visitante\": \"joao@exemplo.com\",\n    \"telefone_visitante\": \"11999998888\"\n}"
+                        },
+                        "url": "{{baseUrl}}/leads"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Importação/Exportação",
+            "item": [
+                {
+                    "name": "Exportar Imóveis (CSV)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/export/properties?format=csv",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "export",
+                                "properties"
+                            ],
+                            "query": [
+                                {
+                                    "key": "format",
+                                    "value": "csv"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Exportar Leads (PDF)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/export/leads?format=pdf",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "export",
+                                "leads"
+                            ],
+                            "query": [
+                                {
+                                    "key": "format",
+                                    "value": "pdf"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Exportar Clientes (Excel)",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{baseUrl}}/export/clients?format=xls",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "export",
+                                "clients"
+                            ],
+                            "query": [
+                                {
+                                    "key": "format",
+                                    "value": "xls"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Webhooks",
+            "item": [
+                {
+                    "name": "Listar Webhooks",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{apiKey}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "url": "{{baseUrl}}/webhooks"
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:8080/api/v1",
+            "type": "string"
+        },
+        {
+            "key": "apiKey",
+            "value": "pk_test_...",
+            "type": "string"
+        }
+    ]
+}

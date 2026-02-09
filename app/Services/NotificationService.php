@@ -7,6 +7,11 @@ use CodeIgniter\Config\Factories;
 
 class NotificationService
 {
+    public function __construct()
+    {
+        helper('sys');
+    }
+
     /**
      * Envia um e-mail carregando as configurações do banco de dados (system_settings)
      * 

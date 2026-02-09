@@ -114,14 +114,7 @@ class Filters extends BaseFilters
      * @var array<string, array<string, list<string>>>
      */
     public array $filters = [
-        'api_auth' => [
-            'before' => [
-                'api/v1/*', // Todas rotas de API v1 requerem autenticação
-            ],
-            'except' => [
-                'api/docs*', // Documentação pública
-            ]
-        ],
+
         'api_rate_limit' => [
             'before' => [
                 'api/*', // Rate limit em TODAS rotas de API

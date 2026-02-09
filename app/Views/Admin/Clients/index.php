@@ -40,7 +40,17 @@
         </form>
     </div>
     
-    <div class="col-lg-4 text-lg-end">
+    <div class="col-lg-4 text-lg-end d-flex justify-content-lg-end align-items-center gap-2">
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary rounded-pill px-4 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa-solid fa-download me-2"></i> Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-2 mt-2">
+                <li><a class="dropdown-item rounded-3 py-2 btn-export" href="#" data-format="csv"><i class="fa-solid fa-file-csv me-2 text-primary"></i> CSV</a></li>
+                <li><a class="dropdown-item rounded-3 py-2 btn-export" href="#" data-format="xls"><i class="fa-solid fa-file-excel me-2 text-success"></i> Excel (XLS)</a></li>
+                <li><a class="dropdown-item rounded-3 py-2 btn-export" href="#" data-format="pdf"><i class="fa-solid fa-file-pdf me-2 text-danger"></i> PDF</a></li>
+            </ul>
+        </div>
         <a href="<?= site_url('admin/clients/new') ?>" class="btn btn-primary btn-lg rounded-pill px-4 shadow">
             <i class="fa-solid fa-plus me-2"></i> Novo Cliente
         </a>
@@ -116,4 +126,22 @@
         </div>
     </div>
 </div>
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+    $(document).ready(function() {
+        // Exportar Clientes
+        $('.btn-export').on('click', function(e) {
+            e.preventDefault();
+            const format = $(this).data('format');
+            const baseUrl = '<?= site_url('admin/export/clients') ?>';
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('format', format);
+            
+            window.location.href = baseUrl + '?' + urlParams.toString();
+        });
+    });
+</script>
 <?= $this->endSection() ?>

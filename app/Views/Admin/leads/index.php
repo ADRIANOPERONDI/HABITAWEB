@@ -11,9 +11,16 @@
         <p class="text-muted small mb-0">Contatos recebidos através dos seus anúncios.</p>
     </div>
     <div class="d-flex gap-2">
-        <button type="button" class="btn btn-outline-secondary rounded-pill px-4">
-            <i class="fa-solid fa-download me-2"></i> Exportar
-        </button>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary rounded-pill px-4 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa-solid fa-download me-2"></i> Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                <li><a class="dropdown-item py-2 btn-export" href="#" data-format="csv"><i class="fa-solid fa-file-csv me-2 text-primary"></i> CSV</a></li>
+                <li><a class="dropdown-item py-2 btn-export" href="#" data-format="xls"><i class="fa-solid fa-file-excel me-2 text-success"></i> Excel (XLS)</a></li>
+                <li><a class="dropdown-item py-2 btn-export" href="#" data-format="pdf"><i class="fa-solid fa-file-pdf me-2 text-danger"></i> PDF</a></li>
+            </ul>
+        </div>
     </div>
 </div>
 
@@ -353,6 +360,19 @@ $(document).ready(function() {
         $('.edit-mode').hide();
         $('.view-mode').fadeIn();
         $('#editLeadBtn').fadeIn();
+    });
+
+    // Exportar Leads
+    $('.btn-export').on('click', function(e) {
+        e.preventDefault();
+        const format = $(this).data('format');
+        const baseUrl = '<?= site_url('admin/export/leads') ?>';
+        
+        // Captura os parâmetros da URL atual (filtros)
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('format', format);
+        
+        window.location.href = baseUrl + '?' + urlParams.toString();
     });
 
     $('#leadEditForm').on('submit', function(e) {

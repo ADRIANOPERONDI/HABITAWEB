@@ -714,4 +714,130 @@ class PropertyService
         
         return ['success' => true, 'message' => $status ? 'Imóvel destacado com sucesso!' : 'Destaque removido com sucesso.'];
     }
+    /**
+     * Adiciona uma mídia (imagem) ao imóvel.
+     * 
+     * @param int $propertyId
+     * @param \CodeIgniter\HTTP\Files\UploadedFile $file
+     * @return array
+     */
+    public function addMedia(int $propertyId, $file): array
+    {
+        // 1. Validate Property
+        $property = $this->propertyModel->find($propertyId);
+        if (!$property) {
+            return ['success' => false, 'message' => 'Imóvel não encontrado.'];
+        }
+
+        // 2. Validate File
+        if (!$file->isValid() || $file->hasMoved()) {
+            return ['success' => false, 'message' => 'Arquivo inválido ou já movido.'];
+        }
+
+        // 3. Move File
+        try {
+            // Generate random name
+            $newName = $file->getRandomName();
+            
+            // Directory: public/uploads/properties/{id}/
+            $path = 'uploads/properties/' . $propertyId;
+            
+            // Ensure directory exists
+            if (!is_dir(FCPATH . $path)) {
+                mkdir(FCPATH . $path, 0755, true);
+            }
+
+            $file->move(FCPATH . $path, $newName);
+            
+            $publicUrl = $path . '/' . $newName;
+
+            // 4. Insert into DB
+            $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
+            
+            // Check if it's the first image (to set as Main)
+            $count = $mediaModel->countByProperty($propertyId);
+            $isMain = ($count === 0);
+
+            $mediaId = $mediaModel->insert([
+                'property_id' => $propertyId,
+                'tipo'        => 'imagem',
+                'url'         => $publicUrl,
+                'ordem'       => $count + 1,
+                'principal'   => $isMain,
+                'created_at'  => date('Y-m-d H:i:s')
+            ]);
+
+            // 5. Update Property Score (Async-ish)
+            service('rankingService')->updateScore($propertyId);
+
+            return [
+                'success' => true, 
+                'media' => [
+                    'id' => $mediaId,
+                    'url' => base_url($publicUrl),
+                    'principal' => $isMain
+                ]
+            ];
+
+        } catch (\Exception $e) {
+            log_message('error', 'Erro ao fazer upload de mídia: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Erro interno ao salvar arquivo.'];
+        }
+    }
+
+    /**
+     * Remove uma mídia do imóvel.
+     * 
+     * @param int $propertyId
+     * @param int $mediaId
+     * @return array
+     */
+    public function deleteMedia(int $propertyId, int $mediaId): array
+    {
+        $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
+        $media = $mediaModel->find($mediaId);
+
+        if (!$media || $media->property_id != $propertyId) {
+            return ['success' => false, 'message' => 'Mídia não encontrada ou não pertence a este imóvel.'];
+        }
+
+        if ($mediaModel->delete($mediaId)) {
+            // Se era a principal, define uma nova principal
+            if ($media->principal) {
+                // Pega a próxima mais antiga
+                $next = $mediaModel->where('property_id', $propertyId)
+                                  ->orderBy('id', 'ASC')
+                                  ->first();
+                if ($next) {
+                    $mediaModel->update($next->id, ['principal' => true]);
+                }
+            }
+
+            // Update Score
+            service('rankingService')->updateScore($propertyId);
+
+            return ['success' => true, 'message' => 'Mídia removida com sucesso.'];
+        }
+
+        return ['success' => false, 'message' => 'Erro ao remover mídia.'];
+    }
+
+    /**
+     * Define uma mídia como principal (Capa).
+     */
+    public function setMainMedia(int $propertyId, int $mediaId): array
+    {
+        $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
+        $media = $mediaModel->find($mediaId);
+
+        if (!$media || $media->property_id != $propertyId) {
+            return ['success' => false, 'message' => 'Mídia não encontrada.'];
+        }
+
+        if ($mediaModel->setMainMedia($propertyId, $mediaId)) {
+            return ['success' => true, 'message' => 'Imagem de capa atualizada.'];
+        }
+
+        return ['success' => false, 'message' => 'Erro ao atualizar capa.'];
+    }
 }

@@ -73,27 +73,38 @@ $routes->get('register', function() {
 });
 
 $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api\\V1'], function($routes) {
-    // Properties (requer auth exceto calculate-score)
-    $routes->resource('properties', ['controller' => 'PropertyController']);
-    $routes->post('properties/(:num)/report', 'PropertyController::report/$1');
-    
-    // Accounts (requer auth + admin)
-    $routes->resource('accounts', ['controller' => 'AccountController']);
-    
-    // Leads (create é público, resto requer auth)
-    $routes->post('leads', 'LeadController::create'); // Público
-    $routes->resource('leads', ['controller' => 'LeadController', 'except' => 'create']);
-    
-    // Webhooks (requer auth)
-    $routes->resource('webhooks', ['controller' => 'WebhookController']);
-    $routes->post('webhooks/(:num)/test', 'WebhookController::test/$1');
-    
-    // Export/Import (requer auth)
-    $routes->get('export/properties', 'ExportController::properties');
-    $routes->post('import/properties', 'ImportController::properties');
-    
-    // Favorites
-    $routes->post('favorites/toggle', 'FavoriteController::toggle');
+    // --- ROTA PÚBLICA ---
+    $routes->post('leads', 'LeadController::create');
+
+    // --- ROTAS PROTEGIDAS (Requer API Key) ---
+    $routes->group('', ['filter' => 'api_auth'], function($routes) {
+        
+        // Properties
+        $routes->resource('properties', ['controller' => 'PropertyController']);
+        $routes->post('properties/(:num)/media', 'PropertyController::uploadMedia/$1');
+        $routes->delete('properties/(:num)/media/(:num)', 'PropertyController::deleteMedia/$1/$2');
+        $routes->post('properties/(:num)/media/(:num)/main', 'PropertyController::setMainMedia/$1/$2');
+        $routes->post('properties/(:num)/report', 'PropertyController::report/$1');
+        
+        // Accounts (requer auth + admin logic inside controller/service)
+        $routes->resource('accounts', ['controller' => 'AccountController']);
+        
+        // Leads (Listagem/Detalhes requer auth)
+        $routes->resource('leads', ['controller' => 'LeadController', 'except' => 'create']);
+        
+        // Webhooks Management
+        $routes->resource('webhooks', ['controller' => 'WebhookController']);
+        $routes->post('webhooks/(:num)/test', 'WebhookController::test/$1');
+        
+        // Export/Import
+        $routes->get('export/properties', 'ExportController::properties');
+        $routes->get('export/leads', 'ExportController::leads');
+        $routes->get('export/clients', 'ExportController::clients');
+        $routes->post('import/properties', 'ImportController::properties');
+        
+        // Favorites
+        $routes->post('favorites/toggle', 'FavoriteController::toggle');
+    });
 });
 
 
@@ -138,6 +149,11 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('dashboard', 'DashboardController::index');
     $routes->get('profile', 'ProfileController::index');
     $routes->post('profile', 'ProfileController::update');
+    
+    // Export System (Session Based)
+    $routes->get('export/properties', 'ExportController::properties');
+    $routes->get('export/leads', 'ExportController::leads');
+    $routes->get('export/clients', 'ExportController::clients');
     
     // Super Admin Only
     $routes->resource('plans', ['controller' => 'PlanController', 'filter' => 'group:superadmin']);

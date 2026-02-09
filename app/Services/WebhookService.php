@@ -17,7 +17,7 @@ class WebhookService
     protected $subscriptionModel;
     protected $transactionModel;
     protected $profileModel;
-    protected $webhookLogModel;
+    protected $integrationWebhookModel;
 
     public function __construct()
     {
@@ -26,6 +26,93 @@ class WebhookService
         $this->transactionModel = model(PaymentTransactionModel::class);
         $this->profileModel = model(PaymentProfileModel::class);
         $this->webhookLogModel = model(WebhookLogModel::class);
+        $this->integrationWebhookModel = model(\App\Models\IntegrationWebhookModel::class);
+    }
+
+    /**
+     * Dispatch an event to external webhooks registered by the account.
+     * 
+     * @param string $event The event name (e.g., 'lead.created')
+     * @param array $payload The data to send
+     * @param int $accountId The account that owns the data
+     */
+    public function dispatch(string $event, array $payload, int $accountId)
+    {
+        // 1. Find active webhooks for this event and account
+        $webhooks = $this->integrationWebhookModel->where('account_id', $accountId)
+                                                  ->where('event', $event)
+                                                  ->where('is_active', true)
+                                                  ->findAll();
+
+        if (empty($webhooks)) {
+            return;
+        }
+
+        $client = \Config\Services::curlrequest();
+
+        foreach ($webhooks as $webhook) {
+            $this->sendWebhook($client, $webhook, $payload);
+        }
+    }
+
+    /**
+     * Sends a single webhook request
+     */
+    protected function sendWebhook($client, $webhook, array $payload)
+    {
+        $payloadJson = json_encode($payload);
+        $timestamp = time();
+        
+        // Prepare Signature (HMAC SHA256)
+        // Sign: timestamp.payload using secret
+        $signature = hash_hmac('sha256', "{$timestamp}.{$payloadJson}", $webhook->secret);
+
+        try {
+            $response = $client->request('POST', $webhook->target_url, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Webhook-Event' => $webhook->event,
+                    'X-Webhook-Timestamp' => $timestamp,
+                    'X-Webhook-Signature' => $signature,
+                    'User-Agent' => 'Habitaweb-Webhook/1.0'
+                ],
+                'body' => $payloadJson,
+                'timeout' => 5,
+                'http_errors' => false // Don't throw exception on 4xx/5xx
+            ]);
+
+            $statusCode = $response->getStatusCode();
+            $success = $statusCode >= 200 && $statusCode < 300;
+            
+            // Log attempt
+            $this->webhookLogModel->insert([
+                'event_type' => 'dispatch.' . $webhook->event,
+                'event_id' => $webhook->id, // Linking to the webhook definition ID
+                'payload' => json_encode([
+                    'target_url' => $webhook->target_url,
+                    'request_payload' => $payload,
+                    'response_code' => $statusCode,
+                    'response_body' => substr($response->getBody(), 0, 1000) // Truncate if too long
+                ]),
+                'processed' => $success,
+                'error_message' => $success ? 'OK' : "HTTP $statusCode",
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+
+        } catch (\Exception $e) {
+            // Log failure
+            $this->webhookLogModel->insert([
+                'event_type' => 'dispatch.' . $webhook->event,
+                'event_id' => $webhook->id,
+                'payload' => json_encode([
+                    'target_url' => $webhook->target_url,
+                    'request_payload' => $payload,
+                ]),
+                'processed' => false,
+                'error_message' => 'Exception: ' . $e->getMessage(),
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+        }
     }
 
     /**

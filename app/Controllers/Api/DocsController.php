@@ -13,66 +13,13 @@ class DocsController extends BaseController
 
     public function json()
     {
-        $data = [
-            'openapi' => '3.0.0',
-            'info' => [
-                'title' => 'Habitaweb API',
-                'description' => 'Documentação da API do Habitaweb.',
-                'version' => '1.0.0'
-            ],
-            'servers' => [
-                ['url' => site_url('api/v1')]
-            ],
-            'components' => [
-                'securitySchemes' => [
-                    'bearerAuth' => [
-                        'type' => 'http',
-                        'scheme' => 'bearer',
-                        'bearerFormat' => 'JWT' // Ou SHIELD TOKEN
-                    ]
-                ]
-            ],
-            'security' => [
-                ['bearerAuth' => []]
-            ],
-            'paths' => [
-                '/properties' => [
-                    'get' => [
-                        'summary' => 'Listar Imóveis',
-                        'parameters' => [
-                            ['name' => 'page', 'in' => 'query', 'schema' => ['type' => 'integer']],
-                            ['name' => 'cidade', 'in' => 'query', 'schema' => ['type' => 'string']]
-                        ],
-                        'responses' => [
-                            '200' => ['description' => 'Lista de imóveis retornada com sucesso']
-                        ]
-                    ]
-                ],
-                '/leads' => [
-                    'post' => [
-                        'summary' => 'Criar Lead',
-                        'requestBody' => [
-                            'content' => [
-                                'application/json' => [
-                                    'schema' => [
-                                        'type' => 'object',
-                                        'properties' => [
-                                            'property_id' => ['type' => 'integer'],
-                                            'nome_visitante' => ['type' => 'string'],
-                                            'email_visitante' => ['type' => 'string']
-                                        ]
-                                    ]
-                                ]
-                            ]
-                        ],
-                        'responses' => [
-                            '201' => ['description' => 'Lead criado']
-                        ]
-                    ]
-                ]
-            ]
-        ];
-        return $this->response->setJSON($data);
+        $path = FCPATH . 'openapi.json';
+        if (file_exists($path)) {
+            $json = file_get_contents($path);
+            return $this->response->setJSON(json_decode($json, true));
+        }
+
+        return $this->response->setJSON(['error' => 'OpenAPI file not found']);
     }
 
     public function testSuite()

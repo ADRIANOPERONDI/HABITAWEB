@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Controllers\Api\V1;
+namespace App\Controllers\Admin;
 
+use App\Controllers\BaseController;
 use App\Services\ExportService;
 
 class ExportController extends BaseController
@@ -14,7 +15,7 @@ class ExportController extends BaseController
     }
 
     /**
-     * GET /api/v1/export/properties
+     * Exporta imóveis.
      */
     public function properties()
     {
@@ -22,7 +23,7 @@ class ExportController extends BaseController
     }
 
     /**
-     * GET /api/v1/export/leads
+     * Exporta Leads.
      */
     public function leads()
     {
@@ -30,7 +31,7 @@ class ExportController extends BaseController
     }
 
     /**
-     * GET /api/v1/export/clients
+     * Exporta Clientes.
      */
     public function clients()
     {
@@ -38,14 +39,26 @@ class ExportController extends BaseController
     }
 
     /**
-     * Trata a lógica comum de exportação.
+     * Trata a lógica de exportação para as rotas administrativas.
      */
     private function handleExport(string $type)
     {
-        $accountId = $this->request->account_id ?? null;
-        
-        if (!$accountId) {
-            return $this->failForbidden('Export requer autenticação com API Key vinculada a uma conta.');
+        $user = auth()->user();
+        $accountId = $user->account_id;
+        $isGlobalAdmin = $user->inGroup('superadmin', 'admin');
+
+        // Se for admin global e houver account_id no GET, sobrescreve.
+        // Isso permite ao superadmin exportar dados de uma conta específica.
+        if ($isGlobalAdmin) {
+            $getAccountId = $this->request->getGet('account_id');
+            if ($getAccountId !== null) {
+                // Se account_id for "all" ou vazio (e for superadmin), exporta tudo.
+                $accountId = ($getAccountId === '' || $getAccountId === 'all') ? null : (int)$getAccountId;
+            }
+        }
+
+        if (!$accountId && !$isGlobalAdmin) {
+            return redirect()->back()->with('error', 'Permissão negada ou conta não identificada.');
         }
 
         $format = $this->request->getGet('format') ?? 'csv';
@@ -55,7 +68,7 @@ class ExportController extends BaseController
             $method = 'export' . ucfirst($type);
             
             if (!method_exists($this->exportService, $method)) {
-                return $this->respondError("Tipo de exportação '$type' não disponível.", 400);
+                return redirect()->back()->with('error', "Tipo de exportação '$type' não disponível.");
             }
 
             $result = $this->exportService->$method($accountId, $filters, $format);
@@ -66,8 +79,7 @@ class ExportController extends BaseController
                 ->setBody(file_get_contents($result['file_path']));
 
         } catch (\Exception $e) {
-            return $this->respondError('Erro ao exportar dados: ' . $e->getMessage(), 500);
+            return redirect()->back()->with('error', 'Erro ao exportar dados: ' . $e->getMessage());
         }
     }
 }
-

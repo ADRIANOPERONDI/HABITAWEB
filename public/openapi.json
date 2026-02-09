@@ -1,0 +1,609 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Habitaweb API v1",
+        "description": "Documentação Oficial da API Habitaweb para Integração de CRMs, Portais e Sistemas Externos.",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "/api/v1",
+            "description": "Servidor Atual"
+        }
+    ],
+    "security": [
+        {
+            "bearerAuth": []
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "API Key"
+            }
+        },
+        "schemas": {
+            "ResponseEnvelope": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "integer",
+                        "example": 200
+                    },
+                    "error": {
+                        "type": "string",
+                        "nullable": true,
+                        "example": null
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Success"
+                    },
+                    "data": {
+                        "type": "object"
+                    },
+                    "details": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "Property": {
+                "type": "object",
+                "required": [
+                    "titulo",
+                    "tipo_imovel",
+                    "tipo_negocio",
+                    "preco"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "titulo": {
+                        "type": "string",
+                        "example": "Casa de Luxo no Morumbi"
+                    },
+                    "descricao": {
+                        "type": "string"
+                    },
+                    "tipo_imovel": {
+                        "type": "string",
+                        "enum": [
+                            "casa",
+                            "apartamento",
+                            "terreno",
+                            "comercial"
+                        ],
+                        "example": "casa"
+                    },
+                    "tipo_negocio": {
+                        "type": "string",
+                        "enum": [
+                            "venda",
+                            "aluguel"
+                        ],
+                        "example": "venda"
+                    },
+                    "preco": {
+                        "type": "number",
+                        "example": 1500000
+                    },
+                    "area_total": {
+                        "type": "number"
+                    },
+                    "quartos": {
+                        "type": "integer"
+                    },
+                    "banheiros": {
+                        "type": "integer"
+                    },
+                    "cidade": {
+                        "type": "string"
+                    },
+                    "bairro": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "ACTIVE",
+                            "INACTIVE"
+                        ]
+                    }
+                }
+            },
+            "Lead": {
+                "type": "object",
+                "required": [
+                    "property_id",
+                    "nome_visitante",
+                    "email_visitante"
+                ],
+                "properties": {
+                    "property_id": {
+                        "type": "integer"
+                    },
+                    "nome_visitante": {
+                        "type": "string"
+                    },
+                    "email_visitante": {
+                        "type": "string"
+                    },
+                    "telefone_visitante": {
+                        "type": "string"
+                    },
+                    "mensagem": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "NOVO",
+                            "EM_ATENDIMENTO",
+                            "FECHADO"
+                        ]
+                    }
+                }
+            },
+            "Account": {
+                "type": "object",
+                "required": [
+                    "nome",
+                    "email",
+                    "tipo_conta"
+                ],
+                "properties": {
+                    "nome": {
+                        "type": "string"
+                    },
+                    "email": {
+                        "type": "string"
+                    },
+                    "tipo_conta": {
+                        "type": "string",
+                        "enum": [
+                            "corretor",
+                            "imobiliaria"
+                        ]
+                    },
+                    "telefone": {
+                        "type": "string"
+                    }
+                }
+            },
+            "Webhook": {
+                "type": "object",
+                "required": [
+                    "name",
+                    "event",
+                    "target_url"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "event": {
+                        "type": "string",
+                        "enum": [
+                            "lead.created",
+                            "property.created",
+                            "property.updated"
+                        ]
+                    },
+                    "target_url": {
+                        "type": "string"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        }
+    },
+    "paths": {
+        "/leads": {
+            "get": {
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Listar Leads",
+                "responses": {
+                    "200": {
+                        "description": "Sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ResponseEnvelope"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Criar Lead (Público)",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Lead"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Criado"
+                    }
+                }
+            }
+        },
+        "/leads/{id}": {
+            "get": {
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Detalhes do Lead",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Atualizar Lead",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Lead"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Leads"
+                ],
+                "summary": "Remover Lead",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ]
+            }
+        },
+        "/properties": {
+            "get": {
+                "tags": [
+                    "Imóveis"
+                ],
+                "summary": "Listar Imóveis",
+                "responses": {
+                    "200": {
+                        "description": "Sucesso"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Imóveis"
+                ],
+                "summary": "Cadastrar Imóvel",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Property"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Criado"
+                    }
+                }
+            }
+        },
+        "/properties/{id}": {
+            "get": {
+                "tags": [
+                    "Imóveis"
+                ],
+                "summary": "Detalhes do Imóvel",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Imóveis"
+                ],
+                "summary": "Atualizar Imóvel",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Property"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Imóveis"
+                ],
+                "summary": "Remover Imóvel",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ]
+            }
+        },
+        "/properties/{id}/media": {
+            "post": {
+                "tags": [
+                    "Imóveis - Mídia"
+                ],
+                "summary": "Upload de Imagem",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/accounts": {
+            "get": {
+                "tags": [
+                    "Contas"
+                ],
+                "summary": "Listar Contas"
+            },
+            "post": {
+                "tags": [
+                    "Contas"
+                ],
+                "summary": "Criar Subconta",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Account"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks": {
+            "get": {
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Listar Webhooks"
+            },
+            "post": {
+                "tags": [
+                    "Webhooks"
+                ],
+                "summary": "Configurar Webhook",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Webhook"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/export/properties": {
+            "get": {
+                "tags": [
+                    "Importação/Exportação"
+                ],
+                "summary": "Exportar Imóveis",
+                "parameters": [
+                    {
+                        "name": "format",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "csv",
+                                "xls",
+                                "pdf"
+                            ],
+                            "default": "csv"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "tipo_negocio",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Arquivo para Download"
+                    }
+                }
+            }
+        },
+        "/export/leads": {
+            "get": {
+                "tags": [
+                    "Importação/Exportação"
+                ],
+                "summary": "Exportar Leads",
+                "parameters": [
+                    {
+                        "name": "format",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "csv",
+                                "xls",
+                                "pdf"
+                            ],
+                            "default": "csv"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Arquivo para Download"
+                    }
+                }
+            }
+        },
+        "/export/clients": {
+            "get": {
+                "tags": [
+                    "Importação/Exportação"
+                ],
+                "summary": "Exportar Clientes",
+                "parameters": [
+                    {
+                        "name": "format",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "csv",
+                                "xls",
+                                "pdf"
+                            ],
+                            "default": "csv"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Arquivo para Download"
+                    }
+                }
+            }
+        },
+        "/import/properties": {
+            "post": {
+                "tags": [
+                    "Importação/Exportação"
+                ],
+                "summary": "Importar Imóveis (JSON)",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/Property"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

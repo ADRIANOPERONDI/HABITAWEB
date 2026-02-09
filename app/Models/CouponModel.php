@@ -44,7 +44,7 @@ class CouponModel extends Model
         $now = date('Y-m-d H:i:s');
         
         $coupon = $this->where('code', $code)
-                       ->where('is_active', 1)
+                       ->where('is_active', true)
                        ->groupStart() // (valid_from IS NULL OR valid_from <= NOW)
                            ->where('valid_from', null)
                            ->orWhere('valid_from <=', $now)
