@@ -61,16 +61,9 @@
         </form>
     </div>
     <div class="col-lg-4 text-lg-end d-flex justify-content-lg-end align-items-center gap-2">
-        <div class="dropdown">
-            <button class="btn btn-outline-secondary rounded-pill px-4 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fa-solid fa-download me-2"></i> Exportar
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-2 mt-2">
-                <li><a class="dropdown-item rounded-3 py-2 btn-export" href="#" data-format="csv"><i class="fa-solid fa-file-csv me-2 text-primary"></i> CSV</a></li>
-                <li><a class="dropdown-item rounded-3 py-2 btn-export" href="#" data-format="xls"><i class="fa-solid fa-file-excel me-2 text-success"></i> Excel (XLS)</a></li>
-                <li><a class="dropdown-item rounded-3 py-2 btn-export" href="#" data-format="pdf"><i class="fa-solid fa-file-pdf me-2 text-danger"></i> PDF</a></li>
-            </ul>
-        </div>
+        <button class="btn btn-outline-secondary rounded-pill px-4" type="button" data-bs-toggle="modal" data-bs-target="#exportModal">
+            <i class="fa-solid fa-download me-2"></i> Exportar
+        </button>
         <a href="<?= site_url('admin/properties/new') ?>" class="btn btn-primary btn-lg rounded-pill px-4 shadow">
             <i class="fa-solid fa-plus me-2"></i> Anunciar Imóvel
         </a>
@@ -402,6 +395,34 @@
         window.location.href = baseUrl + '?' + urlParams.toString();
     });
 </script>
+<?= $this->endSection() ?>
+
+<?= $this->section('modals') ?>
+<!-- Modal de Exportação -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold" id="exportModalLabel"><i class="fa-solid fa-download me-2 text-primary"></i> Exportar Imóveis</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body pt-3">
+                <p class="text-muted small mb-3">Escolha o formato do arquivo:</p>
+                <div class="d-grid gap-2">
+                    <a href="#" class="btn btn-outline-success btn-lg rounded-pill btn-export" data-format="csv">
+                        <i class="fa-solid fa-file-csv me-2"></i> CSV
+                    </a>
+                    <a href="#" class="btn btn-outline-success btn-lg rounded-pill btn-export" data-format="xls">
+                        <i class="fa-solid fa-file-excel me-2"></i> Excel (XLS)
+                    </a>
+                    <a href="#" class="btn btn-outline-danger btn-lg rounded-pill btn-export" data-format="pdf">
+                        <i class="fa-solid fa-file-pdf me-2"></i> PDF
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <?= $this->endSection() ?>
 
 
