@@ -202,4 +202,25 @@ class PropertyModel extends Model
         
         return (float) ($query->first()->preco ?? 0);
     }
+
+    /**
+     * Calcula média de preço por bairro e tipo (últimos 6 meses)
+     */
+    public function getAveragePriceForNeighborhood(string $bairro, string $type): array
+    {
+        $sixMonthsAgo = date('Y-m-d H:i:s', strtotime('-6 months'));
+        
+        $result = $this->select('AVG(preco) as avg_price, COUNT(*) as count')
+            ->where('bairro', $bairro)
+            ->where('tipo_imovel', $type)
+            ->where('status', 'ACTIVE')
+            ->where('preco >', 0)
+            ->where('created_at >=', $sixMonthsAgo)
+            ->first();
+            
+        return [
+            'avg_price' => $result->avg_price ?? 0,
+            'count' => $result->count ?? 0
+        ];
+    }
 }

@@ -16,6 +16,7 @@ class PaymentService
     protected $activeGateway;
     protected $accountModel;
     protected $subscriptionModel;
+    protected $transactionModel;
     protected $paymentProfileModel;
     protected $db;
 
@@ -25,7 +26,8 @@ class PaymentService
         $this->configModel = new PaymentGatewayConfigModel();
         $this->accountModel = Factories::models(AccountModel::class);
         $this->subscriptionModel = Factories::models(SubscriptionModel::class);
-        $this->paymentProfileModel = model('App\Models\PaymentProfileModel'); // Ensure this model exists or use builder if new
+        $this->transactionModel = model('App\Models\PaymentTransactionModel');
+        $this->paymentProfileModel = model('App\Models\PaymentProfileModel');
         $this->db = \Config\Database::connect();
         
         // Load the primary active gateway immediately
@@ -138,13 +140,8 @@ class PaymentService
 
         // 1. Tentar buscar localmente em assinaturas anteriores da conta
         $gatewayCode = $this->activeGateway->getCode();
-        $db = \Config\Database::connect();
-        $existingSub = $db->table('subscriptions')
-            ->where('account_id', $accountId)
-            ->where('asaas_customer_id IS NOT NULL')
-            ->orderBy('id', 'DESC')
-            ->get()
-            ->getRow();
+        
+        $existingSub = $this->subscriptionModel->findMostRecentByAccount($accountId);
 
         if ($existingSub) {
             return $existingSub->asaas_customer_id;
@@ -279,7 +276,7 @@ class PaymentService
         $localSubId = $this->subscriptionModel->getInsertID();
 
         // Log transaction
-        $this->db->table('payment_transactions')->insert([
+        $this->transactionModel->upsertTransaction([
             'account_id' => $accountId,
             'gateway_transaction_id' => $subscriptionData['first_payment']['id'] ?? null, 
             'gateway' => $this->activeGateway->getCode(),
@@ -362,30 +359,20 @@ class PaymentService
     /**
      * Cancelar um pagamento (charge) no gateway
      */
-        public function cancelPayment(int $subscriptionId)
+    public function cancelPayment(int $subscriptionId)
     {
-        $transaction = $this->db->table('payment_transactions')
-            ->where('subscription_id', $subscriptionId)
-            ->where('status', 'PENDING')
-            ->orderBy('id', 'DESC')
-            ->get()
-            ->getRow();
+        $transaction = $this->transactionModel->findPendingBySubscription($subscriptionId);
 
         log_message('debug', "CancelPayment: SubscriptionId=$subscriptionId. Local Trx Found? " . ($transaction ? $transaction->id : 'NO'));
 
 
         // [FIX] Orphan Check: Se não achar na assinatura atual, busca upgrades pendentes na CONTA
         // Isso resolve casos onde o upgrade ficou vinculado a uma assinatura antiga (bug de legado)
+        // Isso resolve casos onde o upgrade ficou vinculado a uma assinatura antiga (bug de legado)
         if (!$transaction) {
              $sub = $this->subscriptionModel->find($subscriptionId);
              if ($sub) {
-                  $builder = $this->db->table('payment_transactions');
-                  $builder->where('account_id', $sub->account_id);
-                  $builder->where('status', 'PENDING');
-                  // [FIX] Removed specific type check to catch RECURRING_CHARGE too
-                  // ->where('type', 'UPGRADE_PRORATA') 
-                  $builder->orderBy('id', 'DESC');
-                  $transaction = $builder->get()->getRow();
+                 $transaction = $this->transactionModel->findPendingByAccount($sub->account_id);
                  
                  if ($transaction) {
                      log_message('debug', "[PaymentService] Found ORPHAN upgrade transaction {$transaction->id} for account {$sub->account_id} while cancelling sub {$subscriptionId}");
@@ -415,9 +402,7 @@ class PaymentService
                 try {
                     log_message('debug', "CancelPayment: Calling Gateway {$this->activeGateway->getCode()} to cancel {$transaction->gateway_transaction_id}");
                     if ($this->activeGateway->cancelPayment($transaction->gateway_transaction_id)) {
-                        $this->db->table('payment_transactions')
-                            ->where('id', $transaction->id)
-                            ->update(['status' => 'CANCELLED']);
+                        $this->transactionModel->update($transaction->id, ['status' => 'CANCELLED']);
                     }
                 } catch (\Exception $e) {
                     log_message('error', 'Erro ao cancelar transação no gateway: ' . $e->getMessage());
@@ -550,7 +535,7 @@ class PaymentService
                         $paymentData = $this->activeGateway->createPayment($subscription->asaas_customer_id, $proRata['value'], $data);
                         
                         // 2. Registrar transação no banco
-                        $this->db->table('payment_transactions')->insert([
+                        $this->transactionModel->insert([
                             'account_id'      => $accountId,
                             'subscription_id' => $subscription->id,
                             'gateway'         => $this->activeGateway->getCode(),
@@ -716,7 +701,7 @@ class PaymentService
         $localSubId = $this->subscriptionModel->getInsertID();
 
         // 5. Store Transaction Reference
-        $this->db->table('payment_transactions')->insert([
+        $this->transactionModel->insert([
             'account_id' => $accountId,
             'gateway_transaction_id' => $paymentData['payment_id'],
             'gateway' => $this->activeGateway->getCode(),
@@ -860,8 +845,7 @@ class PaymentService
 
             foreach ($pendingPayments as $p) {
                 // Verificar se já existe no banco local por gateway_transaction_id
-                $exists = $this->db->table('payment_transactions')
-                                  ->where('gateway_transaction_id', $p['payment_id'])
+                $exists = $this->transactionModel->where('gateway_transaction_id', $p['payment_id'])
                                   ->countAllResults() > 0;
 
                 if (!$exists) {
@@ -871,7 +855,7 @@ class PaymentService
                         $type = 'UPGRADE_PRORATA';
                     }
 
-                    $this->db->table('payment_transactions')->insert([
+                    $this->transactionModel->insert([
                         'account_id'      => $accountId,
                         'subscription_id' => $subscription ? $subscription->id : null,
                         'gateway'         => $this->activeGateway->getCode(),

@@ -4,6 +4,7 @@ namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
 use App\Models\SubscriptionModel;
+use App\Models\PaymentTransactionModel;
 use CodeIgniter\Config\Factories;
 
 class WebhookController extends BaseController
@@ -57,7 +58,8 @@ class WebhookController extends BaseController
                         ]);
                         
                         // Update Transaction Log
-                         $db->table('payment_transactions')->upsert([
+                         $transactionModel = model(PaymentTransactionModel::class);
+                         $transactionModel->upsertTransaction([
                             'account_id' => $localSub->account_id,
                             'external_id' => $payment['id'],
                             'method' => $payment['billingType'],

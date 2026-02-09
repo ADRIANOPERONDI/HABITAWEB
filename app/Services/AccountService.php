@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Entities\Account;
 use App\Models\AccountModel;
 use CodeIgniter\Config\Factories;
+use CodeIgniter\Shield\Entities\User;
+use CodeIgniter\Shield\Models\UserModel;
 
 class AccountService
 {
@@ -138,5 +140,82 @@ class AccountService
     public function getAllAccountsSortedByName(): array
     {
         return $this->accountModel->orderBy('nome', 'ASC')->findAll();
+    }
+
+    /**
+     * Verifica se um email já está registrado (Shield identities).
+     */
+    public function emailExists(string $email): bool
+    {
+        $db = \Config\Database::connect();
+        return $db->table('auth_identities')
+                  ->where('type', 'email_password')
+                  ->where('secret', $email)
+                  ->countAllResults() > 0;
+    }
+
+    /**
+     * Registra um novo usuário e conta vinculada.
+     */
+    public function registerUser(array $data)
+    {
+        $db = \Config\Database::connect();
+        $db->transStart();
+
+        try {
+            // 1. Create Account
+            $accountData = [
+                'nome' => $data['nome'],
+                'tipo_conta' => $data['tipo_conta'],
+                'documento' => $data['documento'],
+                'status' => 'PENDING',
+                'email' => $data['email']
+            ];
+            
+            $this->accountModel->insert($accountData);
+            $accountId = $this->accountModel->getInsertID();
+
+            // 2. Create User (Shield)
+            // Note: We use the global 'model' helper to get the specific UserModel extended in App if exists, or Shield's
+            $users = model('App\Models\UserModel'); 
+            
+            $user = new User([
+                'username' => explode('@', $data['email'])[0] . rand(100,999),
+                'email'    => $data['email'],
+                'password' => $data['password'],
+                'active'   => 1,
+                'account_id' => $accountId
+            ]);
+            
+            $users->save($user);
+            $userId = $users->getInsertID();
+            
+            if (!$userId) {
+                throw new \Exception("Erro ao gerar ID do usuário.");
+            }
+            $user->id = $userId;
+
+            // 3. Assign Group
+            $group = 'user';
+            if ($data['tipo_conta'] === 'IMOBILIARIA') {
+                $group = 'imobiliaria_admin';
+            } elseif ($data['tipo_conta'] === 'CORRETOR') {
+                $group = 'imobiliaria_corretor';
+            }
+            
+            $user->addGroup($group);
+
+            $db->transComplete();
+
+            if ($db->transStatus() === false) {
+                throw new \Exception("Erro na transação de cadastro.");
+            }
+
+            return $user;
+
+        } catch (\Exception $e) {
+            $db->transRollback();
+            throw $e;
+        }
     }
 }

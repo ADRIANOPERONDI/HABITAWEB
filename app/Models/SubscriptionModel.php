@@ -103,9 +103,6 @@ class SubscriptionModel extends Model
         return $builder->get()->getRow();
     }
 
-    /**
-     * Calcula o Monthly Recurring Revenue (MRR) total.
-     */
     public function calculateMRR(): float
     {
         $result = $this->selectSum('plans.preco_mensal', 'total_mrr')
@@ -114,6 +111,17 @@ class SubscriptionModel extends Model
             ->first();
             
         return (float) ($result->total_mrr ?? 0.00);
+    }
+
+    /**
+     * Busca a assinatura mais recente de uma conta (para reutilizar customer_id)
+     */
+    public function findMostRecentByAccount(int $accountId)
+    {
+        return $this->where('account_id', $accountId)
+                    ->where('asaas_customer_id IS NOT NULL')
+                    ->orderBy('id', 'DESC')
+                    ->first();
     }
 }
 

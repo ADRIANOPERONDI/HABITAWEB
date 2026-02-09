@@ -61,31 +61,7 @@ class PropertyMediaController extends BaseController
 
         // Race Condition Fix: Execução Atômica (PostgreSQL Compatible)
         // Garantir que apenas UMA imagem seja principal por property_id
-        
-        $db = \Config\Database::connect();
-        
-        // Estratégia: 
-        // 1. Desativa TODAS as imagens deste imóvel
-        // 2. Ativa apenas a mais antiga (menor ID)
-        
-        // Passo 1: Desativar todas
-        $db->query(
-            "UPDATE property_media SET principal = false WHERE property_id = ?",
-            [$propertyId]
-        );
-        
-        // Passo 2: Ativar apenas a mais antiga
-        $db->query(
-            "UPDATE property_media 
-             SET principal = true
-             WHERE id = (
-                 SELECT id FROM property_media 
-                 WHERE property_id = ? 
-                 ORDER BY id ASC 
-                 LIMIT 1
-             )",
-            [$propertyId]
-        );
+        $mediaModel->sanitizeMain($propertyId);
 
         // Recalcula score
         $rankingService = service('rankingService');
@@ -140,13 +116,8 @@ class PropertyMediaController extends BaseController
 
         $propertyId = $media->property_id;
 
-        // Reset all for this property
-        $mediaModel->where('property_id', $propertyId)
-                    ->set(['principal' => false])
-                    ->update();
-
-        // Set new main
-        $mediaModel->update($id, ['principal' => true]);
+        // Set new main using atomic model method
+        $mediaModel->setMainMedia($propertyId, $id);
 
         // Recalcula score (o fato de ter principal pode influenciar)
         $rankingService = service('rankingService');

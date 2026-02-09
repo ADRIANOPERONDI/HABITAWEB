@@ -27,13 +27,11 @@ class PaymentHistoryController extends BaseController
         $accountId = $user->account_id;
 
         // Buscar transações
-        // Se model não existir, usar db builder
-        $db = \Config\Database::connect();
-        $transactions = $db->table('payment_transactions')
+        // Buscar transações
+        $transactions = $this->transactionModel
                            ->where('account_id', $accountId)
                            ->orderBy('created_at', 'DESC')
-                           ->get()
-                           ->getResult();
+                           ->findAll();
 
         // Buscar assinatura atual
         $currentSubscription = $this->subscriptionModel->where('account_id', $accountId)
@@ -53,12 +51,10 @@ class PaymentHistoryController extends BaseController
         $user = service('auth')->user();
         $accountId = $user->account_id;
 
-        $db = \Config\Database::connect();
-        $transaction = $db->table('payment_transactions')
+        $transaction = $this->transactionModel
                           ->where('id', $id)
                           ->where('account_id', $accountId)
-                          ->get()
-                          ->getRow();
+                          ->first();
 
         if (!$transaction) {
             return redirect()->back()->with('error', 'Transação não encontrada.');

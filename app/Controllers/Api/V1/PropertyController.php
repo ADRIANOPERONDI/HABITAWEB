@@ -162,8 +162,9 @@ class PropertyController extends BaseController
         $mediaCount = $data['media_count'] ?? 0;
         // Se tiver ID no payload mas não media_count, tenta buscar do banco
         if (!empty($data['id']) && $mediaCount == 0) {
-            $db = \Config\Database::connect();
-            $mediaCount = $db->table('property_media')->where('property_id', $data['id'])->countAllResults();
+            // Using PropertyMediaModel for counting
+            $mediaModel = model('App\Models\PropertyMediaModel');
+            $mediaCount = $mediaModel->countByProperty($data['id']);
         }
 
         $curationService = new \App\Services\CurationService();

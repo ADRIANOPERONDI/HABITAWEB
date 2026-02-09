@@ -80,6 +80,11 @@ class SettingsController extends BaseController
             'notify.whatsapp_leads' => ['value' => '0', 'group' => 'notifications', 'label' => 'Notificar via WhatsApp', 'type' => 'boolean'],
             'notify.subscription_expiry' => ['value' => '1', 'group' => 'notifications', 'label' => 'Alertas de Vencimento', 'type' => 'boolean'],
             'notify.low_limits' => ['value' => '1', 'group' => 'notifications', 'label' => 'Alertas de Limite de Imóveis', 'type' => 'boolean'],
+
+            // Appearance
+            'style.primary_color'   => ['value' => '#6366f1', 'group' => 'appearance', 'label' => 'Cor Principal', 'type' => 'color'],
+            'style.secondary_color' => ['value' => '#a855f7', 'group' => 'appearance', 'label' => 'Cor Secundária', 'type' => 'color'],
+            'style.tertiary_color'  => ['value' => '#10b981', 'group' => 'appearance', 'label' => 'Cor Terciária', 'type' => 'color'],
         ];
 
         foreach ($essential as $key => $data) {

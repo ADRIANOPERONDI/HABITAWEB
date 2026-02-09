@@ -172,4 +172,11 @@ class PaymentTransactionModel extends Model
                     ->orderBy('created_at', 'DESC')
                     ->first();
     }
+    /**
+     * Upsert simplificado via builder
+     */
+    public function upsertTransaction(array $data)
+    {
+        return $this->builder()->upsert($data);
+    }
 }

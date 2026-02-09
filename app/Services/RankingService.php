@@ -19,12 +19,12 @@ class RankingService
     {
         $score = 0;
 
-        // 1. Fotos (Simulado via count no banco ou carregado na entity)
+        // 2. Fotos (Simulado via count no banco ou carregado na entity)
         // Para simplificar agora, vamos assumir que o controller passa o objeto carregado ou buscamos aqui.
         // Como o score costuma ser calculado no save/update, vamos fazer uma query count rápida se precisar.
         
-        $db = \Config\Database::connect();
-        $mediaCount = $db->table('property_media')->where('property_id', $property->id)->countAllResults();
+        $mediaModel = model('App\Models\PropertyMediaModel');
+        $mediaCount = $mediaModel->countByProperty($property->id);
         
         $score += min($mediaCount * 10, 50); // Max 50 pts por fotos
 
@@ -39,7 +39,8 @@ class RankingService
         }
 
         // 4. Características (Features - Dinâmicas)
-        $featureCount = $db->table('property_features')->where('property_id', $property->id)->countAllResults();
+        $featureModel = model('App\Models\PropertyFeatureModel');
+        $featureCount = $featureModel->countByProperty($property->id);
         $score += min($featureCount * 5, 20);
 
         // 5. Novos Campos Estáticos (Boost de completude)

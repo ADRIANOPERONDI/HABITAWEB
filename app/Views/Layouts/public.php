@@ -278,75 +278,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script>
-    $(document).ready(function() {
-        // Initialize Select2 for public pages
-        $('.select2-public').select2({
-            theme: 'bootstrap-5',
-            width: '100%',
-            dropdownAutoWidth: true,
-            selectionCssClass: 'select2-premium-selection',
-            dropdownCssClass: 'select2-premium-dropdown',
-        });
-
-        // Flash Messages via SweetAlert2
-        <?php if (session()->has('message')): ?>
-            Swal.fire({
-                icon: 'success',
-                title: 'Sucesso!',
-                text: '<?= session('message') ?>',
-                confirmButtonColor: '#6366f1'
-            });
-        <?php endif; ?>
-
-        <?php if (session()->has('error')): ?>
-            Swal.fire({
-                icon: 'error',
-                title: 'Ops!',
-                text: '<?= session('error') ?>',
-                confirmButtonColor: '#6366f1'
-            });
-        <?php endif; ?>
-
-        <?php if (session()->has('errors')): ?>
-            Swal.fire({
-                icon: 'error',
-                title: 'Erros de Validação',
-                html: '<?= implode("<br>", session('errors')) ?>',
-                confirmButtonColor: '#6366f1'
-            });
-        <?php endif; ?>
-
-        $('.btn-favorite').on('click', function(e) {
-            e.preventDefault();
-            let btn = $(this);
-            let propertyId = btn.data('id');
-            
-            $.ajax({
-                url: '<?= site_url("api/v1/favorites/toggle") ?>',
-                method: 'POST',
-                dataType: 'json',
-                contentType: 'application/json',
-                data: JSON.stringify({ property_id: propertyId }),
-                success: function(response) {
-                    if (response.status === 'added') {
-                        btn.find('i').removeClass('fa-regular').addClass('fa-solid text-danger');
-                    } else {
-                        btn.find('i').removeClass('fa-solid text-danger').addClass('fa-regular');
-                    }
-                },
-                error: function(xhr) {
-                    if (xhr.status === 401) {
-                        alert('Faça login para favoritar.');
-                        window.location.href = '<?= site_url("login") ?>';
-                    } else {
-                        console.error(xhr);
-                    }
-                }
-            });
-        });
-    });
-    </script>
+    <?= view('Scripts/public_layout') ?>
     <?= $this->renderSection('scripts') ?>
 </body>
 </html>

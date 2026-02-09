@@ -45,4 +45,12 @@ class PropertyFeatureModel extends Model
     protected $afterFind      = [];
     protected $beforeDelete   = [];
     protected $afterDelete    = [];
+
+    /**
+     * Conta features de uma propriedade
+     */
+    public function countByProperty(int $propertyId): int
+    {
+        return $this->where('property_id', $propertyId)->countAllResults();
+    }
 }

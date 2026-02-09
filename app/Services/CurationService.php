@@ -108,23 +108,11 @@ class CurationService
         }
 
         // Calcula média real do banco (últimos 6 meses, apenas ativos)
-        $db = \Config\Database::connect();
-        $sixMonthsAgo = date('Y-m-d H:i:s', strtotime('-6 months'));
-        
-        $query = $db->table('properties')
-            ->select('AVG(preco) as avg_price, COUNT(*) as count')
-            ->where('bairro', $bairro)
-            ->where('tipo_imovel', $type)
-            ->where('status', 'ACTIVE')
-            ->where('preco >', 0)
-            ->where('created_at >=', $sixMonthsAgo)
-            ->get();
-        
-        $result = $query->getRow();
+        $resultData = $this->propertyModel->getAveragePriceForNeighborhood($bairro, $type);
         
         // Só considera válido se tiver pelo 3 imóveis na amostra
-        if ($result && $result->count >= 3) {
-            $avgPrice = round($result->avg_price);
+        if ($resultData['count'] >= 3) {
+            $avgPrice = round($resultData['avg_price']);
         } else {
             $avgPrice = 0;
         }
@@ -281,9 +269,10 @@ class CurationService
         
         $mediaCount = 0;
         // Try to count media if property ID exists
+        // Try to count media if property ID exists
         if ($property->id) {
-            $db = \Config\Database::connect();
-            $mediaCount = $db->table('property_media')->where('property_id', $property->id)->countAllResults();
+            $mediaModel = model('App\Models\PropertyMediaModel');
+            $mediaCount = $mediaModel->countByProperty($property->id);
         }
 
         $result = $this->calculateDetailedScore($property, $mediaCount);

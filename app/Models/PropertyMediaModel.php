@@ -47,4 +47,57 @@ class PropertyMediaModel extends Model
     protected $afterFind      = [];
     protected $beforeDelete   = [];
     protected $afterDelete    = [];
+
+    /**
+     * Conta mídias de uma propriedade
+     */
+    public function countByProperty(int $propertyId): int
+    {
+        return $this->where('property_id', $propertyId)->countAllResults();
+    }
+
+    /**
+     * Define uma imagem como principal e desmarca as outras.
+     */
+    public function setMainMedia(int $propertyId, int $mediaId)
+    {
+        $this->db->transStart();
+        
+        // Reset all
+        $this->where('property_id', $propertyId)
+             ->set(['principal' => false])
+             ->update();
+             
+        // Set new main
+        $this->update($mediaId, ['principal' => true]);
+        
+        $this->db->transComplete();
+        
+        return $this->db->transStatus();
+    }
+
+    /**
+     * Garante que apenas a imagem mais antiga seja a principal (Correção de Race Condition).
+     */
+    public function sanitizeMain(int $propertyId)
+    {
+        // 1. Desativar todas
+        $this->db->query(
+            "UPDATE property_media SET principal = false WHERE property_id = ?",
+            [$propertyId]
+        );
+        
+        // 2. Ativar apenas a mais antiga
+        $this->db->query(
+            "UPDATE property_media 
+             SET principal = true
+             WHERE id = (
+                 SELECT id FROM property_media 
+                 WHERE property_id = ? 
+                 ORDER BY id ASC 
+                 LIMIT 1
+             )",
+            [$propertyId]
+        );
+    }
 }
