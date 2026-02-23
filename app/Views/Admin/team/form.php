@@ -8,10 +8,10 @@
 <div class="row justify-content-center">
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm rounded-4 p-4">
-            <form action="<?= $member ? site_url('admin/team/' . $member->id . '/update') : site_url('admin/team') ?>" method="post">
-                <?php if ($member): ?>
-                    <input type="hidden" name="_method" value="POST">
-                <?php endif; ?>
+            <?php 
+                $action = $member ? "admin/team/{$member->id}/update" : "admin/team";
+                echo form_open($action);
+            ?>
 
                 <div class="mb-4">
                     <label class="form-label fw-bold">Nome Completo</label>
@@ -29,10 +29,15 @@
                     <input type="email" name="email" class="form-control rounded-pill px-3" value="<?= old('email', $member?->email ?? '') ?>" <?= $member ? 'readonly' : 'required' ?>>
                 </div>
 
-                <div class="mb-4">
-                    <label class="form-label fw-bold"><?= $member ? 'Nova Senha (deixe em branco para manter)' : 'Senha' ?></label>
-                    <input type="password" name="password" class="form-control rounded-pill px-3" <?= $member ? '' : 'required' ?>>
-                </div>
+                <?php if ($member): ?>
+                    <div class="alert alert-info border-0 small mb-4">
+                        <i class="fas fa-info-circle me-1"></i> Por motivos de segurança, a senha só pode ser alterada pelo próprio membro em seu perfil.
+                    </div>
+                <?php else: ?>
+                    <div class="alert alert-info border-0 small mb-4">
+                        <i class="fas fa-paper-plane me-1"></i> Uma senha segura será gerada automaticamente e enviada para o e-mail do novo membro.
+                    </div>
+                <?php endif; ?>
 
                 <div class="mb-5">
                     <label class="form-label fw-bold">Cargo / Permissão</label>

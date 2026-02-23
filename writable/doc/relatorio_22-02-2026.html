@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Andamento - Habitaweb</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            color: #2980b9;
+            margin-top: 30px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+
+        h3 {
+            color: #34495e;
+            margin-top: 25px;
+        }
+
+        h4 {
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        p,
+        li {
+            font-size: 14px;
+        }
+
+        ul {
+            margin-bottom: 15px;
+        }
+
+        .header-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+            border-left: 4px solid #3498db;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .signature-block {
+            margin-top: 60px;
+            border-top: 1px solid #ccc;
+            padding-top: 20px;
+            width: 300px;
+        }
+
+        /* Regras específicas para a impressão do PDF */
+        @media print {
+            body {
+                padding: 0;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            h2,
+            h3 {
+                page-break-after: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>RELATÓRIO DE ANDAMENTO DO PROJETO</h1>
+
+    <div class="header-info">
+        <strong>Projeto:</strong> Plataforma Habitaweb<br>
+        <strong>Tecnologia:</strong> PHP 8.2+ / CodeIgniter 4 / PostgreSQL<br>
+        <strong>Etapa:</strong> 2ª Entrega<br>
+        <strong>Progresso:</strong> 50% Concluído
+    </div>
+
+    <p>Por meio deste documento, informo o andamento do desenvolvimento do projeto <strong>Plataforma
+            Habitaweb</strong>, conforme escopo técnico previamente definido no Anexo I do contrato firmado entre as
+        partes.</p>
+
+    <h2>Resumo da Etapa Anterior (1ª Entrega — 25%)</h2>
+    <ul>
+        <li>✅ Portal Público completo (Home, Listagem, Detalhes)</li>
+        <li>✅ Botão "Tenho Interesse" com integração WhatsApp</li>
+        <li>✅ Sistema de Login e Autenticação</li>
+        <li>✅ Gestão Básica de Usuários</li>
+    </ul>
+
+    <h2>Funcionalidades Desenvolvidas nesta Etapa</h2>
+
+    <h3>1. CRUD Completo de Imóveis</h3>
+    <p>Implementação do sistema completo de gerenciamento de imóveis pelo anunciante:</p>
+
+    <h4>1.1 Criação de Novos Anúncios</h4>
+    <ul>
+        <li><strong>Formulário Completo</strong>: Interface com todos os campos necessários para cadastro de imóvel,
+            incluindo:
+            <ul>
+                <li>Dados básicos: Título, Descrição, Tipo de Imóvel, Tipo de Negócio (Venda/Aluguel)</li>
+                <li>Valores: Preço de Venda, Valor do Aluguel, Condomínio, IPTU</li>
+                <li>Características: Quartos, Suítes, Banheiros, Vagas de Garagem</li>
+                <li>Áreas: Área Total, Área Construída, Área do Terreno</li>
+                <li>Localização: CEP (com preenchimento automático), Endereço, Número, Complemento, Bairro, Cidade,
+                    Estado</li>
+                <li>Comodidades: Checkboxes para itens como Piscina, Churrasqueira, Academia, Portaria 24h, etc.</li>
+            </ul>
+        </li>
+        <li><strong>Validação de Dados</strong>: Validação em tempo real (frontend) e validação server-side (backend)
+            para garantir integridade dos dados.</li>
+        <li><strong>Geração Automática de Código</strong>: Sistema gera código único de referência para cada imóvel (ex:
+            HAB-2026-0001).</li>
+    </ul>
+
+    <h4>1.2 Edição de Imóveis</h4>
+    <ul>
+        <li><strong>Formulário de Edição</strong>: Interface idêntica ao cadastro, com campos pré-preenchidos com os
+            dados atuais.</li>
+        <li><strong>Histórico de Alterações</strong>: Sistema registra data/hora de cada modificação realizada.</li>
+        <li><strong>Preview em Tempo Real</strong>: Visualização de como o anúncio ficará no portal público.</li>
+    </ul>
+
+    <h4>1.3 Exclusão de Imóveis</h4>
+    <ul>
+        <li><strong>Soft Delete</strong>: Ao excluir, o imóvel é marcado como "Excluído" no banco de dados, preservando
+            histórico e permitindo recuperação futura.</li>
+        <li><strong>Confirmação de Exclusão</strong>: Modal de confirmação para evitar exclusões acidentais.</li>
+        <li><strong>Restauração</strong>: Função para recuperar imóveis excluídos acidentalmente.</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h4>1.4 Listagem de Imóveis</h4>
+    <ul>
+        <li><strong>Tabela Interativa</strong>: Listagem com ordenação por colunas (data, preço, visualizações).</li>
+        <li><strong>Filtros Rápidos</strong>: Filtro por Status (Ativo, Rascunho, Vendido/Alugado, Excluído).</li>
+        <li><strong>Busca Textual</strong>: Campo de busca por título, código ou endereço.</li>
+        <li><strong>Paginação</strong>: Navegação entre páginas com 10, 25 ou 50 itens por página.</li>
+        <li><strong>Ações em Massa</strong>: Seleção múltipla para ativar/desativar ou excluir vários imóveis de uma
+            vez.</li>
+    </ul>
+
+    <h3>2. Sistema de Upload de Fotos</h3>
+    <p>Implementação completa do gerenciamento de mídia dos imóveis:</p>
+
+    <h4>2.1 Upload de Imagens</h4>
+    <ul>
+        <li><strong>Upload Múltiplo</strong>: Possibilidade de enviar várias imagens de uma só vez via drag-and-drop ou
+            seleção de arquivos.</li>
+        <li><strong>Formatos Suportados</strong>: JPG, JPEG, PNG, WebP.</li>
+        <li><strong>Limite de Tamanho</strong>: Máximo de 5MB por imagem.</li>
+        <li><strong>Validação de Arquivo</strong>: Verificação de tipo MIME real (não apenas extensão) para segurança.
+        </li>
+    </ul>
+
+    <h4>2.2 Processamento Automático</h4>
+    <ul>
+        <li><strong>Redimensionamento</strong>: Geração automática de 3 versões de cada imagem:
+            <ul>
+                <li>Original (preservado)</li>
+                <li>Médio (800x600px) para exibição na galeria</li>
+                <li>Thumbnail (300x200px) para listagens e miniaturas</li>
+            </ul>
+        </li>
+        <li><strong>Otimização</strong>: Compressão automática para reduzir tamanho do arquivo sem perda perceptível de
+            qualidade.</li>
+        <li><strong>Nomenclatura Segura</strong>: Renomeação dos arquivos com hash único para evitar conflitos e ataques
+            de path traversal.</li>
+    </ul>
+
+    <h4>2.3 Gerenciamento de Galeria</h4>
+    <ul>
+        <li><strong>Reordenação</strong>: Drag-and-drop para alterar a ordem das imagens na galeria.</li>
+        <li><strong>Foto de Capa</strong>: Definição de qual imagem será a principal (exibida nas listagens).</li>
+        <li><strong>Exclusão Individual</strong>: Remoção de imagens específicas com confirmação.</li>
+        <li><strong>Limite de Fotos</strong>: Controle de quantidade máxima de fotos por imóvel (configurável por
+            plano).</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h3>3. Gestão de Leads</h3>
+    <p>Sistema para acompanhamento dos contatos recebidos:</p>
+
+    <h4>3.1 Listagem de Leads</h4>
+    <ul>
+        <li><strong>Tabela de Contatos</strong>: Exibição de todos os leads recebidos com:
+            <ul>
+                <li>Nome do visitante</li>
+                <li>E-mail e Telefone</li>
+                <li>Imóvel de interesse (com link direto)</li>
+                <li>Data/hora do contato</li>
+                <li>Status atual (Novo, Em Atendimento, Convertido, Perdido)</li>
+                <li>Origem do lead (WhatsApp, Formulário, API)</li>
+            </ul>
+        </li>
+        <li><strong>Filtros Avançados</strong>: Filtro por período (hoje, semana, mês), status, imóvel específico.</li>
+        <li><strong>Exportação</strong>: Download da lista de leads em formato CSV para uso em CRMs externos.</li>
+    </ul>
+
+    <h4>3.2 Detalhes do Lead</h4>
+    <ul>
+        <li><strong>Visualização Completa</strong>: Modal com todas as informações do contato.</li>
+        <li><strong>Histórico de Interações</strong>: Registro de eventos relacionados ao lead (data da visita, páginas
+            vistas, etc.).</li>
+        <li><strong>Dados do Imóvel</strong>: Exibição resumida do imóvel que gerou o interesse.</li>
+    </ul>
+
+    <h4>3.3 Gestão de Status</h4>
+    <ul>
+        <li><strong>Atualização de Status</strong>: Alteração do status do lead conforme andamento do atendimento.</li>
+        <li><strong>Workflow Visual</strong>: Indicadores coloridos para fácil identificação (Novo=Azul,
+            Atendimento=Amarelo, Convertido=Verde, Perdido=Vermelho).</li>
+    </ul>
+
+    <h2>Ambiente Técnico</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Componente</th>
+                <th>Tecnologia</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Backend</td>
+                <td>PHP 8.2 + CodeIgniter 4.5</td>
+            </tr>
+            <tr>
+                <td>Banco de Dados</td>
+                <td>PostgreSQL 15</td>
+            </tr>
+            <tr>
+                <td>Frontend</td>
+                <td>Bootstrap 5.2 + jQuery 3.6</td>
+            </tr>
+            <tr>
+                <td>Upload de Mídia</td>
+                <td>Intervention Image (PHP)</td>
+            </tr>
+            <tr>
+                <td>Validação</td>
+                <td>CI4 Validation + JavaScript</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Status Geral</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Módulo</th>
+                <th>Status</th>
+                <th>Progresso</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Etapa 1 (Portal + Login)</td>
+                <td>✅ Concluído</td>
+                <td>100%</td>
+            </tr>
+            <tr>
+                <td>CRUD de Imóveis</td>
+                <td>✅ Concluído</td>
+                <td>100%</td>
+            </tr>
+            <tr>
+                <td>Upload de Fotos</td>
+                <td>✅ Concluído</td>
+                <td>100%</td>
+            </tr>
+            <tr>
+                <td>Gestão de Leads</td>
+                <td>✅ Concluído</td>
+                <td>100%</td>
+            </tr>
+            <tr>
+                <td><strong>TOTAL ACUMULADO</strong></td>
+                <td></td>
+                <td><strong>50%</strong></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p style="margin-top: 30px;">A continuidade do desenvolvimento das próximas etapas será realizada conforme
+        cronograma acordado.</p>
+
+    <div class="signature-block">
+        <strong>Responsável pelo Desenvolvimento:</strong><br>
+        Cristian Dutra de Campos da Silva<br><br>
+        <strong>Data:</strong> 22 / 02 / 2026
+    </div>
+
+</body>
+
+</html>

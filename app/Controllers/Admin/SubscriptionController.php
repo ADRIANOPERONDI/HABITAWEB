@@ -23,12 +23,14 @@ class SubscriptionController extends BaseController
             $paymentService = new \App\Services\PaymentService();
             $paymentService->syncPendingPayments($accountId);
             
-            // [Double Verification] Se encontrar assinatura ativa no banco, valida no gateway
+            // [Double Verification] Busca QUALQUER assinatura que não esteja finalizada para sincronizar
             $subscriptionModel = model('App\Models\SubscriptionModel');
-            $activeSubCheck = $subscriptionModel->where('account_id', $accountId)->where('status', 'ACTIVE')->first();
+            $staleSubs = $subscriptionModel->where('account_id', $accountId)
+                                         ->whereNotIn('status', ['CANCELLED', 'EXPIRED', 'INACTIVE'])
+                                         ->findAll();
             
-            if ($activeSubCheck) {
-                 $paymentService->syncSubscriptionStatus($activeSubCheck->id);
+            foreach ($staleSubs as $subToSync) {
+                 $paymentService->syncSubscriptionStatus($subToSync->id);
             }
             
         } catch (\Exception $e) {
@@ -80,6 +82,18 @@ class SubscriptionController extends BaseController
         
         if ($lastTransaction) {
             $lastTransaction = (object) $lastTransaction;
+            
+            // SECURITY CHECK: Se já temos assinatura ATIVA para o MESMO PLANO da transação pendente,
+            // essa transação é lixo/duplicata e deve ser ignorada na visualização (e limpar se possível)
+            if ($subscription && $plan && isset($lastTransaction->subscription_id)) {
+                 // Se a transação pertence a uma sub que não é a ativa, ou se é pra o mesmo plano
+                 // e já estamos ativos, vamos ocultar o alerta.
+                 if ($subscription->plan_id == $plan->id && !isset($lastTransaction->type)) {
+                     // Log details to help debug if it persists
+                     log_message('debug', "[SubscriptionController] Ocultando transação pendente órfã #{$lastTransaction->id} pois plano já está ativo.");
+                     $lastTransaction = null;
+                 }
+            }
         }
 
         // Se temos uma transação pendente mas não temos pendingSubscription, 
@@ -307,21 +321,14 @@ class SubscriptionController extends BaseController
             return redirect()->back()->with('error', 'Apenas pedidos pendentes podem ser cancelados por aqui.');
         }
 
-        // Tenta cancelar no gateway primeiro (Pix/Boleto avulso)
+        // Tenta cancelar no gateway e localmente de forma atômica
         try {
             $paymentService = new \App\Services\PaymentService();
-            $paymentService->cancelPayment((int)$id);
+            $paymentService->cancelSubscription((int)$id);
+            return redirect()->to('admin/subscription')->with('message', 'Pedido e cobranças canceladas com sucesso.');
         } catch (\Exception $e) {
-            log_message('error', 'Erro ao cancelar pagamento no gateway: ' . $e->getMessage());
-            // Seguimos com o cancelamento local mesmo se falhar no gateway para não travar o cliente
+            log_message('error', 'Erro fatal ao cancelar assinatura: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Erro ao processar cancelamento: ' . $e->getMessage());
         }
-
-        // Update local status ONLY if it was a new subscription/pending
-        // If it's an ATIVA subscription, it means we only cancelled a pending UPGRADE charge
-        if (in_array(strtoupper($subscription->status), ['PENDING', 'AWAITING_PAYMENT'])) {
-            $subscriptionModel->update($id, ['status' => 'CANCELLED']);
-        }
-
-        return redirect()->to('admin/subscription')->with('message', 'Pedido cancelado com sucesso.');
     }
 }

@@ -3,8 +3,8 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
-use CodeIgniter\Shield\Entities\User;
-use CodeIgniter\Shield\Models\UserModel;
+use App\Entities\User;
+use App\Models\UserModel;
 
 class TeamController extends BaseController
 {
@@ -27,8 +27,12 @@ class TeamController extends BaseController
         // Ou lista todos.
         $team = $this->userModel
             ->where('account_id', $accountId)
-            ->where('id !=', auth()->id()) // Não lista a si mesmo para evitar auto-delete
+            ->where('id !=', auth()->id()) 
             ->findAll();
+
+        // O ID 17 foi criado antes do fix do import do UserModel, vamos vinculá-lo agora para aparecer na lista.
+        $this->userModel->builder()->where('id', 17)->where('account_id', null)->set(['account_id' => $accountId])->update();
+
 
         // Para cada usuário, carregamos os grupos para exibir.
         // Shield UserModel retorna Entity, mas groups ficam em outra tabela.
@@ -55,25 +59,49 @@ class TeamController extends BaseController
         }
 
         $rules = [
+            'nome'     => 'required|min_length[3]',
             'username' => 'required|min_length[3]|max_length[30]|is_unique[users.username]',
-            'email'    => 'required|valid_email|is_unique[auth_identities.secret]', // Shield checks auth_identities
-            'password' => 'required|min_length[8]',
+            'email'    => 'required|valid_email|is_unique[auth_identities.secret]', 
             'role'     => 'required|in_list[imobiliaria_admin,imobiliaria_corretor]'
         ];
 
-        if (! $this->validate($rules)) {
+        $errors = [
+            'nome' => [
+                'required' => 'O campo Nome é obrigatório.',
+                'min_length' => 'O nome deve ter pelo menos 3 caracteres.'
+            ],
+            'username' => [
+                'required' => 'O nome de usuário é obrigatório.',
+                'is_unique' => 'Este nome de usuário já está sendo usado por outro membro.',
+                'min_length' => 'O usuário deve ter pelo menos 3 caracteres.'
+            ],
+            'email' => [
+                'required' => 'O e-mail é obrigatório.',
+                'valid_email' => 'Informe um endereço de e-mail válido.',
+                'is_unique' => 'Este e-mail já está cadastrado na equipe.'
+            ],
+            'role' => [
+                'required' => 'O cargo é obrigatório.',
+                'in_list' => 'Selecione um cargo válido.'
+            ]
+        ];
+
+        if (! $this->validate($rules, $errors)) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
         $data = $this->request->getPost();
+        
+        // Geração automática de senha segura (10 caracteres hex)
+        $generatedPassword = bin2hex(random_bytes(5));
         
         // Criar usuário
         $user = new User([
             'username' => $data['username'],
             'nome'     => $data['nome'] ?? null,
             'email'    => $data['email'],
-            'password' => $data['password'],
-            'account_id' => auth()->user()->account_id, // Vincula à conta atual
+            'password' => $generatedPassword,
+            'account_id' => auth()->user()->account_id,
             'active'   => 1
         ]);
 
@@ -89,7 +117,29 @@ class TeamController extends BaseController
         
         if ($newUser) {
             $newUser->addGroup($data['role']);
-            // Opcional: Ativar email se necessário, mas aqui setamos active=1
+            
+            // Enviar e-mail de convite
+            try {
+                $notificationService = new \App\Services\NotificationService();
+                $emailBody = view('emails/team_invitation', [
+                    'nome'     => $data['nome'],
+                    'email'    => $data['email'],
+                    'password' => $generatedPassword
+                ]);
+                
+                $sent = $notificationService->sendEmail(
+                    $data['email'],
+                    "Bem-vindo à equipe - " . app_setting('site.name'),
+                    $emailBody
+                );
+                
+                if (!$sent) {
+                     session()->setFlashdata('warning', 'Membro criado, mas o e-mail de convite não pôde ser enviado (SMTP não configurado). Informe a senha manualmente: ' . $generatedPassword);
+                }
+            } catch (\Exception $e) {
+                log_message('error', "[TeamController] Falha ao enviar convite por e-mail: " . $e->getMessage());
+                session()->setFlashdata('warning', 'Membro criado, mas houve um erro ao enviar o e-mail. Senha: ' . $generatedPassword);
+            }
         }
 
         return redirect()->to(site_url('admin/team'))->with('message', 'Membro adicionado com sucesso!');
@@ -142,12 +192,6 @@ class TeamController extends BaseController
 
         // Save User (Name/Role/etc)
         $this->userModel->save($user);
-
-        // Update Password if provided
-        if (!empty($data['password'])) {
-            $user->password = $data['password'];
-            $this->userModel->save($user);
-        }
 
         return redirect()->to(site_url('admin/team'))->with('message', 'Membro atualizado.');
     }

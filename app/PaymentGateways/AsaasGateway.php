@@ -250,6 +250,14 @@ class AsaasGateway implements GatewayInterface
         }
     }
 
+    /**
+     * Buscar uma cobrança específica pelo ID
+     */
+    public function getPayment(string $paymentId): array
+    {
+        return $this->request('GET', "/payments/{$paymentId}");
+    }
+
     public function getSubscription(string $subscriptionId): ?array
     {
         try {
@@ -276,13 +284,47 @@ class AsaasGateway implements GatewayInterface
             
             if (!empty($response['data'])) {
                 $sub = $response['data'][0];
-                return [
+                $result = [
                     'subscription_id' => $sub['id'],
                     'status' => $sub['status'],
                     'amount' => $sub['value'],
                     'billing_type' => $sub['billingType'],
-                    'next_billing_date' => $sub['nextDueDate']
+                    'next_billing_date' => $sub['nextDueDate'],
+                    'external_reference' => $sub['externalReference'] ?? null
                 ];
+
+                // Buscar cobrança pendente para obter link de pagamento
+                try {
+                    $payments = $this->request('GET', "/subscriptions/{$sub['id']}/payments");
+                    if (!empty($payments['data'])) {
+                        // Procurar a primeira PENDING ou apenas a primeira da lista
+                        $firstPayment = null;
+                        foreach ($payments['data'] as $p) {
+                            if ($p['status'] === 'PENDING') {
+                                $firstPayment = $p;
+                                break;
+                            }
+                        }
+                        
+                        // Fallback para a primeira se nenhuma pendente (talvez já paga)
+                        if (!$firstPayment) $firstPayment = $payments['data'][0];
+
+                        $result['payment_url'] = $firstPayment['invoiceUrl'] ?? null;
+                        $result['first_payment'] = $firstPayment;
+
+                        // Se for PIX, buscar QR Code específico
+                        if ($firstPayment['billingType'] === 'PIX') {
+                            try {
+                                $qrResponse = $this->request('GET', "/payments/{$firstPayment['id']}/pixQrCode");
+                                $result['first_payment']['pixQrCode'] = $qrResponse;
+                            } catch (\Exception $e) { /* ignore */ }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    log_message('error', 'Erro ao buscar cobranças da assinatura Asaas existente: ' . $e->getMessage());
+                }
+
+                return $result;
             }
         } catch (\Exception $e) {
             log_message('error', 'Erro ao buscar assinatura ativa no Asaas: ' . $e->getMessage());
@@ -304,7 +346,8 @@ class AsaasGateway implements GatewayInterface
     public function getPendingPayments(string $customerId): array
     {
         try {
-            $response = $this->request('GET', "/payments?customer={$customerId}&status=PENDING");
+            // Buscamos as cobranças recentes do cliente (sem filtrar por PENDING para poder detectar as RECEBIDAS no sync)
+            $response = $this->request('GET', "/payments?customer={$customerId}&limit=20");
             
             $payments = [];
             if (!empty($response['data'])) {

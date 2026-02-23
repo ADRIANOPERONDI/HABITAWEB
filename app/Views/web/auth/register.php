@@ -237,7 +237,20 @@ window.addEventListener('load', function() {
                 $(this).addClass('is-invalid').removeClass('is-valid');
                 $('#doc_error').text(tipo + ' inválido');
             } else if (isValid) {
-                $(this).removeClass('is-invalid').addClass('is-valid');
+                // Se o formato é válido, verifica se já existe no banco
+                const input = $(this);
+                $.get('<?= site_url("register/check-document") ?>', { documento: valor, tipo: tipo })
+                    .done(function(response) {
+                        if (response.exists) {
+                            input.addClass('is-invalid').removeClass('is-valid');
+                            $('#doc_error').text(response.message);
+                        } else {
+                            input.removeClass('is-invalid').addClass('is-valid');
+                        }
+                    })
+                    .fail(function() {
+                        console.error('Erro ao validar documento');
+                    });
             }
         });
     });

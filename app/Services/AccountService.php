@@ -155,6 +155,21 @@ class AccountService
     }
 
     /**
+     * Verifica se um documento (CPF/CNPJ) já está registrado.
+     */
+    public function documentExists(string $documento, ?int $excludeAccountId = null): bool
+    {
+        $documento = preg_replace('/[^0-9]/', '', $documento);
+        
+        $query = $this->accountModel->where('documento', $documento);
+        if ($excludeAccountId) {
+            $query->where('id !=', $excludeAccountId);
+        }
+        
+        return $query->countAllResults() > 0;
+    }
+
+    /**
      * Registra um novo usuário e conta vinculada.
      */
     public function registerUser(array $data)
@@ -167,7 +182,7 @@ class AccountService
             $accountData = [
                 'nome' => $data['nome'],
                 'tipo_conta' => $data['tipo_conta'],
-                'documento' => $data['documento'],
+                'documento' => preg_replace('/[^0-9]/', '', $data['documento']),
                 'status' => 'PENDING',
                 'email' => $data['email']
             ];

@@ -152,4 +152,4 @@ A continuidade do desenvolvimento das próximas etapas será realizada conforme 
 **Responsável pelo Desenvolvimento:**  
 Cristian Dutra de Campos da Silva
 
-**Data:** 24 / 02 / 2026
+**Data:** 22 / 02 / 2026

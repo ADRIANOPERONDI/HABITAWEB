@@ -242,38 +242,66 @@ class PaymentService
             log_message('debug', '[PaymentService] Verificando assinaturas ativas no gateway para cliente ' . $customerId);
             $activeSub = $this->activeGateway->getActiveSubscription($customerId);
             
+            // Se já tem assinatura ativa no gateway, vamos ADOTAR ela obrigatoriamente
+            // Isso garante que se o cliente já paga por um plano no CNPJ/CPF dele, o sistema se vincula a ele
             if ($activeSub) {
-                log_message('notice', '[PaymentService] Cliente ' . $customerId . ' já possui uma assinatura ativa no gateway: ' . $activeSub['subscription_id']);
-                // Se já existe uma ativa, retornamos os dados dela em vez de criar outra
-                return $activeSub;
+                $expectedRefMatch = 'plan_' . $planId . '_acc_' . $accountId;
+                $currentRef = $activeSub['external_reference'] ?? '';
+                
+                // Antes éramos rigorosos, agora somos integradores: Se existe ativa, ADOTAMOS.
+                // Apenas logamos se a referência for diferente para fins de auditoria.
+                if ($currentRef !== $expectedRefMatch) {
+                    log_message('notice', "[PaymentService] ADOTANDO assinatura existente no gateway com referência divergente. Atual: {$currentRef}, Esperada: {$expectedRefMatch}");
+                } else {
+                    log_message('notice', '[PaymentService] Cliente ' . $customerId . ' já possui uma assinatura ativa IDÊNTICA no gateway: ' . $activeSub['subscription_id']);
+                }
+                
+                $subscriptionData = $activeSub;
+            } else {
+                log_message('debug', '[PaymentService] Criando assinatura no gateway para cliente ' . $customerId);
+                $subscriptionData = $this->activeGateway->createSubscription($customerId, (string)$planId, $data);
+                log_message('debug', '[PaymentService] Assinatura criada com sucesso no gateway: ' . $subscriptionData['subscription_id']);
             }
-
-            log_message('debug', '[PaymentService] Criando assinatura no gateway para cliente ' . $customerId);
-            $subscriptionData = $this->activeGateway->createSubscription($customerId, (string)$planId, $data);
-            log_message('debug', '[PaymentService] Assinatura criada com sucesso no gateway: ' . $subscriptionData['subscription_id']);
         } catch (\Exception $e) {
             log_message('error', '[PaymentService] Erro ao criar assinatura no gateway: ' . $e->getMessage());
             throw new \Exception("Erro no gateway: " . $e->getMessage());
         }
 
         $subId = $subscriptionData['subscription_id'];
-        $status = $subscriptionData['status'];
+        $status = strtoupper($subscriptionData['status'] ?? 'ACTIVE');
         
-        $subscription = [
+        $subscriptionFields = [
             'account_id' => $accountId,
             'plan_id' => $planId,
-            'status' => strtoupper($status), 
+            'status' => $status, 
             'data_inicio' => date('Y-m-d'),
             'data_fim' => date('Y-m-d', strtotime('+30 days')),
-            'valor' => $finalAmount, // Valor com desconto
+            'valor' => $finalAmount, 
             'asaas_subscription_id' => $subId, 
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
-            'next_billing_date' => $subscriptionData['next_billing_date']
+            'next_billing_date' => $subscriptionData['next_billing_date'] ?? null
         ];
+
+        // LOGICA DE INTEGRIDADE ABSOLUTA: Upsert baseado no asaas_subscription_id
+        $existingLocal = $this->subscriptionModel->where('asaas_subscription_id', $subId)->first();
         
-        $this->subscriptionModel->insert($subscription);
-        $localSubId = $this->subscriptionModel->getInsertID();
+        if ($existingLocal) {
+            log_message('notice', "[PaymentService] Atualizando assinatura local existente ID {$existingLocal->id} vinculada ao Asaas {$subId}");
+            $this->subscriptionModel->update($existingLocal->id, $subscriptionFields);
+            $localSubId = $existingLocal->id;
+        } else {
+            log_message('notice', "[PaymentService] Criando novo registro local para assinatura Asaas {$subId}");
+            $this->subscriptionModel->insert($subscriptionFields);
+            $localSubId = $this->subscriptionModel->getInsertID();
+        }
+
+        // LIMPEZA: Desativar qualquer outra assinatura ATIVA local que não seja esta
+        $this->subscriptionModel->where('account_id', $accountId)
+                               ->where('id !=', $localSubId)
+                               ->where('status', 'ACTIVE')
+                               ->set(['status' => 'INACTIVE'])
+                               ->update();
 
         // Log transaction
         $this->transactionModel->upsertTransaction([
@@ -287,12 +315,12 @@ class PaymentService
             'status' => 'PENDING',
             'type' => 'SUBSCRIPTION',
             'subscription_id' => $localSubId,
-            'metadata' => json_encode([
+            'metadata' => [
                 'gateway' => $this->activeGateway->getName(),
                 'coupon' => $coupon ? $coupon->code : null,
                 'original_amount' => $plan->preco_mensal,
                 'invoice_url' => $subscriptionData['payment_url'] ?? null
-            ])
+            ]
         ]);
         
         // Register Coupon Usage
@@ -331,144 +359,76 @@ class PaymentService
     }
 
     /**
-     * Cancelar uma assinatura via Admin
-     */
-    public function cancelSubscription(int $subscriptionId)
-    {
-        $subscription = $this->subscriptionModel->find($subscriptionId);
-        if (!$subscription || !$subscription->asaas_subscription_id) {
-            throw new \Exception("Assinatura não encontrada ou sem vínculo com gateway.");
-        }
-
-        if (!$this->activeGateway) {
-            throw new \Exception("Gateway de pagamento não configurado.");
-        }
-
-        try {
-            if ($this->activeGateway->cancelSubscription($subscription->asaas_subscription_id)) {
-                $this->subscriptionModel->update($subscriptionId, ['status' => 'CANCELLED']);
-                return true;
-            }
-            return false;
-        } catch (\Exception $e) {
-            log_message('error', 'Erro ao cancelar assinatura: ' . $e->getMessage());
-            throw new \Exception("Erro ao cancelar no gateway: " . $e->getMessage());
-        }
-    }
-
-    /**
      * Cancelar um pagamento (charge) no gateway
      */
     public function cancelPayment(int $subscriptionId)
     {
-        $transaction = $this->transactionModel->findPendingBySubscription($subscriptionId);
+        // Este método agora é um atalho para cancelSubscription para garantir atomicidade
+        return $this->cancelSubscription($subscriptionId);
+    }
 
-        log_message('debug', "CancelPayment: SubscriptionId=$subscriptionId. Local Trx Found? " . ($transaction ? $transaction->id : 'NO'));
-
-
-        // [FIX] Orphan Check: Se não achar na assinatura atual, busca upgrades pendentes na CONTA
-        // Isso resolve casos onde o upgrade ficou vinculado a uma assinatura antiga (bug de legado)
-        // Isso resolve casos onde o upgrade ficou vinculado a uma assinatura antiga (bug de legado)
-        if (!$transaction) {
-             $sub = $this->subscriptionModel->find($subscriptionId);
-             if ($sub) {
-                 $transaction = $this->transactionModel->findPendingByAccount($sub->account_id);
-                 
-                 if ($transaction) {
-                     log_message('debug', "[PaymentService] Found ORPHAN upgrade transaction {$transaction->id} for account {$sub->account_id} while cancelling sub {$subscriptionId}");
-                 }
-             }
-        }
-
-        if (!$transaction || !$transaction->gateway_transaction_id) {
-            // Se não tem ID no gateway, apenas retornamos true para seguir com cancelamento local
-            return true;
-        }
-
-        if (!$this->activeGateway) {
-            throw new \Exception("Gateway de pagamento não configurado.");
+    /**
+     * Cancelamento Robusto: Assinatura + Cobranças Pendentes (Integade Total)
+     */
+    public function cancelSubscription(int $subscriptionId)
+    {
+        $subscription = $this->subscriptionModel->find($subscriptionId);
+        
+        if (!$subscription) {
+            log_message('error', "[PaymentService] Tentativa de cancelar assinatura inexistente localmente ID: $subscriptionId");
+            return false;
         }
 
         $success = true;
+        log_message('notice', "[PaymentService] Iniciando cancelamento atômico da assinatura ID: $subscriptionId (Conta: {$subscription->account_id})");
 
-        try {
-            // 1. Cancelar Transação Pendente se existir
-            if ($transaction && $transaction->gateway_transaction_id) {
-                // Garantir que o gateway está configurado corretamente
-                if ($transaction->gateway !== $this->activeGateway->getCode()) {
-                    $this->setGateway($transaction->gateway);
-                }
-
-                try {
-                    log_message('debug', "CancelPayment: Calling Gateway {$this->activeGateway->getCode()} to cancel {$transaction->gateway_transaction_id}");
-                    if ($this->activeGateway->cancelPayment($transaction->gateway_transaction_id)) {
-                        $this->transactionModel->update($transaction->id, ['status' => 'CANCELLED']);
-                    }
-                } catch (\Exception $e) {
-                    log_message('error', 'Erro ao cancelar transação no gateway: ' . $e->getMessage());
-                    $success = false;
-                }
+        // 1. Cancelar Assinatura no Gateway
+        if ($subscription->asaas_subscription_id) {
+            try {
+                log_message('debug', "[PaymentService] Cancelando assinatura no Gateway: {$subscription->asaas_subscription_id}");
+                $this->activeGateway->cancelSubscription($subscription->asaas_subscription_id);
+            } catch (\Exception $e) {
+                log_message('error', "[PaymentService] Erro ao cancelar assinatura {$subscription->asaas_subscription_id} no gateway: " . $e->getMessage());
+                // Não paramos aqui, tentamos cancelar as cobranças soltas
             }
-
-                                                            // 2. Se for uma fatura de UPGRADE (pró-rata), Tentar Reverter ou Cancelar Tudo!
-            if ($transaction && $transaction->type === "UPGRADE_PRORATA") {
-                 $metadata = json_decode($transaction->metadata ?? "{}", true);
-                 
-                 // Fallback: Tentar extrair do description se não houver metadata
-                 if (!isset($metadata["old_plan_id"]) || !isset($metadata["old_price"])) {
-                     $desc = $transaction->description ?? ($metadata["description"] ?? "");
-                     if (preg_match("/Upgrade:\s*(.*?)\s*->/", $desc, $matches)) {
-                         $oldPlanName = trim($matches[1]);
-                         $planModel = model("App\Models\PlanModel");
-                         $oldPlan = $planModel->where("nome", $oldPlanName)->first();
-                         if ($oldPlan) {
-                             $metadata["old_plan_id"] = $oldPlan->id;
-                             $metadata["old_price"] = $oldPlan->preco_mensal;
-                             log_message("debug", "[PaymentService] Fallback: Plano anterior identificado via descrição: {$oldPlan->nome}");
-                         }
-                     }
-                 }
-
-                 if (isset($metadata["old_plan_id"])) {
-                     log_message("debug", "[PaymentService] Revertendo plano para {$metadata["old_plan_id"]} após cancelamento de upgrade.");
-                     
-                     // Reverter Gateway
-                     $sub = $this->subscriptionModel->find($subscriptionId);
-                     if ($sub && $sub->asaas_subscription_id) {
-                         $this->activeGateway->updateSubscription($sub->asaas_subscription_id, [
-                             'amount' => (float)$metadata['old_price'],
-                             'description' => "Assinatura (Revertida - Upgrade cancelado)"
-                         ]);
-                     }
-                     
-                     // Reverter Local
-                     $this->subscriptionModel->update($subscriptionId, ['plan_id' => $metadata['old_plan_id']]);
-                     
-                     log_message("debug", "[PaymentService] Cancelando cobrança de upgrade (pró-rata) para assinatura {$subscriptionId}");
-                     return $success;
-                 } else {
-                     log_message("warning", "[PaymentService] CRÍTICO: Não foi possível identificar plano anterior. Cancelando TUDO (Assinatura e Cobranças).");
-                     // FORÇAR Cancelamento Local aqui, pois o Controller pode ignorar se estiver ATIVA
-                     $this->subscriptionModel->update($subscriptionId, ['status' => 'CANCELLED']);
-                 }
-            }
-
-            // 3. Se for uma Assinatura Nativa, cancelar a assinatura também
-            $sub = $this->subscriptionModel->find($subscriptionId);
-            if ($sub && $sub->asaas_subscription_id) {
-                try {
-                    $this->activeGateway->cancelSubscription($sub->asaas_subscription_id);
-                } catch (\Exception $e) {
-                    log_message('error', 'Erro ao cancelar assinatura no gateway: ' . $e->getMessage());
-                    $success = false;
-                }
-            }
-
-            return $success;
-        } catch (\Exception $e) {
-            log_message('error', 'Erro fatal no fluxo de cancelamento: ' . $e->getMessage());
-            return false;
         }
+
+        // 2. Localizar e Cancelar TODAS as cobranças pendentes vinculadas a esta assinatura no Asaas
+        if ($subscription->asaas_customer_id) {
+            try {
+                // Buscamos pagamentos pendentes deste cliente diretamente no gateway para não depender de transações locais incompletas
+                $pendingPayments = $this->activeGateway->getPendingPayments($subscription->asaas_customer_id);
+                
+                foreach ($pendingPayments as $payment) {
+                    // Verificamos se o pagamento pertence a esta assinatura (se aplicável)
+                    if (isset($payment['subscription']) && $payment['subscription'] === $subscription->asaas_subscription_id) {
+                        try {
+                            log_message('debug', "[PaymentService] Cancelando cobrança avulsa pendente {$payment['id']} vinculada à assinatura");
+                            $this->activeGateway->cancelPayment($payment['id']);
+                            
+                            // Atualizamos a transação local se ela existir
+                            $this->transactionModel->where('gateway_transaction_id', $payment['id'])->set(['status' => 'CANCELLED'])->update();
+                        } catch (\Exception $e) {
+                            log_message('error', "[PaymentService] Erro ao cancelar cobrança {$payment['id']}: " . $e->getMessage());
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                log_message('error', "[PaymentService] Erro ao buscar/cancelar cobranças pendentes: " . $e->getMessage());
+            }
+        }
+
+        // 3. Busca transações locais pendentes por ID de assinatura e cancela
+        $this->transactionModel->where('subscription_id', $subscriptionId)
+                              ->where('status', 'PENDING')
+                              ->set(['status' => 'CANCELLED'])
+                              ->update();
+
+        // 4. Marca localmente como cancelado
+        $this->subscriptionModel->update($subscriptionId, ['status' => 'CANCELLED']);
+
+        log_message('notice', "[PaymentService] Cancelamento atômico concluído para ID: $subscriptionId");
+        return $success;
     }
 
     /**
@@ -546,12 +506,12 @@ class PaymentService
                             'type'            => 'UPGRADE_PRORATA',
                             'payment_method'  => $subscription->payment_method ?? 'PIX',
                             'invoice_url'     => $paymentData['payment_url'],
-                            'metadata'        => json_encode([
+                            'metadata'        => [
                                 'description'  => $data['description'],
                                 'invoice_url'  => $paymentData['payment_url'],
                                 'old_plan_id'  => $oldPlan->id,
                                 'old_price'    => $oldPlan->preco_mensal
-                            ])
+                            ]
                         ]);
 
                     } catch (\Exception $e) {
@@ -712,11 +672,11 @@ class PaymentService
             'status' => 'PENDING',
             'type' => 'TOKENIZATION_CHARGE', // Marker for webhook
             'subscription_id' => $localSubId,
-            'metadata' => json_encode([
+            'metadata' => [
                 'gateway' => $this->activeGateway->getName(),
                 'coupon' => $coupon ? $coupon->code : null,
                 'invoice_url' => $paymentData['payment_url']
-            ])
+            ]
         ]);
 
         return [
@@ -765,45 +725,71 @@ class PaymentService
         }
 
         try {
+            log_message('debug', "[PaymentService] Sincronizando assinatura #{$subscriptionId} (Gateway: {$subscription->asaas_subscription_id})");
+            
+            // 1. Buscar status da assinatura no Gateway
             $remoteSub = $this->activeGateway->getSubscription($subscription->asaas_subscription_id);
-            
-            // Map remote status to local status if needed
-            // Asaas: ACTIVE, EXPIRED, INACTIVE, etc.
-            $remoteStatus = strtoupper($remoteSub['status']);
+            $remoteStatus = strtoupper($remoteSub['status'] ?? 'UNKNOWN');
             $isDeleted = $remoteSub['deleted'] ?? false;
-
             $localStatus = strtoupper($subscription->status);
-            
-            $newStatus = null;
 
+            log_message('debug', "[PaymentService] Mismatch Check: Local status is '{$localStatus}', Asaas status is '{$remoteStatus}'");
+            
+            // 2. Se a assinatura estiver ATIVA no Gateway mas PENDENTE localmente,
+            // vamos verificar se já existe algum pagamento RECEBIDO para ativá-la.
+            if ($remoteStatus === 'ACTIVE' && in_array($localStatus, ['PENDING', 'AWAITING_PAYMENT'])) {
+                log_message('notice', "[PaymentService] Assinatura ativa no Gateway mas pendente local. Verificando pagamentos...");
+                
+                $payments = $this->activeGateway->request('GET', "/subscriptions/{$subscription->asaas_subscription_id}/payments");
+                if (!empty($payments['data'])) {
+                    foreach ($payments['data'] as $p) {
+                        if (in_array(strtoupper($p['status']), ['RECEIVED', 'CONFIRMED'])) {
+                            log_message('notice', "[PaymentService] Pagamento Confirmado encontrado (#{$p['id']}). Ativando assinatura localmente.");
+                            return $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $p['id']);
+                        }
+                    }
+                }
+            }
+
+            // 3. Sincronização padrão de estados (Ativo -> Inativo, etc)
+            $newStatus = null;
             if ($isDeleted && !in_array($localStatus, ['CANCELLED', 'DELETED'])) {
                 $newStatus = 'CANCELLED';
             } elseif ($remoteStatus !== $localStatus) {
-                // Ignore small differences if necessary, but generally we want to sync.
-                // Exceptions: Local might be 'CANCELLED_POR_TROCA' which is internal, but if Asaas says ACTIVE, we might have a problem.
-                // For now, let's trust Remote for critical states (ACTIVE vs NON-ACTIVE)
-                
-                // If remote is EXPIRED/INACTIVE and we think it's ACTIVE -> fix it
                 if (in_array($remoteStatus, ['EXPIRED', 'INACTIVE']) && $localStatus === 'ACTIVE') {
                     $newStatus = ($remoteStatus === 'EXPIRED') ? 'EXPIRED' : 'CANCELLED';
                 }
                 
-                // If remote is ACTIVE and we think it's CANCELLED -> Maybe reactivate? 
-                // Careful with this one. Better to only auto-cancel for now to prevent access leaks.
-                if ($remoteStatus === 'ACTIVE' && in_array($localStatus, ['CANCELLED', 'SUSPENDED', 'EXPIRED'])) {
+                if ($remoteStatus === 'ACTIVE' && in_array($localStatus, ['CANCELLED', 'SUSPENDED', 'EXPIRED', 'PENDING', 'AWAITING_PAYMENT'])) {
                     $newStatus = 'ACTIVE';
                 }
             }
             
+            // Housekeeping: Se está ATIVA lá e ATIVA aqui, mas queremos garantir que o banco está limpo
+            if ($remoteStatus === 'ACTIVE' && $localStatus === 'ACTIVE') {
+                log_message('debug', "[PaymentService] Ambas ATIVAS. Rodando faxina de registros órfãos para conta {$subscription->account_id}");
+                $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id);
+                return true; 
+            }
+            
             if ($newStatus) {
-                log_message('notice', "[PaymentService] Double Verification: Syncing Sub #{$subscriptionId} from {$localStatus} to {$newStatus}");
+                log_message('notice', "[PaymentService] Syncing Sub #{$subscriptionId} from {$localStatus} to {$newStatus}");
                 $this->subscriptionModel->update($subscriptionId, ['status' => $newStatus]);
                 
-                // If we flipped to inactive state, ensure account is updated too
                 if (in_array($newStatus, ['CANCELLED', 'EXPIRED', 'INACTIVE'])) {
-                     $this->accountModel->update($subscription->account_id, ['status' => 'INACTIVE']);
+                     // SÓ desativa a conta se NÃO houver outra assinatura ATIVA
+                     $otherActive = $this->subscriptionModel->where('account_id', $subscription->account_id)
+                                                           ->where('status', 'ACTIVE')
+                                                           ->where('id !=', $subscription->id)
+                                                           ->countAllResults();
+                     
+                     if ($otherActive === 0) {
+                         log_message('notice', "[PaymentService] Account {$subscription->account_id} marked as INACTIVE (No more active subscriptions).");
+                         $this->accountModel->update($subscription->account_id, ['status' => 'INACTIVE']);
+                     } else {
+                         log_message('debug', "[PaymentService] Account {$subscription->account_id} remains ACTIVE (Has {$otherActive} other active subscriptions).");
+                     }
                 }
-                
                 return true;
             }
 
@@ -812,6 +798,75 @@ class PaymentService
         }
 
         return false;
+    }
+
+    /**
+     * Ativação Atômica via ID do Asaas (Ideal para Webhooks e Fallbacks)
+     */
+    public function activateSubscriptionByAsaasId(string $asaasSubId, ?string $asaasPaymentId = null): bool
+    {
+        $subscription = $this->subscriptionModel->where('asaas_subscription_id', $asaasSubId)->first();
+        if (!$subscription) return false;
+
+        $this->subscriptionModel->update($subscription->id, [
+            'status' => 'ACTIVE',
+            'next_billing_date' => date('Y-m-d', strtotime('+30 days'))
+        ]);
+
+        if ($subscription->account_id) {
+            $this->accountModel->update($subscription->account_id, ['status' => 'ACTIVE']);
+        }
+
+        // 1. Limpar outras transações PENDENTES para esta conta
+        $this->transactionModel->where('account_id', $subscription->account_id)
+                              ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                              ->set(['status' => 'CANCELLED'])
+                              ->update();
+
+        // 2. Limpar outras ASSINATURAS PENDENTES para esta conta
+        // Isso resolve o "dashboard fantasma" com avisos de cobrança em aberto
+        $this->subscriptionModel->where('account_id', $subscription->account_id)
+                               ->where('id !=', $subscription->id)
+                               ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                               ->set(['status' => 'CANCELLED'])
+                               ->update();
+
+        if ($asaasPaymentId) {
+            // Verificar se já existe essa transação localmente
+            $localTx = $this->transactionModel->where('gateway_transaction_id', $asaasPaymentId)->first();
+            
+            if (!$localTx) {
+                log_message('notice', "[PaymentService] Transação paga {$asaasPaymentId} não encontrada localmente. Criando registro de emergência...");
+                
+                // Buscar detalhes do pagamento no Asaas se possível
+                $pData = [];
+                try {
+                    $pData = $this->activeGateway->request('GET', "/payments/{$asaasPaymentId}");
+                } catch (\Exception $e) {
+                    log_message('error', "[PaymentService] Falha ao detalhar pagamento para registro de emergência: " . $e->getMessage());
+                }
+
+                $this->transactionModel->insert([
+                    'account_id'      => $subscription->account_id,
+                    'subscription_id' => $subscription->id,
+                    'gateway'         => $this->activeGateway->getCode(),
+                    'gateway_transaction_id' => $asaasPaymentId,
+                    'gateway_customer_id'    => $subscription->asaas_customer_id,
+                    'amount'          => $pData['value'] ?? 0,
+                    'status'          => 'SUCCESS',
+                    'type'            => 'SUBSCRIPTION',
+                    'payment_method'  => $pData['billingType'] ?? 'UNDEFINED',
+                    'metadata'        => json_encode($pData)
+                ]);
+            } else {
+                $this->transactionModel->where('gateway_transaction_id', $asaasPaymentId)
+                                      ->set(['status' => 'SUCCESS'])
+                                      ->update();
+            }
+        }
+
+        log_message('notice', "[PaymentService] Assinatura #{$subscription->id} ativada e transações pendentes limpas.");
+        return true;
     }
 
     /**
@@ -844,11 +899,13 @@ class PaymentService
             if (empty($pendingPayments)) return;
 
             foreach ($pendingPayments as $p) {
-                // Verificar se já existe no banco local por gateway_transaction_id
-                $exists = $this->transactionModel->where('gateway_transaction_id', $p['payment_id'])
-                                  ->countAllResults() > 0;
+                $gatewayPaymentId = $p['payment_id'];
+                $gatewayStatus = strtoupper($p['status']);
 
-                if (!$exists) {
+                // Verificar se já existe no banco local por gateway_transaction_id
+                $localTransaction = $this->transactionModel->where('gateway_transaction_id', $gatewayPaymentId)->first();
+
+                if (!$localTransaction) {
                     // Tentar inferir o tipo pela descrição
                     $type = 'SUBSCRIPTION';
                     if (isset($p['description']) && (stripos($p['description'], 'Pro-rata') !== false || stripos($p['description'], 'Upgrade') !== false)) {
@@ -859,27 +916,31 @@ class PaymentService
                         'account_id'      => $accountId,
                         'subscription_id' => $subscription ? $subscription->id : null,
                         'gateway'         => $this->activeGateway->getCode(),
-                        'gateway_transaction_id' => $p['payment_id'],
+                        'gateway_transaction_id' => $gatewayPaymentId,
                         'gateway_customer_id'    => $customerId,
                         'amount'          => $p['amount'],
-                        'status'          => 'PENDING',
+                        'status'          => ($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') ? 'SUCCESS' : 'PENDING',
                         'type'            => $type,
                         'payment_method'  => $p['billing_type'],
                         'invoice_url'     => $p['invoice_url'],
                         'description'     => $p['description'] ?? '',
-                        'metadata'        => json_encode([
-                            'description' => $p['description'] ?? '',
-                            'invoice_url' => $p['invoice_url'],
-                            'dueDate'     => $p['dueDate']
-                        ]),
-                        'created_at'      => date('Y-m-d H:i:s'),
-                        'updated_at'      => date('Y-m-d H:i:s')
+                        'metadata'        => json_encode($p)
                     ]);
-                    
-                    log_message('notice', "[PaymentService] Sincronizado pagamento pendente: {$p['payment_id']} para conta {$accountId}");
+
+                    // Se já estiver pago, ativa a assinatura imediatamente
+                    if (($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') && $subscription) {
+                        $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
+                    }
                 } else {
-                    // Se já existe, garante que o status esteja atualizado no banco se vier do sync (opcional)
-                    // Mas aqui focamos em PENDING forçados pelo sync
+                    // Já existe localmente. Se estiver PENDING aqui mas RECEBIDO lá, sincronize!
+                    if ($localTransaction['status'] === 'PENDING' && ($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED')) {
+                        log_message('notice', "[PaymentService] Sync: Transação {$gatewayPaymentId} detectada como PAGA no gateway. Atualizando local...");
+                        $this->transactionModel->update($localTransaction['id'], ['status' => 'SUCCESS']);
+                        
+                        if ($subscription) {
+                            $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
+                        }
+                    }
                 }
             }
         } catch (\Exception $e) {

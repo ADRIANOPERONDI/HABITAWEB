@@ -52,6 +52,7 @@
                             </td>
                             <td><?= esc($member->email) ?></td>
                             <td>
+                                <?php
                                     $groups = $member->getGroups();
                                     $role = count($groups) > 0 ? $groups[0] : 'user';
                                     

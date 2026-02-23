@@ -23,7 +23,7 @@ class PaymentTransactionModel extends Model
 
     protected array $casts = [
         'amount' => 'float',
-        'metadata' => 'json'
+        'metadata' => '?json'
     ];
     protected array $castHandlers = [];
 
@@ -172,11 +172,34 @@ class PaymentTransactionModel extends Model
                     ->orderBy('created_at', 'DESC')
                     ->first();
     }
+
     /**
-     * Upsert simplificado via builder
+     * Aliases para compatibilidade com PaymentService
+     */
+    public function findPendingBySubscription($subscriptionId)
+    {
+        return $this->getLastPendingTransaction($subscriptionId);
+    }
+
+    public function findPendingByAccount($accountId)
+    {
+        return $this->getLastPendingTransactionByAccount($accountId);
+    }
+    /**
+     * Upsert manual para evitar erros de restrição no PostgreSQL (No constraint found for upsert)
      */
     public function upsertTransaction(array $data)
     {
-        return $this->builder()->upsert($data);
+        if (!empty($data['gateway_transaction_id']) && !empty($data['gateway'])) {
+            $existing = $this->where('gateway_transaction_id', $data['gateway_transaction_id'])
+                             ->where('gateway', $data['gateway'])
+                             ->first();
+            
+            if ($existing) {
+                return $this->update($existing['id'], $data);
+            }
+        }
+        
+        return $this->insert($data);
     }
 }

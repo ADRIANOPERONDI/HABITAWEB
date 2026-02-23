@@ -11,7 +11,7 @@ class RegisterController extends BaseController
 
     public function __construct()
     {
-        $this->accountService = service('accountService');
+        $this->accountService = new \App\Services\AccountService();
     }
 
     public function index()
@@ -33,6 +33,12 @@ class RegisterController extends BaseController
             'tipo_documento' => 'required|in_list[CPF,CNPJ]',
             'documento' => 'required|valid_documento[tipo_documento]',
         ];
+
+        // Limpeza de documento para validação de unicidade
+        $documento = preg_replace('/[^0-9]/', '', $this->request->getPost('documento'));
+        if ($this->accountService->documentExists($documento)) {
+            return redirect()->back()->withInput()->with('errors', ['documento' => 'Este ' . $this->request->getPost('tipo_documento') . ' já está cadastrado.']);
+        }
 
         if (!$this->validate($rules)) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
@@ -71,6 +77,26 @@ class RegisterController extends BaseController
             'exists' => $exists, 
             'valid' => true,
             'message' => $exists ? 'Este e-mail já está cadastrado.' : 'E-mail disponível.'
+        ]);
+    }
+
+    /**
+     * Endpoint AJAX para verificar se documento já existe
+     */
+    public function checkDocument()
+    {
+        $documento = $this->request->getGet('documento');
+        $tipo = $this->request->getGet('tipo') ?? 'Documento';
+        
+        if (!$documento) {
+            return $this->response->setJSON(['exists' => false]);
+        }
+        
+        $exists = $this->accountService->documentExists($documento);
+                     
+        return $this->response->setJSON([
+            'exists' => $exists, 
+            'message' => $exists ? 'Este ' . $tipo . ' já está cadastrado.' : 'Disponível.'
         ]);
     }
 }
