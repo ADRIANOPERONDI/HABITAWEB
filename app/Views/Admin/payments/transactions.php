@@ -25,7 +25,7 @@
         <a href="<?= site_url('admin/payments/dashboard') ?>" class="btn btn-light rounded-pill px-4 border shadow-sm">
             <i class="fa-solid fa-chart-line me-2"></i> Ver Dashboard
         </a>
-        <a href="<?= site_url('admin/payments/export-transactions?' . http_build_query($this->request->getGet())) ?>" class="btn btn-outline-secondary rounded-pill px-4 shadow-sm">
+        <a href="<?= site_url('admin/payments/export-transactions?' . http_build_query(request()->getGet())) ?>" class="btn btn-outline-secondary rounded-pill px-4 shadow-sm">
             <i class="fa-solid fa-download me-2"></i> Exportar
         </a>
     </div>

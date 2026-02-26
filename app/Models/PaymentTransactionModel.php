@@ -22,8 +22,7 @@ class PaymentTransactionModel extends Model
     protected bool $updateOnlyChanged = true;
 
     protected array $casts = [
-        'amount' => 'float',
-        'metadata' => '?json'
+        'amount' => 'float'
     ];
     protected array $castHandlers = [];
 
@@ -185,6 +184,44 @@ class PaymentTransactionModel extends Model
     {
         return $this->getLastPendingTransactionByAccount($accountId);
     }
+    
+    /**
+     * Verifica se a conta está bloqueada por faturas atrasadas
+     * @param int $accountId
+     * @param int $days Atraso em dias (default 3)
+     * @return bool
+     */
+    public function isAccountBlockedByOverdue(int $accountId, int $days = 3): bool
+    {
+        $db = \Config\Database::connect();
+        $overdueInvoice = $db->query("
+            SELECT id FROM payment_transactions 
+            WHERE account_id = ? 
+            AND status IN ('PENDING', 'AWAITING_PAYMENT') 
+            AND ((metadata#>>'{}')::jsonb->>'dueDate')::date <= CURRENT_DATE - INTERVAL '{$days} days'
+            LIMIT 1
+        ", [$accountId])->getRow();
+        
+        return $overdueInvoice ? true : false;
+    }
+
+    /**
+     * Retorna array com IDs numéricos (inteiros) de contas que possuem faturas atrasadas
+     * @param int $days Atraso em dias (default 3)
+     * @return array
+     */
+    public function getOverdueAccountIds(int $days = 3): array
+    {
+        $db = \Config\Database::connect();
+        $results = $db->query("
+            SELECT DISTINCT account_id FROM payment_transactions 
+            WHERE status IN ('PENDING', 'AWAITING_PAYMENT') 
+            AND ((metadata#>>'{}')::jsonb->>'dueDate')::date <= CURRENT_DATE - INTERVAL '{$days} days'
+        ")->getResultArray();
+        
+        return array_column($results, 'account_id');
+    }
+
     /**
      * Upsert manual para evitar erros de restrição no PostgreSQL (No constraint found for upsert)
      */

@@ -256,10 +256,14 @@
                                     <select name="tipo_imovel" class="form-select input-premium" required>
                                         <option value="APARTAMENTO" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'APARTAMENTO') ? 'selected' : '' ?>>Apartamento</option>
                                         <option value="CASA" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'CASA') ? 'selected' : '' ?>>Casa</option>
-                                        <option value="TERRENO" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'TERRENO') ? 'selected' : '' ?>>Terreno</option>
-                                        <option value="COMERCIAL" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'COMERCIAL') ? 'selected' : '' ?>>Comercial</option>
                                         <option value="COBERTURA" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'COBERTURA') ? 'selected' : '' ?>>Cobertura</option>
                                         <option value="SOBRADO" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'SOBRADO') ? 'selected' : '' ?>>Sobrado</option>
+                                        <option value="TERRENO" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'TERRENO') ? 'selected' : '' ?>>Terreno</option>
+                                        <option value="LOTE" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'LOTE') ? 'selected' : '' ?>>Lote</option>
+                                        <option value="COMERCIAL" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'COMERCIAL') ? 'selected' : '' ?>>Comercial (Prédio/Conjunto)</option>
+                                        <option value="SALA" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'SALA') ? 'selected' : '' ?>>Sala Comercial</option>
+                                        <option value="LOJA" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'LOJA') ? 'selected' : '' ?>>Loja</option>
+                                        <option value="GALPAO" <?= (old('tipo_imovel', $property->tipo_imovel ?? '') == 'GALPAO') ? 'selected' : '' ?>>Galpão / Pavilhão</option>
                                     </select>
                                 </div>
                                 <div class="col-12">
@@ -1329,6 +1333,94 @@ $(document).ready(function() {
 
     // Chama ao carregar
     checkDestaqueLimit();
+
+    // --- PROPERTY TYPE FIELD VISIBILITY Logic ---
+    function updateFieldVisibility() {
+        const type = $('select[name="tipo_imovel"]').val();
+        if (!type) return;
+
+        // Categories mapped exactly as in PropertyCategoryHelper
+        const RESIDENTIAL = ['APARTAMENTO', 'CASA', 'COBERTURA', 'SOBRADO'];
+        const COMMERCIAL = ['COMERCIAL', 'SALA', 'LOJA'];
+        const WAREHOUSE = ['GALPAO'];
+        const LAND = ['TERRENO', 'LOTE'];
+
+        // Get category based on type
+        let category = '';
+        if (RESIDENTIAL.includes(type)) category = 'RESIDENTIAL';
+        else if (COMMERCIAL.includes(type)) category = 'COMMERCIAL';
+        else if (WAREHOUSE.includes(type)) category = 'WAREHOUSE';
+        else if (LAND.includes(type)) category = 'LAND';
+        else category = 'RESIDENTIAL'; // Default
+
+        // Toggle Fields
+        const toggleField = (selector, isVisible) => {
+            const $el = $(selector).closest('div[class^="col-"]');
+            if (isVisible) {
+                $el.show();
+            } else {
+                $el.hide();
+                // Limpa o valor para não enviar lixo se estiver oculto (Exceto se for edição, preferível manter no DB? Como a validação ignora, não machuca o score, mas limparemos inputs text/numéricos)
+                const $input = $(selector);
+                if ($input.is('input[type="text"], input[type="number"]')) $input.val('');
+                if ($input.is('input[type="checkbox"], input[type="radio"]')) $input.prop('checked', false);
+            }
+        };
+
+        // Dormitórios e Suítes
+        toggleField('input[name="quartos"]', category === 'RESIDENTIAL');
+        toggleField('input[name="suites"]', category === 'RESIDENTIAL');
+
+        // Banheiros (Not applicable for Land)
+        toggleField('input[name="banheiros"]', category !== 'LAND');
+
+        // Area Construida (Not applicable for Land)
+        toggleField('input[name="area_construida"]', category !== 'LAND');
+
+        // Vagas (Not applicable for Land)
+        toggleField('input[name="vagas"]', category !== 'LAND');
+
+        // Condomínio (Name + Value)
+        toggleField('input[name="valor_condominio"]', category !== 'WAREHOUSE');
+        toggleField('input[name="condominio"]', category !== 'WAREHOUSE');
+        
+        // Renda Mensal (Only useful if indicado_investidor maybe? We'll leave it visible if commercial/warehouse/residential, but mostly not land)
+        toggleField('input[name="renda_mensal_estimada"]', category !== 'LAND');
+
+        // Advanced Features Options (Checkboxes)
+        const toggleFeature = (name, isVisible) => {
+            const $el = $(`input[name="${name}"]`).closest('.col-md-6.col-lg-3');
+            if ($el.length) {
+                if (isVisible) {
+                    $el.show();
+                } else {
+                    $el.hide();
+                    $(`input[name="${name}"]`).prop('checked', false);
+                }
+            }
+        };
+
+        // Residential specifics
+        toggleFeature('aceita_pets', category === 'RESIDENTIAL');
+        toggleFeature('mobiliado', category === 'RESIDENTIAL');
+        toggleFeature('semimobiliado', category === 'RESIDENTIAL');
+        toggleFeature('indicado_primeira_moradia', category === 'RESIDENTIAL');
+        toggleFeature('indicado_temporada', category === 'RESIDENTIAL');
+
+        // Toggles for Comodidades e Diferenciais checklist block (piscina, varanda, etc)
+        const $featuresBlock = $('#feat_piscina').closest('.col-12.mt-4'); // Seleciona o bloco pai de Features
+        if (category === 'LAND' || category === 'WAREHOUSE') {
+            $featuresBlock.hide();
+            // Desmarca todos
+            $featuresBlock.find('input[type="checkbox"]').prop('checked', false);
+        } else {
+            $featuresBlock.show();
+        }
+    }
+
+    // Trigger on change and on load
+    $('select[name="tipo_imovel"]').on('change', updateFieldVisibility);
+    updateFieldVisibility(); // Initial check
 
     // Attach listeners
     $('#propertyForm input, #propertyForm textarea, #propertyForm select').on('change input blur', calculateScore);

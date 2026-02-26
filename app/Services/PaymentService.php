@@ -195,8 +195,8 @@ class PaymentService
             throw new \Exception("Plano inválido.");
         }
         
-        // 1. Validate Coupon
-        $couponData = $this->validateCoupon($couponCode, (float)$plan->preco_mensal);
+        // 1. Validate Coupon (Passing account_id for targeted coupons)
+        $couponData = $this->validateCoupon($couponCode, (float)$plan->preco_mensal, $accountId);
         $finalAmount = $couponData['final_value'];
         $coupon = $couponData['coupon'] ?? null;
         
@@ -268,7 +268,14 @@ class PaymentService
         }
 
         $subId = $subscriptionData['subscription_id'];
-        $status = strtoupper($subscriptionData['status'] ?? 'ACTIVE');
+        
+        // FIX: Asaas creates PIX and Boleto subscriptions as ACTIVE immediately.
+        // We must override this locally to PENDING to ensure the first invoice is paid.
+        if (in_array($billingType, ['PIX', 'BOLETO'])) {
+            $status = 'PENDING';
+        } else {
+            $status = strtoupper($subscriptionData['status'] ?? 'ACTIVE');
+        }
         
         $subscriptionFields = [
             'account_id' => $accountId,
@@ -573,14 +580,14 @@ class PaymentService
     /**
      * Validar e Calcular Desconto de Cupom
      */
-    public function validateCoupon(?string $code, float $originalValue)
+    public function validateCoupon(?string $code, float $originalValue, ?int $accountId = null)
     {
         if (empty($code)) {
             return ['valid' => false, 'discount_amount' => 0, 'final_value' => $originalValue, 'coupon' => null];
         }
 
         $couponModel = new \App\Models\CouponModel();
-        $coupon = $couponModel->getValidCoupon($code);
+        $coupon = $couponModel->getValidCoupon($code, $accountId);
 
         if (!$coupon) {
             return ['valid' => false, 'message' => 'Cupom inválido ou expirado.', 'discount_amount' => 0, 'final_value' => $originalValue, 'coupon' => null];
@@ -623,7 +630,7 @@ class PaymentService
         }
 
         // 1. Validate Coupon
-        $couponData = $this->validateCoupon($couponCode, (float)$plan->preco_mensal);
+        $couponData = $this->validateCoupon($couponCode, (float)$plan->preco_mensal, $accountId);
         $finalAmount = $couponData['final_value'];
         $coupon = $couponData['coupon'] ?? null;
 
@@ -765,10 +772,9 @@ class PaymentService
                 }
             }
             
-            // Housekeeping: Se está ATIVA lá e ATIVA aqui, mas queremos garantir que o banco está limpo
+            // Housekeeping original problemático Removido: Se está ATIVA lá e ATIVA aqui, mantemos como está
             if ($remoteStatus === 'ACTIVE' && $localStatus === 'ACTIVE') {
-                log_message('debug', "[PaymentService] Ambas ATIVAS. Rodando faxina de registros órfãos para conta {$subscription->account_id}");
-                $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id);
+                log_message('debug', "[PaymentService] Ambas ATIVAS. Sincronia concluída para conta {$subscription->account_id}");
                 return true; 
             }
             
@@ -818,8 +824,13 @@ class PaymentService
         }
 
         // 1. Limpar outras transações PENDENTES para esta conta
+        // Proteção: NUNCA cancelar transações PENDENTES que pertencem a ESTA mesma assinatura que estamos ativando.
         $this->transactionModel->where('account_id', $subscription->account_id)
                               ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                              ->groupStart()
+                                  ->where('subscription_id !=', $subscription->id)
+                                  ->orWhere('subscription_id IS NULL')
+                              ->groupEnd()
                               ->set(['status' => 'CANCELLED'])
                               ->update();
 

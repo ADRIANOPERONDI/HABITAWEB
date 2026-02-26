@@ -26,6 +26,7 @@
                 <thead>
                     <tr>
                         <th>Código</th>
+                        <th>Cliente</th>
                         <th>Desconto</th>
                         <th>Uso / Limite</th>
                         <th>Validade</th>
@@ -35,11 +36,18 @@
                 </thead>
                 <tbody>
                     <?php if (empty($coupons)): ?>
-                        <tr><td colspan="6" class="text-center">Nenhum cupom encontrado.</td></tr>
+                        <tr><td colspan="7" class="text-center">Nenhum cupom encontrado.</td></tr>
                     <?php else: ?>
                         <?php foreach ($coupons as $c): ?>
                             <tr>
                                 <td class="fw-bold"><?= esc($c->code) ?></td>
+                                <td>
+                                    <?php if ($c->account_name): ?>
+                                        <span class="badge bg-secondary"><i class="fas fa-lock fa-xs"></i> <?= esc($c->account_name) ?></span>
+                                    <?php else: ?>
+                                        <span class="badge bg-success">Todos (Público)</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ($c->discount_type === 'percent'): ?>
                                         <span class="badge bg-info text-dark"><?= $c->discount_value ?>% OFF</span>

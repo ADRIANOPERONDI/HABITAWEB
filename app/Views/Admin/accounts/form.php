@@ -232,7 +232,65 @@ $(document).ready(function() {
                 $('#plan-selector').html(plansHtml);
             }
             
-            $('#subscription-container').html(html);
+            // Render pending transactions if they exist
+            let pendingHtml = '';
+            if (data.pendingTransactions && data.pendingTransactions.length > 0) {
+                pendingHtml = '<div class="alert alert-warning border-0 rounded-4 shadow-sm p-4 mt-3 mb-0">';
+                pendingHtml += '<h6 class="fw-bold mb-3 text-dark"><i class="fa-solid fa-triangle-exclamation text-warning me-2"></i> Faturas Pendentes</h6>';
+                
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                
+                data.pendingTransactions.forEach(tx => {
+                    let isOverdue = false;
+                    let isOverdue3Days = false;
+                    let dueDateText = 'Não definida';
+                    let dueDateObj = null;
+                    
+                    if (tx.metadata) {
+                         let meta = tx.metadata;
+                         let parseAttempts = 0;
+                         // Trata strings convertidas duas vezes para literal de json
+                         while (typeof meta === 'string' && parseAttempts < 3) {
+                             try { meta = JSON.parse(meta); } catch(e) { break; }
+                             parseAttempts++;
+                         }
+                         
+                         if (meta && meta.dueDate) {
+                              dueDateObj = new Date(meta.dueDate + 'T12:00:00'); // Force noon to avoid timezone shift to prev day
+                              dueDateObj.setHours(0,0,0,0);
+                              dueDateText = dueDateObj.toLocaleDateString('pt-BR');
+                              
+                              if (dueDateObj < today) {
+                                   isOverdue = true;
+                                   const diffTime = today - dueDateObj;
+                                   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                                   if (diffDays >= 3) {
+                                       isOverdue3Days = true;
+                                   }
+                              }
+                         }
+                    }
+                    
+                    let badgeColor = isOverdue3Days ? 'bg-danger text-white' : (isOverdue ? 'bg-danger bg-opacity-75 text-white' : 'bg-warning text-dark');
+                    let badgeText = isOverdue3Days ? 'Atrasada > 3 dias (Bloqueia Contratante)' : (isOverdue ? 'Atrasada' : 'No Prazo');
+                    
+                    pendingHtml += `
+                        <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-dark border-opacity-10">
+                            <div>
+                                <span class="badge ${badgeColor} me-2">${badgeText}</span>
+                                <strong class="text-dark">R$ ${parseFloat(tx.amount).toFixed(2).replace('.', ',')}</strong>
+                                <span class="text-muted small ms-2">Vencimento: ${dueDateText}</span>
+                            </div>
+                            ${tx.invoice_url ? `<a href="${tx.invoice_url}" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill">Ver Fatura <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i></a>` : ''}
+                        </div>
+                    `;
+                });
+                
+                pendingHtml += '</div>';
+            }
+            
+            $('#subscription-container').html(html + pendingHtml);
         });
     }
 

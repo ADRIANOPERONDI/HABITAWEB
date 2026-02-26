@@ -73,11 +73,19 @@ class SearchController extends BaseController
             $this->loadCovers($promotedProperties);
         }
 
+        // Busca Opções de Filtro (Cidades, Bairros, Tipos) - Cache de 1 hora
+        $filterOptions = cache()->get('search_filter_options');
+        if ($filterOptions === null) {
+            $filterOptions = $propertyService->getSearchFilterOptions();
+            cache()->save('search_filter_options', $filterOptions, 3600);
+        }
+
         return view('web/search', [
             'properties'         => $data['properties'],
             'promotedProperties' => $promotedProperties,
             'pager'              => $data['pager'],
-            'filters'            => $filters
+            'filters'            => $filters,
+            'tipos'              => $filterOptions['tipos']
         ]);
     }
 

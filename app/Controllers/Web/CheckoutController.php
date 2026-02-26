@@ -164,8 +164,13 @@ class CheckoutController extends BaseController
         if (!$plan) {
              return $this->response->setJSON(['valid' => false, 'message' => 'Plano inválido.']);
         }
+        
+        $accountId = null;
+        if (auth()->loggedIn() && auth()->user()->account_id) {
+            $accountId = auth()->user()->account_id;
+        }
 
-        $result = $this->paymentService->validateCoupon($code, (float)$plan->preco_mensal);
+        $result = $this->paymentService->validateCoupon($code, (float)$plan->preco_mensal, $accountId);
         
         return $this->response->setJSON($result);
     }

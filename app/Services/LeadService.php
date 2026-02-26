@@ -70,6 +70,16 @@ class LeadService
             $lead->tipo_lead = 'MSG';
         }
 
+        // Evita erro "There is no data to update" se for um lead existente sem alterações
+        if (!$lead->hasChanged()) {
+            return [
+                'success' => true,
+                'data'    => $lead,
+                'errors'  => [],
+                'message' => 'Lead já registrado sem alterações.',
+            ];
+        }
+
         if ($this->leadModel->save($lead)) {
             $leadId = $lead->id ?? $this->leadModel->getInsertID();
             $savedLead = $this->leadModel->find($leadId);

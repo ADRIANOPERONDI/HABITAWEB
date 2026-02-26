@@ -392,6 +392,14 @@ class PropertyService
                 ->groupBy('accounts.logo')        // Required for SELECT
                 ->groupBy('plans.preco_mensal');  // Required for ORDER BY
 
+        // Esconder propriedades de contas com faturas atrasadas há mais de 3 dias
+        $txModel = model('App\Models\PaymentTransactionModel');
+        $blockedAccountIds = $txModel->getOverdueAccountIds(3);
+        
+        if (!empty($blockedAccountIds)) {
+            $builder->whereNotIn('properties.account_id', $blockedAccountIds);
+        }
+
         // Padrão: ACTIVE, a menos que especificado (ou se for 'ALL' para admin)
         if (isset($filters['show_deleted']) && $filters['show_deleted'] === true) {
             $builder->onlyDeleted();
@@ -839,5 +847,19 @@ class PropertyService
         }
 
         return ['success' => false, 'message' => 'Erro ao atualizar capa.'];
+    }
+
+    /**
+     * Conta imóveis ativos de uma conta.
+     * 
+     * @param int $accountId
+     * @return int
+     */
+    public function countActivePropertiesByAccount(int $accountId): int
+    {
+        return $this->propertyModel->where([
+            'account_id' => $accountId,
+            'status'     => 'ACTIVE'
+        ])->countAllResults();
     }
 }

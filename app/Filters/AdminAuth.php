@@ -51,9 +51,18 @@ class AdminAuth implements FilterInterface
             if ($userRow && !empty($userRow->account_id)) {
                 // 2. Get Account Status
                 $account = $db->table('accounts')->select('status')->where('id', $userRow->account_id)->get()->getRow();
+                
+                // 3. Verifica faturas pendentes atrasadas há 3+ dias para bloquear (mesmo se a conta ainda estiver ACTIVE no banco)
+                $txModel = model('App\Models\PaymentTransactionModel');
+                $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($userRow->account_id, 3);
 
                 // If not ACTIVE, block access
-                if ($account && $account->status !== 'ACTIVE') {
+                if ($isBlockedByOverdue || ($account && $account->status !== 'ACTIVE')) {
+                     
+                     if ($isBlockedByOverdue) {
+                         return redirect()->to('admin/subscription')->with('error', 'Conta bloqueada. Você possui uma fatura com mais de 3 dias de atraso. Efetue o pagamento para liberar o sistema e seus anúncios.');
+                     }
+                     
                      // Check if there is a pending subscription
                      $hasPendingSub = $db->table('subscriptions')
                         ->where('account_id', $userRow->account_id)

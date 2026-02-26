@@ -17,40 +17,14 @@ class RankingService
      */
     public function calculateScore(Property $property): int
     {
-        $score = 0;
-
-        // 2. Fotos (Simulado via count no banco ou carregado na entity)
-        // Para simplificar agora, vamos assumir que o controller passa o objeto carregado ou buscamos aqui.
-        // Como o score costuma ser calculado no save/update, vamos fazer uma query count rápida se precisar.
-        
         $mediaModel = model('App\Models\PropertyMediaModel');
         $mediaCount = $mediaModel->countByProperty($property->id);
         
-        $score += min($mediaCount * 10, 50); // Max 50 pts por fotos
+        $curationService = new \App\Services\CurationService();
+        $result = $curationService->calculateDetailedScore($property, $mediaCount);
+        $score = $result['score'];
 
-        // 2. Descrição
-        if (strlen($property->descricao ?? '') > 200) {
-            $score += 10;
-        }
-
-        // 3. Endereço
-        if (!empty($property->rua) && !empty($property->numero)) {
-            $score += 10;
-        }
-
-        // 4. Características (Features - Dinâmicas)
-        $featureModel = model('App\Models\PropertyFeatureModel');
-        $featureCount = $featureModel->countByProperty($property->id);
-        $score += min($featureCount * 5, 20);
-
-        // 5. Novos Campos Estáticos (Boost de completude)
-        if ($property->suites > 0) $score += 5;
-        if ($property->aceita_pets) $score += 2;
-        if ($property->is_exclusivo) $score += 5;
-        if (!empty($property->meta_title)) $score += 3;
-        if ($property->is_novo) $score += 5; // Boost para imóveis novos
-
-        // 6. Promoções Ativas (Turbo)
+        // 6. Promoções Ativas (Boosters de Ranking)
         $promotionModel = model('App\Models\PromotionModel');
         $activePromos = $promotionModel->where('property_id', $property->id)
                                        ->where('ativo', true)
@@ -75,7 +49,6 @@ class RankingService
             }
         }
 
-        // 7. Normalização
         return $score;
     }
 

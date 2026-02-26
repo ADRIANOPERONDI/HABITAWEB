@@ -30,10 +30,17 @@ class AccountSubscriptionController extends BaseController
 
         $subscription = $this->subscriptionModel->where('account_id', $accountId)->orderBy('id', 'DESC')->first();
         $plans = model('App\Models\PlanModel')->where('ativo', true)->findAll();
+        
+        $transactionModel = model('App\Models\PaymentTransactionModel');
+        $pendingTransactions = $transactionModel->where('account_id', $accountId)
+                                                ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                                                ->orderBy('created_at', 'ASC')
+                                                ->findAll();
 
         return $this->response->setJSON([
             'subscription' => $subscription,
             'plans' => $plans,
+            'pendingTransactions' => $pendingTransactions,
             'gateway' => $this->paymentService->getActiveGatewayName()
         ]);
     }

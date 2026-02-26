@@ -13,7 +13,7 @@ class CouponModel extends Model
     protected $useSoftDeletes   = false; // Pode mudar para true se add deleted_at
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'code', 'description', 'discount_type', 'discount_value', 
+        'account_id', 'code', 'description', 'discount_type', 'discount_value', 
         'max_uses', 'used_count', 'valid_from', 'valid_until', 'is_active'
     ];
 
@@ -37,9 +37,10 @@ class CouponModel extends Model
     /**
      * Verifica e retorna o cupom se for válido
      * @param string $code
+     * @param int|null $accountId Optional. Se o cupom for restrito a um cliente, será validado contra este $accountId.
      * @return object|null
      */
-    public function getValidCoupon(string $code)
+    public function getValidCoupon(string $code, ?int $accountId = null)
     {
         $now = date('Y-m-d H:i:s');
         
@@ -57,6 +58,14 @@ class CouponModel extends Model
                        
         if (!$coupon) {
             return null;
+        }
+        
+        // Verifica se é um cupom restrito a um cliente específico
+        if (!is_null($coupon->account_id)) {
+            // Se o cupom é restrito, e não veio conta, ou a conta não bate, recusa.
+            if (is_null($accountId) || $coupon->account_id != $accountId) {
+                return null;
+            }
         }
         
         // Check Usage Limits

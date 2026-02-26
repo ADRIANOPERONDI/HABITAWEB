@@ -24,6 +24,21 @@
                             <small class="text-muted">Clique em "Gerar" para criar um código automaticamente</small>
                         </div>
                     </div>
+
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label fw-bold">Cliente Específico (Opcional)</label>
+                            <select name="account_id" class="form-select select2-public">
+                                <option value="">-- Todos os Clientes (Público) --</option>
+                                <?php foreach($accounts ?? [] as $acc): ?>
+                                    <option value="<?= $acc->id ?>" <?= (old('account_id', $coupon->account_id ?? '') == $acc->id) ? 'selected' : '' ?>>
+                                        <?= esc($acc->nome) ?> (<?= esc($acc->documento) ?>)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="text-muted">Selecione um cliente para restringir este cupom apenas a ele.</small>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row mb-3">

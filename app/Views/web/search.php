@@ -34,10 +34,9 @@
                         <label class="form-label small fw-bold text-muted">Tipo</label>
                         <select name="tipo_imovel" class="form-select select2-public">
                             <option value="">Todos</option>
-                            <option value="APARTAMENTO" <?= ($filters['tipo_imovel'] ?? '') == 'APARTAMENTO' ? 'selected' : '' ?>>Apartamento</option>
-                            <option value="CASA" <?= ($filters['tipo_imovel'] ?? '') == 'CASA' ? 'selected' : '' ?>>Casa</option>
-                            <option value="TERRENO" <?= ($filters['tipo_imovel'] ?? '') == 'TERRENO' ? 'selected' : '' ?>>Terreno</option>
-                            <option value="COMERCIAL" <?= ($filters['tipo_imovel'] ?? '') == 'COMERCIAL' ? 'selected' : '' ?>>Comercial</option>
+                            <?php foreach($tipos as $t): ?>
+                                <option value="<?= esc($t->tipo_imovel) ?>" <?= ($filters['tipo_imovel'] ?? '') === $t->tipo_imovel ? 'selected' : '' ?>><?= esc(ucfirst(strtolower($t->tipo_imovel))) ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     

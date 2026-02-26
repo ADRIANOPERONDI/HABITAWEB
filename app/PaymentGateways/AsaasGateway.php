@@ -374,7 +374,7 @@ class AsaasGateway implements GatewayInterface
     /**
      * Fazer requisição para API do Asaas
      */
-    protected function request(string $method, string $endpoint, array $data = [])
+    public function request(string $method, string $endpoint, array $data = [])
     {
         $client = \Config\Services::curlrequest();
         

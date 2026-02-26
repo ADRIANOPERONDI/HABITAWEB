@@ -22,7 +22,11 @@ class CouponsController extends BaseController
             return redirect()->back()->with('error', 'Acesso negado.');
         }
 
-        $coupons = $this->couponModel->orderBy('created_at', 'DESC')->findAll();
+        $coupons = $this->couponModel
+            ->select('coupons.*, accounts.nome as account_name')
+            ->join('accounts', 'accounts.id = coupons.account_id', 'left')
+            ->orderBy('coupons.created_at', 'DESC')
+            ->findAll();
 
         return view('admin/coupons/index', [
             'coupons' => $coupons
@@ -38,8 +42,12 @@ class CouponsController extends BaseController
             return redirect()->back()->with('error', 'Acesso negado.');
         }
 
+        $accountModel = model('App\Models\AccountModel');
+        $accounts = $accountModel->orderBy('nome', 'ASC')->findAll();
+
         return view('admin/coupons/form', [
             'coupon' => null,
+            'accounts' => $accounts,
             'action' => 'create'
         ]);
     }
@@ -61,6 +69,7 @@ class CouponsController extends BaseController
             'min_value' => 'permit_empty|decimal',
             'valid_from' => 'permit_empty|valid_date',
             'valid_until' => 'permit_empty|valid_date',
+            'account_id' => 'permit_empty|integer',
             'is_active' => 'permit_empty'
         ];
 
@@ -69,6 +78,7 @@ class CouponsController extends BaseController
         }
 
         $data = [
+            'account_id' => $this->request->getPost('account_id') ?: null,
             'code' => strtoupper($this->request->getPost('code')),
             'discount_type' => $this->request->getPost('discount_type'),
             'discount_value' => $this->request->getPost('discount_value'),
@@ -102,8 +112,12 @@ class CouponsController extends BaseController
             return redirect()->to('admin/coupons')->with('error', 'Cupom não encontrado.');
         }
 
+        $accountModel = model('App\Models\AccountModel');
+        $accounts = $accountModel->orderBy('nome', 'ASC')->findAll();
+
         return view('admin/coupons/form', [
             'coupon' => $coupon,
+            'accounts' => $accounts,
             'action' => 'edit'
         ]);
     }
@@ -131,6 +145,7 @@ class CouponsController extends BaseController
             'min_value' => 'permit_empty|decimal',
             'valid_from' => 'permit_empty|valid_date',
             'valid_until' => 'permit_empty|valid_date',
+            'account_id' => 'permit_empty|integer',
             'is_active' => 'permit_empty'
         ];
 
@@ -139,6 +154,7 @@ class CouponsController extends BaseController
         }
 
         $data = [
+            'account_id' => $this->request->getPost('account_id') ?: null,
             'code' => strtoupper($this->request->getPost('code')),
             'discount_type' => $this->request->getPost('discount_type'),
             'discount_value' => $this->request->getPost('discount_value'),

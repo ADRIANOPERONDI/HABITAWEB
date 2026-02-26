@@ -17,6 +17,7 @@ class WebhookService
     protected $subscriptionModel;
     protected $transactionModel;
     protected $profileModel;
+    protected $webhookLogModel;
     protected $integrationWebhookModel;
 
     public function __construct()
