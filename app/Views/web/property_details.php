@@ -51,7 +51,14 @@
             </div>
 
             <div class="d-flex align-items-center justify-content-between mb-2">
-                <h2 class="fw-bold mb-0"><?= esc($property->titulo) ?></h2>
+                <div class="d-flex align-items-center gap-3">
+                    <h2 class="fw-bold mb-0"><?= esc($property->titulo) ?></h2>
+                    <?php if($property->is_verified): ?>
+                        <span class="badge bg-info text-white rounded-pill px-3 py-2 fw-bold" style="background-color: #0d6efd !important;" title="Este imóvel passou por conferência documental e de autenticidade.">
+                            <i class="fa-solid fa-check-double me-1"></i> Verificado
+                        </span>
+                    <?php endif; ?>
+                </div>
                 <button class="btn btn-outline-danger rounded-circle border-0 btn-favorite p-2" data-id="<?= $property->id ?>" title="Favoritar">
                    <i class="<?= ($isFavorited ?? false) ? 'fa-solid text-danger' : 'fa-regular' ?> fa-heart fa-2x"></i>
                 </button>
@@ -260,7 +267,12 @@
                             <?php endif; ?>
                         </div>
                         <div class="flex-grow-1 ms-3">
-                            <div class="fw-bold text-dark fs-5"><?= esc($property->account_name) ?></div>
+                            <div class="fw-bold text-dark fs-5 d-flex align-items-center gap-2">
+                                <?= esc($property->account_name) ?>
+                                <?php if($property->account_verified): ?>
+                                    <i class="fa-solid fa-circle-check text-primary fs-6" title="Parceiro Verificado"></i>
+                                <?php endif; ?>
+                            </div>
                             <small class="text-muted text-uppercase fw-bold opacity-75" style="font-size: 10px;"><?= esc($property->account_type) ?></small>
                             <?php if($property->account_creci): ?>
                                 <div class="x-small text-muted">CRECI: <strong><?= esc($property->account_creci) ?></strong></div>

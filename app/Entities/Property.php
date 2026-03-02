@@ -22,6 +22,7 @@ class Property extends Entity
         'indicado_investidor'      => 'boolean',
         'indicado_primeira_moradia' => 'boolean',
         'indicado_temporada'       => 'boolean',
+        'is_verified'              => 'boolean',
     ];
 
     /**

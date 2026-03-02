@@ -11,11 +11,13 @@ class CurationService
 {
     protected $propertyModel;
     protected $settingModel;
+    protected $fraudService;
 
     public function __construct()
     {
         $this->propertyModel = new PropertyModel();
         $this->settingModel  = new SettingModel();
+        $this->fraudService    = new \App\Services\FraudService();
     }
 
     /**
@@ -84,6 +86,14 @@ class CurationService
             }
         }
 
+        // 3. Fraud Detection
+        $fraudFlags = $this->fraudService->scan($property);
+        if (!empty($fraudFlags)) {
+            foreach ($fraudFlags as $flag) {
+                $warnings[] = $flag;
+            }
+        }
+
         return $warnings;
     }
 
@@ -134,7 +144,22 @@ class CurationService
         $property->last_validated_at = Time::now();
 
         // Auto-moderation logic
-        if (in_array('price_suspicious', $warnings)) {
+        $fraudFlags = [
+            'price_suspicious', 
+            'duplicate_description_other_account', 
+            'suspicious_keywords', 
+            'duplicate_photos_detected'
+        ];
+
+        $hasFraudSignal = false;
+        foreach ($fraudFlags as $flag) {
+            if (in_array($flag, $warnings)) {
+                $hasFraudSignal = true;
+                break;
+            }
+        }
+
+        if ($hasFraudSignal) {
             $property->moderation_status = 'PENDING_REVIEW';
         } else {
             $property->moderation_status = 'APPROVED';

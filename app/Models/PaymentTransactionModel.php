@@ -14,7 +14,7 @@ class PaymentTransactionModel extends Model
     protected $protectFields    = true;
     protected $allowedFields    = [
         'subscription_id', 'account_id', 'gateway', 'gateway_transaction_id',
-        'amount', 'currency', 'status', 'payment_method', 'metadata',
+        'amount', 'due_date', 'currency', 'status', 'payment_method', 'metadata',
         'type', 'reference_id', 'description', 'pdf_url', 'invoice_url', 'paid_at'
     ];
 
@@ -193,16 +193,10 @@ class PaymentTransactionModel extends Model
      */
     public function isAccountBlockedByOverdue(int $accountId, int $days = 3): bool
     {
-        $db = \Config\Database::connect();
-        $overdueInvoice = $db->query("
-            SELECT id FROM payment_transactions 
-            WHERE account_id = ? 
-            AND status IN ('PENDING', 'AWAITING_PAYMENT') 
-            AND ((metadata#>>'{}')::jsonb->>'dueDate')::date <= CURRENT_DATE - INTERVAL '{$days} days'
-            LIMIT 1
-        ", [$accountId])->getRow();
-        
-        return $overdueInvoice ? true : false;
+        return $this->where('account_id', $accountId)
+                    ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                    ->where('due_date <=', date('Y-m-d', strtotime("-{$days} days")))
+                    ->countAllResults() > 0;
     }
 
     /**
@@ -212,12 +206,11 @@ class PaymentTransactionModel extends Model
      */
     public function getOverdueAccountIds(int $days = 3): array
     {
-        $db = \Config\Database::connect();
-        $results = $db->query("
-            SELECT DISTINCT account_id FROM payment_transactions 
-            WHERE status IN ('PENDING', 'AWAITING_PAYMENT') 
-            AND ((metadata#>>'{}')::jsonb->>'dueDate')::date <= CURRENT_DATE - INTERVAL '{$days} days'
-        ")->getResultArray();
+        $results = $this->select('account_id')
+                        ->distinct()
+                        ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                        ->where('due_date <=', date('Y-m-d', strtotime("-{$days} days")))
+                        ->findAll();
         
         return array_column($results, 'account_id');
     }

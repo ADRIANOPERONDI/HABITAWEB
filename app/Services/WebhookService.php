@@ -374,12 +374,12 @@ class WebhookService
             "gateway" => $gateway,
             "gateway_customer_id" => $data["customer"] ?? null,
             "amount" => $data["value"] ?? 0.00,
+            "due_date" => $data["dueDate"] ?? null,
             "status" => "PENDING", // Always start as pending
             "type" => "RECURRING_CHARGE",
             "payment_method" => $data["billingType"] ?? "UNKNOWN",
             "invoice_url" => $data["invoiceUrl"] ?? $data["bankSlipUrl"] ?? null,
             "description" => $data["description"] ?? "Renovação de Assinatura",
-            "due_date" => $data["dueDate"] ?? null,
             "metadata" => json_encode([
                 "invoice_url" => $data["invoiceUrl"] ?? null,
                 "subscription_cycle" => true

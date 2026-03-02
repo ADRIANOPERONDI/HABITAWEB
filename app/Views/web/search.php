@@ -124,6 +124,11 @@
                                                 <i class="fa-solid fa-shield-halved me-1"></i> Exclusivo
                                             </span>
                                         <?php endif; ?>
+                                        <?php if($property->is_verified): ?>
+                                            <span class="badge bg-info text-white shadow-sm rounded-pill px-3 py-2 fw-bold" style="background-color: #0d6efd !important;">
+                                                <i class="fa-solid fa-check-double me-1"></i> Verificado
+                                            </span>
+                                        <?php endif; ?>
                                     </div>
                                     
                                     <?php if(!empty($property->cover_image)): ?>
@@ -162,7 +167,12 @@
                                             <?php if($property->account_logo): ?>
                                                 <img src="<?= base_url($property->account_logo) ?>" class="rounded-circle border" width="24" height="24" alt="Logo">
                                             <?php endif; ?>
-                                            <span class="x-small text-muted fw-bold"><?= esc($property->account_name) ?></span>
+                                            <span class="x-small text-muted fw-bold">
+                                                <?= esc($property->account_name) ?>
+                                                <?php if($property->account_verified): ?>
+                                                    <i class="fa-solid fa-circle-check text-primary ms-1" title="Parceiro Verificado"></i>
+                                                <?php endif; ?>
+                                            </span>
                                         </div>
                                     </div>
                                 </div>

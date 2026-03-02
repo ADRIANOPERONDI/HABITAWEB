@@ -59,6 +59,13 @@ $routes->group('', ['filter' => 'session'], function($routes) {
 // DISABLE Shield default routes (we use custom admin routes)
 // service('auth')->routes($routes);
 
+// Enable only Email Activation routes for Shield
+$routes->group('auth/a', ['namespace' => 'CodeIgniter\Shield\Controllers'], function ($routes) {
+    $routes->get('show', 'ActionController::show');
+    $routes->post('verify', 'ActionController::verify');
+    $routes->get('resend', 'ActionController::resend');
+});
+
 // FORCE redirect from /login to /admin/login
 $routes->get('login', function() {
     return redirect()->to('/admin/login');
@@ -116,6 +123,14 @@ $routes->get('api/test-suite', 'Api\DocsController::testSuite');
 $routes->get('admin/login', '\App\Controllers\Admin\Auth\LoginController::loginView');
 $routes->post('admin/login', '\App\Controllers\Admin\Auth\LoginController::loginAction');
 $routes->get('admin/logout', '\App\Controllers\Admin\Auth\LoginController::logoutAction');
+
+// Magic Link (Esqueci Senha)
+$routes->group('login/magic-link', ['namespace' => 'CodeIgniter\Shield\Controllers'], function($routes) {
+    $routes->get('/', 'MagicLinkController::loginView', ['as' => 'magic-link']);
+    $routes->post('/', 'MagicLinkController::loginAction');
+    $routes->get('callback', 'MagicLinkController::loginCallback', ['as' => 'verify-magic-link']);
+    $routes->get('message', 'MagicLinkController::feedback', ['as' => 'magic-link-message']);
+});
 
 // Redireciona /admin se não estiver logado (via admin_auth)
 $routes->get('admin', '\App\Controllers\Admin\DashboardController::index', ['filter' => 'admin_auth']);
@@ -229,6 +244,13 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('curation', 'CurationController::index', ['filter' => 'group:superadmin,admin']);
     $routes->post('curation/resolve/(:num)', 'CurationController::resolveReport/$1', ['filter' => 'group:superadmin,admin']);
     $routes->get('curation/approve/(:num)', 'CurationController::approveProperty/$1', ['filter' => 'group:superadmin,admin']);
+
+    // Verification Routes (Anti-Fraud)
+    $routes->group('verification', ['filter' => 'group:superadmin,admin'], function($routes) {
+        $routes->get('/', 'VerificationController::index');
+        $routes->get('show/(:num)', 'VerificationController::show/$1');
+        $routes->post('update/(:num)', 'VerificationController::update/$1');
+    });
 
     // Notifications Routes
     $routes->get('notifications', 'NotificationController::getLatest');

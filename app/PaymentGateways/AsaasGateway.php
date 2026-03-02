@@ -67,11 +67,14 @@ class AsaasGateway implements GatewayInterface
     
     public function createSubscription(string $customerId, string $planId, array $data): array
     {
+        // Asaas Expected Cycles: WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, SEMIANNUALLY, YEARLY
+        $cycle = $data['cycle'] ?? 'MONTHLY'; // Defaults to MONTHLY if not provided mapping is 1-1 to internal
+
         $payload = [
             'customer' => $customerId,
             'billingType' => $data['billing_type'],
             'value' => $data['amount'],
-            'cycle' => 'MONTHLY',
+            'cycle' => $cycle,
             'description' => $data['description'],
             'nextDueDate' => $data['next_due_date'] ?? date('Y-m-d', strtotime('+3 days')),
             'externalReference' => $data['external_reference'] ?? ''

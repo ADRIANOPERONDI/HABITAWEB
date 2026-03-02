@@ -181,7 +181,7 @@ class PaymentService
     /**
      * Initialize a Subscription (Plan)
      */
-    public function initializeSubscription(int $accountId, int $planId, string $billingType, array $creditCard = [], ?string $couponCode = null)
+    public function initializeSubscription(int $accountId, int $planId, string $billingType, array $creditCard = [], ?string $couponCode = null, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3)
     {
         if (!$this->activeGateway) {
             throw new \Exception("Serviço de pagamento indisponível.");
@@ -195,17 +195,56 @@ class PaymentService
             throw new \Exception("Plano inválido.");
         }
         
+        // Determine Base Amount and Duration based on Chosen Cycle
+        $baseAmount = (float)$plan->preco_mensal;
+        $monthsToAdd = 1;
+        switch($billingCycle) {
+            case 'QUARTERLY': 
+                $baseAmount = (float)$plan->preco_trimestral; 
+                $monthsToAdd = 3;
+                break;
+            case 'SEMIANNUALLY': 
+                $baseAmount = (float)$plan->preco_semestral; 
+                $monthsToAdd = 6;
+                break;
+            case 'YEARLY': 
+                $baseAmount = (float)$plan->preco_anual; 
+                $monthsToAdd = 12;
+                break;
+        }
+
         // 1. Validate Coupon (Passing account_id for targeted coupons)
-        $couponData = $this->validateCoupon($couponCode, (float)$plan->preco_mensal, $accountId);
+        $couponData = $this->validateCoupon($couponCode, $baseAmount, $accountId);
         $finalAmount = $couponData['final_value'];
         $coupon = $couponData['coupon'] ?? null;
         
+        // Calcular vencimento inicial (Próximo Vencimento no Asaas)
+        $finalGraceDays = $gracePeriodDays;
+        
+        if ($couponData['valid'] && isset($couponData['coupon']) && $couponData['coupon']->carencia_valor > 0) {
+            $cValor = $couponData['coupon']->carencia_valor;
+            $cTipo = $couponData['coupon']->carencia_tipo;
+            
+            if ($cTipo === 'DAYS') {
+                $finalGraceDays = $cValor;
+            } elseif ($cTipo === 'MONTHS') {
+                $finalGraceDays = $cValor * 30;
+            } elseif ($cTipo === 'YEARS') {
+                $finalGraceDays = $cValor * 365;
+            }
+        }
+
+        $nextDueDate = date('Y-m-d', strtotime("+$finalGraceDays days"));
+
         // Prepare generic data for gateway
         $data = [
             'billing_type' => $billingType, // PIX, BOLETO, CREDIT_CARD
             'amount' => $finalAmount,
             'description' => "Assinatura Plano " . $plan->nome . ($coupon ? " (Cupom: {$coupon->code})" : ""),
-            'external_reference' => 'plan_' . $planId . '_acc_' . $accountId
+            'external_reference' => 'plan_' . $planId . '_acc_' . $accountId,
+            'cycle' => $billingCycle,
+            'next_due_date' => $nextDueDate,
+            'months_to_add' => $monthsToAdd // Used locally later
         ];
         
         if (!empty($creditCard)) {
@@ -282,11 +321,12 @@ class PaymentService
             'plan_id' => $planId,
             'status' => $status, 
             'data_inicio' => date('Y-m-d'),
-            'data_fim' => date('Y-m-d', strtotime('+30 days')),
+            'data_fim' => date('Y-m-d', strtotime('+' . $data['months_to_add'] . ' months')),
             'valor' => $finalAmount, 
             'asaas_subscription_id' => $subId, 
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
+            'billing_cycle' => $billingCycle,
             'next_billing_date' => $subscriptionData['next_billing_date'] ?? null
         ];
 
@@ -319,6 +359,7 @@ class PaymentService
             'gateway_subscription_id' => $subId,
             'payment_method' => $billingType,
             'amount' => $finalAmount,
+            'due_date' => max($subscriptionData['first_payment']['dueDate'] ?? $nextDueDate, date('Y-m-d')), // Prevent backdated first payment
             'status' => 'PENDING',
             'type' => 'SUBSCRIPTION',
             'subscription_id' => $localSubId,
@@ -593,6 +634,24 @@ class PaymentService
             return ['valid' => false, 'message' => 'Cupom inválido ou expirado.', 'discount_amount' => 0, 'final_value' => $originalValue, 'coupon' => null];
         }
 
+        // Nova Regra: Não permitir cupom com carência em planos que já possuem carência
+        $planModel = model('App\Models\PlanModel');
+        $plan = $planModel->where('preco_mensal', $originalValue) // Busca aproximada pelo valor orignal se não passar ID
+                          ->orWhere('preco_trimestral', $originalValue)
+                          ->orWhere('preco_semestral', $originalValue)
+                          ->orWhere('preco_anual', $originalValue)
+                          ->first();
+
+        if ($plan && $plan->carencia_dias > 0 && $coupon->carencia_valor > 0) {
+            return [
+                'valid' => false, 
+                'message' => 'Este plano já possui carência e não aceita cupons de carência acumulada.', 
+                'discount_amount' => 0, 
+                'final_value' => $originalValue, 
+                'coupon' => null
+            ];
+        }
+
         $discount = 0;
         if ($coupon->discount_type === 'percent') {
             $discount = $originalValue * ($coupon->discount_value / 100);
@@ -615,7 +674,7 @@ class PaymentService
     /**
      * Start a Tokenization Payment (Manual Recurrence Flow)
      */
-    public function initiateTokenizationPayment(int $accountId, int $planId, string $billingType, ?string $couponCode = null)
+    public function initiateTokenizationPayment(int $accountId, int $planId, string $billingType, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $couponCode = null)
     {
         if (!$this->activeGateway) {
             throw new \Exception("Serviço de pagamento indisponível.");
@@ -629,17 +688,50 @@ class PaymentService
             throw new \Exception("Plano inválido.");
         }
 
+        // Determine Base Amount and Duration based on Chosen Cycle
+        $baseAmount = (float)$plan->preco_mensal;
+        $monthsToAdd = 1;
+        switch($billingCycle) {
+            case 'QUARTERLY': 
+                $baseAmount = (float)$plan->preco_trimestral; 
+                $monthsToAdd = 3;
+                break;
+            case 'SEMIANNUALLY': 
+                $baseAmount = (float)$plan->preco_semestral; 
+                $monthsToAdd = 6;
+                break;
+            case 'YEARLY': 
+                $baseAmount = (float)$plan->preco_anual; 
+                $monthsToAdd = 12;
+                break;
+        }
+
         // 1. Validate Coupon
-        $couponData = $this->validateCoupon($couponCode, (float)$plan->preco_mensal, $accountId);
+        $couponData = $this->validateCoupon($couponCode, $baseAmount, $accountId);
         $finalAmount = $couponData['final_value'];
         $coupon = $couponData['coupon'] ?? null;
+
+        // Calcular vencimento da primeira fatura
+        $finalGraceDays = $gracePeriodDays;
+        if ($couponData['valid'] && isset($couponData['coupon']) && $couponData['coupon']->carencia_valor > 0) {
+            $cValor = $couponData['coupon']->carencia_valor;
+            $cTipo = $couponData['coupon']->carencia_tipo;
+            
+            if ($cTipo === 'DAYS') {
+                $finalGraceDays = $cValor;
+            } elseif ($cTipo === 'MONTHS') {
+                $finalGraceDays = $cValor * 30;
+            } elseif ($cTipo === 'YEARS') {
+                $finalGraceDays = $cValor * 365;
+            }
+        }
 
         // 2. Prepare Data for One-Time Charge
         $data = [
             'billing_type' => $billingType,
-            'description' => "Assinatura Plano " . $plan->nome . " (Primeira Fatura)",
+            'description' => "Assinatura Plano " . $plan->nome . " (Primeira Fatura) - Ciclo " . urlencode($billingCycle),
             'external_reference' => 'init_' . $planId . '_acc_' . $accountId . '_' . time(),
-            'due_date' => date('Y-m-d'), // Due today
+            'due_date' => date('Y-m-d', strtotime("+$finalGraceDays days")),
             'tokenizeCreditCard' => ($billingType === 'CREDIT_CARD') // Request token if CC
         ];
 
@@ -656,12 +748,13 @@ class PaymentService
             'plan_id' => $planId,
             'status' => 'PENDING', // Will activate on Webhook
             'data_inicio' => date('Y-m-d'),
-            'data_fim' => date('Y-m-d', strtotime('+30 days')),
+            'data_fim' => date('Y-m-d', strtotime("+$monthsToAdd months")),
             'valor' => $finalAmount,
             'asaas_subscription_id' => null, // Managed manually
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
-            'next_billing_date' => date('Y-m-d', strtotime('+30 days'))
+            'billing_cycle' => $billingCycle,
+            'next_billing_date' => date('Y-m-d', strtotime("+$monthsToAdd months"))
         ];
 
         $this->subscriptionModel->insert($subscription);
@@ -676,6 +769,7 @@ class PaymentService
             'gateway_subscription_id' => null, // One-time charge
             'payment_method' => $billingType,
             'amount' => $finalAmount,
+            'due_date' => $data['due_date'] ?? null,
             'status' => 'PENDING',
             'type' => 'TOKENIZATION_CHARGE', // Marker for webhook
             'subscription_id' => $localSubId,
@@ -930,6 +1024,7 @@ class PaymentService
                         'gateway_transaction_id' => $gatewayPaymentId,
                         'gateway_customer_id'    => $customerId,
                         'amount'          => $p['amount'],
+                        'due_date'        => $p['dueDate'] ?? null,
                         'status'          => ($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') ? 'SUCCESS' : 'PENDING',
                         'type'            => $type,
                         'payment_method'  => $p['billing_type'],

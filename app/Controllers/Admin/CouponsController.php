@@ -70,6 +70,8 @@ class CouponsController extends BaseController
             'valid_from' => 'permit_empty|valid_date',
             'valid_until' => 'permit_empty|valid_date',
             'account_id' => 'permit_empty|integer',
+            'carencia_valor' => 'permit_empty|integer',
+            'carencia_tipo' => 'permit_empty|in_list[DAYS,MONTHS,YEARS]',
             'is_active' => 'permit_empty'
         ];
 
@@ -86,6 +88,8 @@ class CouponsController extends BaseController
             'min_value' => $this->request->getPost('min_value') ?: null,
             'valid_from' => $this->request->getPost('valid_from') ?: null,
             'valid_until' => $this->request->getPost('valid_until') ?: null,
+            'carencia_valor' => $this->request->getPost('carencia_valor') ?: 0,
+            'carencia_tipo' => $this->request->getPost('carencia_tipo') ?: 'DAYS',
             'is_active' => $this->request->getPost('is_active') ? true : false,
             'used_count' => 0
         ];
@@ -146,6 +150,8 @@ class CouponsController extends BaseController
             'valid_from' => 'permit_empty|valid_date',
             'valid_until' => 'permit_empty|valid_date',
             'account_id' => 'permit_empty|integer',
+            'carencia_valor' => 'permit_empty|integer',
+            'carencia_tipo' => 'permit_empty|in_list[DAYS,MONTHS,YEARS]',
             'is_active' => 'permit_empty'
         ];
 
@@ -162,6 +168,8 @@ class CouponsController extends BaseController
             'min_value' => $this->request->getPost('min_value') ?: null,
             'valid_from' => $this->request->getPost('valid_from') ?: null,
             'valid_until' => $this->request->getPost('valid_until') ?: null,
+            'carencia_valor' => $this->request->getPost('carencia_valor') ?: 0,
+            'carencia_tipo' => $this->request->getPost('carencia_tipo') ?: 'DAYS',
             'is_active' => $this->request->getPost('is_active') ? true : false
         ];
 

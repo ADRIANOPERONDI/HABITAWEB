@@ -115,6 +115,7 @@ class AccountService
     {
         return [
             'partners' => $this->accountModel
+                ->select('accounts.*')
                 ->where('status', 'ACTIVE')
                 ->orderBy('nome', 'ASC')
                 ->paginate($perPage),
@@ -128,6 +129,7 @@ class AccountService
     public function getFeaturedPartners(int $limit = 12): array
     {
         return $this->accountModel
+            ->select('accounts.*')
             ->where('logo !=', null)
             ->where('status', 'ACTIVE')
             ->orderBy('tipo_conta', 'ASC')
@@ -198,7 +200,7 @@ class AccountService
                 'username' => explode('@', $data['email'])[0] . rand(100,999),
                 'email'    => $data['email'],
                 'password' => $data['password'],
-                'active'   => 1,
+                'active'   => 0,
                 'account_id' => $accountId
             ]);
             

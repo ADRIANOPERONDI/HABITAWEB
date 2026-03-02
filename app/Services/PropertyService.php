@@ -288,7 +288,7 @@ class PropertyService
     {
         // Use Builder to allow Joins
         $builder = $this->propertyModel->builder();
-        $builder->select('properties.*')
+        $builder->select('properties.*, accounts.is_verified as account_verified')
                 ->where('properties.status', 'ACTIVE');
 
         // Joins para buscar dados do Plano + Assinatura (WEIGHTED SORT)
@@ -296,6 +296,7 @@ class PropertyService
                 ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
                 ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
                 ->groupBy('properties.id')
+                ->groupBy('accounts.is_verified')
                 ->groupBy('plans.preco_mensal'); // Required for ORDER BY in Postgres
 
         // Formula: (PlanPrice + (IsDestaque * 100) + (TurboLevel * 100)) * (Score / 100)
@@ -339,15 +340,16 @@ class PropertyService
     public function getSponsoredProperties(int $limit = 4): array
     {
         $builder = $this->propertyModel->builder();
-        $builder->select('properties.*')
+        $builder->select('properties.*, accounts.is_verified as account_verified')
+                ->join('accounts', 'accounts.id = properties.account_id', 'left')
                 ->where('properties.status', 'ACTIVE')
                 ->groupStart()
                     ->where('properties.is_destaque', true)
                     ->orWhere('properties.highlight_level >', 0)
-                ->groupEnd();
-
-        // Ordenação aleatória para dar chance a todos os patrocinados
-        $builder->orderBy('RANDOM()');
+                ->groupEnd()
+                ->groupBy('properties.id')
+                ->groupBy('accounts.is_verified')
+                ->orderBy('RANDOM()');
                 
         $properties = $builder->get($limit)->getResult(\App\Entities\Property::class);
 
@@ -379,7 +381,7 @@ class PropertyService
      */
     public function listProperties(array $filters = [], int $perPage = 15): array
     {
-        $builder = $this->propertyModel->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo')
+        $builder = $this->propertyModel->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
                                        ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
                                        ->join('accounts', 'accounts.id = properties.account_id', 'left');
 
@@ -387,10 +389,11 @@ class PropertyService
         $builder->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
                 ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
                 ->groupBy('properties.id')
-                ->groupBy('accounts.tipo_conta')  // Required for SELECT in Postgres
-                ->groupBy('accounts.nome')        // Required for SELECT
-                ->groupBy('accounts.logo')        // Required for SELECT
-                ->groupBy('plans.preco_mensal');  // Required for ORDER BY
+                ->groupBy('accounts.tipo_conta')  
+                ->groupBy('accounts.nome')       
+                ->groupBy('accounts.logo')       
+                ->groupBy('accounts.is_verified')
+                ->groupBy('plans.preco_mensal');
 
         // Esconder propriedades de contas com faturas atrasadas há mais de 3 dias
         $txModel = model('App\Models\PaymentTransactionModel');
@@ -475,7 +478,7 @@ class PropertyService
      */
     public function getPropertyDetails(int $id): ?array
     {
-        $property = $this->propertyModel->select('properties.*, accounts.nome as account_name, accounts.telefone as account_phone, accounts.whatsapp as account_whatsapp, accounts.email as account_email, accounts.creci as account_creci, accounts.tipo_conta as account_type, accounts.logo as account_logo, accounts.whatsapp_hub_config, accounts.whatsapp_messages_config, clients.nome as client_name')
+        $property = $this->propertyModel->select('properties.*, accounts.nome as account_name, accounts.telefone as account_phone, accounts.whatsapp as account_whatsapp, accounts.email as account_email, accounts.creci as account_creci, accounts.tipo_conta as account_type, accounts.logo as account_logo, accounts.is_verified as account_verified, accounts.whatsapp_hub_config, accounts.whatsapp_messages_config, clients.nome as client_name')
                                    ->join('accounts', 'accounts.id = properties.account_id', 'left')
                                    ->join('clients', 'clients.id = properties.client_id', 'left')
                                    ->find($id);

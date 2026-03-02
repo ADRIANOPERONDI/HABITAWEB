@@ -60,6 +60,7 @@ class PlansController extends BaseController
             'limite_imoveis' => 'required|integer',
             'destacar_imoveis' => 'required|integer',
             'fotos_por_imovel' => 'required|integer',
+            'carencia_dias' => 'required|integer|greater_than_equal_to[0]',
             'ativo' => 'permit_empty'
         ];
 
@@ -74,6 +75,7 @@ class PlansController extends BaseController
             'limite_imoveis' => $this->request->getPost('limite_imoveis'),
             'destacar_imoveis' => $this->request->getPost('destacar_imoveis'),
             'fotos_por_imovel' => $this->request->getPost('fotos_por_imovel'),
+            'carencia_dias' => $this->request->getPost('carencia_dias'),
             'ativo' => $this->request->getPost('ativo') ? true : false
         ];
 
@@ -127,6 +129,7 @@ class PlansController extends BaseController
             'limite_imoveis' => 'required|integer',
             'destacar_imoveis' => 'required|integer',
             'fotos_por_imovel' => 'required|integer',
+            'carencia_dias' => 'required|integer|greater_than_equal_to[0]',
             'ativo' => 'permit_empty'
         ];
 
@@ -141,6 +144,7 @@ class PlansController extends BaseController
             'limite_imoveis' => $this->request->getPost('limite_imoveis'),
             'destacar_imoveis' => $this->request->getPost('destacar_imoveis'),
             'fotos_por_imovel' => $this->request->getPost('fotos_por_imovel'),
+            'carencia_dias' => $this->request->getPost('carencia_dias'),
             'ativo' => $this->request->getPost('ativo') ? true : false
         ];
 

@@ -40,6 +40,7 @@ class Filters extends BaseFilters
         'api_rate_limit'=> \App\Filters\ApiRateLimit::class,
         // Filtro de Instalação
         'installation_check' => \App\Filters\InstallationCheck::class,
+        'verification'  => \App\Filters\VerificationFilter::class,
     ];
 
     /**
@@ -118,6 +119,13 @@ class Filters extends BaseFilters
         'api_rate_limit' => [
             'before' => [
                 'api/*', // Rate limit em TODAS rotas de API
+            ]
+        ],
+        'verification' => [
+            'before' => [
+                'admin/properties*',
+                'admin/media*',
+                'admin/clients*',
             ]
         ],
     ];

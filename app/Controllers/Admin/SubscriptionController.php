@@ -18,28 +18,26 @@ class SubscriptionController extends BaseController
         
         $accountId = $user->account_id ?? 1; // Only admins can have null account_id
 
+        $subscriptionModel = model('App\Models\SubscriptionModel');
+        $planModel = model('App\Models\PlanModel');
+        $propertyModel = model('App\Models\PropertyModel');
+
         // Sincronizar pagamentos pendentes com o gateway (Garante que cobranças órfãs apareçam)
         try {
             $paymentService = new \App\Services\PaymentService();
             $paymentService->syncPendingPayments($accountId);
             
-            // [Double Verification] Busca QUALQUER assinatura que não esteja finalizada para sincronizar
-            $subscriptionModel = model('App\Models\SubscriptionModel');
+            // [Double Verification] Busca assinaturas para sincronizar (inclui ACTIVE para checar se expirou ou se há faturas novas)
             $staleSubs = $subscriptionModel->where('account_id', $accountId)
-                                         ->whereNotIn('status', ['CANCELLED', 'EXPIRED', 'INACTIVE'])
+                                         ->whereIn('status', ['ACTIVE', 'SUSPENDED', 'PENDING', 'AWAITING_PAYMENT'])
                                          ->findAll();
-            
+
             foreach ($staleSubs as $subToSync) {
                  $paymentService->syncSubscriptionStatus($subToSync->id);
             }
-            
         } catch (\Exception $e) {
             log_message('error', '[SubscriptionController] Erro ao sincronizar pagamentos/status: ' . $e->getMessage());
         }
-
-        $subscriptionModel = model('App\Models\SubscriptionModel');
-        $planModel = model('App\Models\PlanModel');
-        $propertyModel = model('App\Models\PropertyModel');
 
         $subscription = $subscriptionModel->where('account_id', $accountId)
                                          ->where('status', 'ACTIVE')

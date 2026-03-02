@@ -84,6 +84,11 @@
                                 <span class="badge bg-warning text-dark shadow-sm rounded-pill px-3 py-2 fw-bold">
                                     <i class="fa-solid fa-certificate me-1"></i> Patrocinado
                                 </span>
+                                <?php if($property->is_verified): ?>
+                                    <span class="badge bg-info text-white shadow-sm rounded-pill px-3 py-2 fw-bold" style="background-color: #0d6efd !important;">
+                                        <i class="fa-solid fa-check-double me-1"></i> Verificado
+                                    </span>
+                                <?php endif; ?>
                              </div>
                             
                             <?php if($property->cover_image): ?>
@@ -159,6 +164,11 @@
                                                 <i class="fa-solid fa-shield-halved me-1"></i> Exclusivo
                                             </span>
                                         <?php endif; ?>
+                                        <?php if($property->is_verified): ?>
+                                            <span class="badge bg-info text-white shadow-sm rounded-pill px-3 py-2 fw-bold" style="background-color: #0d6efd !important;">
+                                                <i class="fa-solid fa-check-double me-1"></i> Verificado
+                                            </span>
+                                        <?php endif; ?>
                                      </div>
                                     
                                     <?php if($property->cover_image): ?>
@@ -221,7 +231,12 @@
                 <?php foreach($partners as $partner): ?>
                 <div class="col-6 col-md-3 col-lg-2">
                     <a href="<?= site_url('anunciante/' . $partner->id) ?>" class="text-decoration-none">
-                        <div class="partner-card animate-fade-in bg-white shadow-sm h-100 p-3 rounded-4">
+                        <div class="partner-card animate-fade-in bg-white shadow-sm h-100 p-3 rounded-4 position-relative">
+                            <?php if($partner->is_verified): ?>
+                                <div class="position-absolute top-0 end-0 m-2 text-primary" title="Parceiro Verificado">
+                                    <i class="fa-solid fa-circle-check fs-6"></i>
+                                </div>
+                            <?php endif; ?>
                             <img src="<?= base_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2">
                             <div class="small fw-bold text-dark text-truncate d-block"><?= esc($partner->nome) ?></div>
                             <span class="xsmall text-muted text-uppercase" style="font-size: 10px;"><?= esc($partner->tipo_conta) ?></span>

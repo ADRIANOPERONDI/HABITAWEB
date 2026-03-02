@@ -71,6 +71,7 @@ class CheckoutController extends BaseController
         $rules = [
             'plan_id' => 'required|integer',
             'billing_type' => 'required|in_list[PIX,BOLETO,CREDIT_CARD]',
+            'billing_cycle' => 'required|in_list[MONTHLY,QUARTERLY,SEMIANNUALLY,YEARLY]',
         ];
 
         if (!$this->validate($rules)) {
@@ -79,8 +80,13 @@ class CheckoutController extends BaseController
 
         $planId = $this->request->getPost('plan_id');
         $billingType = $this->request->getPost('billing_type');
+        $billingCycle = $this->request->getPost('billing_cycle');
         $user = auth()->user();
         $couponCode = $this->request->getPost('coupon_code');
+
+        $planModel = model('App\Models\PlanModel');
+        $plan = $planModel->find($planId);
+        $gracePeriodDays = $plan ? (int)$plan->carencia_dias : 3;
 
         try {
             log_message('debug', '[Checkout] Processando pagamento para conta ' . $user->account_id);
@@ -91,6 +97,8 @@ class CheckoutController extends BaseController
                     $user->account_id,
                     $planId,
                     $billingType,
+                    $billingCycle,
+                    $gracePeriodDays,
                     $couponCode
                 );
             } else {
@@ -101,7 +109,9 @@ class CheckoutController extends BaseController
                     $planId,
                     $billingType,
                     [], // No card data yet for redirect flow
-                    $couponCode
+                    $couponCode,
+                    $billingCycle,
+                    $gracePeriodDays
                 );
             }
 
@@ -153,6 +163,7 @@ class CheckoutController extends BaseController
     {
         $code = $this->request->getGet('code');
         $planId = $this->request->getGet('plan_id');
+        $cycle = $this->request->getGet('billing_cycle') ?? 'MONTHLY';
         
         if (empty($code) || empty($planId)) {
              return $this->response->setJSON(['valid' => false, 'message' => 'Dados incompletos.']);
@@ -165,12 +176,19 @@ class CheckoutController extends BaseController
              return $this->response->setJSON(['valid' => false, 'message' => 'Plano inválido.']);
         }
         
+        $basePrice = (float)$plan->preco_mensal;
+        switch($cycle) {
+            case 'QUARTERLY': $basePrice = (float)$plan->preco_trimestral; break;
+            case 'SEMIANNUALLY': $basePrice = (float)$plan->preco_semestral; break;
+            case 'YEARLY': $basePrice = (float)$plan->preco_anual; break;
+        }
+
         $accountId = null;
         if (auth()->loggedIn() && auth()->user()->account_id) {
             $accountId = auth()->user()->account_id;
         }
 
-        $result = $this->paymentService->validateCoupon($code, (float)$plan->preco_mensal, $accountId);
+        $result = $this->paymentService->validateCoupon($code, $basePrice, $accountId);
         
         return $this->response->setJSON($result);
     }

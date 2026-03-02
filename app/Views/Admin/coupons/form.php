@@ -66,6 +66,22 @@
                         <input type="date" name="valid_until" class="form-control" value="<?= old('valid_until', isset($coupon->valid_until) ? date('Y-m-d', strtotime($coupon->valid_until)) : '') ?>">
                     </div>
                 </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold"><i class="fas fa-clock"></i> Carência por Cupom</label>
+                        <input type="number" name="carencia_valor" class="form-control" placeholder="0" value="<?= old('carencia_valor', $coupon->carencia_valor ?? 0) ?>">
+                        <small class="text-muted">Valor da carência (0 = sem carência)</small>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Tipo de Carência</label>
+                        <select name="carencia_tipo" class="form-select">
+                            <option value="DAYS" <?= (old('carencia_tipo', $coupon->carencia_tipo ?? 'DAYS') == 'DAYS') ? 'selected' : '' ?>>Dias</option>
+                            <option value="MONTHS" <?= (old('carencia_tipo', $coupon->carencia_tipo ?? 'DAYS') == 'MONTHS') ? 'selected' : '' ?>>Meses</option>
+                            <option value="YEARS" <?= (old('carencia_tipo', $coupon->carencia_tipo ?? 'DAYS') == 'YEARS') ? 'selected' : '' ?>>Anos</option>
+                        </select>
+                    </div>
+                </div>
                 
                 <div class="mb-4">
                      <div class="form-check form-switch">

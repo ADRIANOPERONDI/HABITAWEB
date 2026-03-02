@@ -15,9 +15,36 @@
                         <span class="fw-bold text-primary"><?= esc($plan->nome) ?></span>
                     </div>
                     
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <span class="text-muted">Ciclo</span>
-                        <span class="badge bg-light text-dark">Mensal</span>
+                    <!-- Billing Cycle Selector -->
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold text-muted d-block">Ciclo de Pagamento</label>
+                        <div class="nav nav-pills nav-fill gap-2" id="cycle-tab" role="tablist">
+                            <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_monthly" value="MONTHLY" checked autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_monthly">
+                                Mensal
+                            </label>
+
+                            <?php if(isset($plan->preco_trimestral) && $plan->preco_trimestral > 0): ?>
+                            <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_quarterly" value="QUARTERLY" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_quarterly">
+                                Trimestral
+                            </label>
+                            <?php endif; ?>
+
+                            <?php if(isset($plan->preco_semestral) && $plan->preco_semestral > 0): ?>
+                            <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_semiannually" value="SEMIANNUALLY" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_semiannually">
+                                Semestral
+                            </label>
+                            <?php endif; ?>
+
+                            <?php if(isset($plan->preco_anual) && $plan->preco_anual > 0): ?>
+                            <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_yearly" value="YEARLY" autocomplete="off">
+                            <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_yearly">
+                                Anual
+                            </label>
+                            <?php endif; ?>
+                        </div>
                     </div>
 
                     <!-- Coupon Input -->
@@ -60,6 +87,7 @@
                         <?= csrf_field() ?>
                         <input type="hidden" name="plan_id" value="<?= $plan->id ?>">
                         <input type="hidden" name="coupon_code" id="hidden_coupon_code">
+                        <input type="hidden" name="billing_cycle" id="hidden_billing_cycle" value="MONTHLY">
                         
                         <!-- Payment Methods Grid -->
                         <div class="row g-3 mb-4">
@@ -207,6 +235,39 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Processando...';
     });
     
+    // --- Cycle & Pricing Logic ---
+    const cycleRadios = document.querySelectorAll('input[name="billing_cycle_display"]');
+    const hiddenCycle = document.getElementById('hidden_billing_cycle');
+    
+    // PHP injected prices
+    const prices = {
+        'MONTHLY': <?= $plan->preco_mensal ?: 0 ?>,
+        'QUARTERLY': <?= $plan->preco_trimestral ?: 0 ?>,
+        'SEMIANNUALLY': <?= $plan->preco_semestral ?: 0 ?>,
+        'YEARLY': <?= $plan->preco_anual ?: 0 ?>
+    };
+    
+    let currentBasePrice = prices['MONTHLY'];
+    
+    cycleRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            hiddenCycle.value = this.value;
+            currentBasePrice = prices[this.value];
+            updateTotalDisplay();
+            
+            // Re-validate coupon if one is already applied
+            if (hiddenCoupon.value) {
+                applyCouponBtn.click();
+            }
+        });
+    });
+
+    function updateTotalDisplay() {
+        if(!hiddenCoupon.value) {
+            totalDisplay.textContent = 'R$ ' + currentBasePrice.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+        }
+    }
+    
     // --- Coupon Logic ---
     const applyCouponBtn = document.getElementById('apply_coupon_btn');
     const couponInput = document.getElementById('coupon_code_input');
@@ -215,9 +276,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const discountDisplay = document.getElementById('discount_display');
     const totalDisplay = document.getElementById('total_display');
     const hiddenCoupon = document.getElementById('hidden_coupon_code');
-    
-    // Use PHP to inject original price safely
-    const originalPrice = <?= $plan->preco_mensal ?>;
     
     applyCouponBtn.addEventListener('click', function() {
         const code = couponInput.value.trim();
@@ -230,7 +288,8 @@ document.addEventListener('DOMContentLoaded', function() {
         applyCouponBtn.disabled = true;
         
         // AJAX Request
-        fetch('<?= site_url("checkout/validate-coupon") ?>?plan_id=<?= $plan->id ?>&code=' + encodeURIComponent(code))
+        // Pass out the current cycle value so the backend correctly verifies validity over the correct amount
+        fetch('<?= site_url("checkout/validate-coupon") ?>?plan_id=<?= $plan->id ?>&code=' + encodeURIComponent(code) + '&billing_cycle=' + encodeURIComponent(hiddenCycle.value))
             .then(response => response.json())
             .then(data => {
                 applyCouponBtn.disabled = false;
@@ -260,7 +319,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Reset Values
                     discountRow.classList.add('d-none');
-                    totalDisplay.textContent = 'R$ ' + originalPrice.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+                    updateTotalDisplay();
                     hiddenCoupon.value = '';
                 }
             })

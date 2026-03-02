@@ -10,6 +10,7 @@ class Account extends Entity
     protected $dates   = ['created_at', 'updated_at', 'deleted_at'];
     protected $casts   = [
         'whatsapp_hub_config' => 'json-array',
-        'whatsapp_messages_config' => 'json-array'
+        'whatsapp_messages_config' => 'json-array',
+        'is_verified' => 'boolean'
     ];
 }

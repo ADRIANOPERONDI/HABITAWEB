@@ -14,7 +14,8 @@ class CouponModel extends Model
     protected $protectFields    = true;
     protected $allowedFields    = [
         'account_id', 'code', 'description', 'discount_type', 'discount_value', 
-        'max_uses', 'used_count', 'valid_from', 'valid_until', 'is_active'
+        'max_uses', 'used_count', 'valid_from', 'valid_until', 'is_active',
+        'carencia_valor', 'carencia_tipo'
     ];
 
     // Dates

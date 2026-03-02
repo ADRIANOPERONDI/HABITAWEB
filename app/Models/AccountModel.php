@@ -14,7 +14,9 @@ class AccountModel extends Model
     protected $protectFields    = true;
     protected $allowedFields    = [
         'tipo_conta', 'nome', 'documento', 'email', 'telefone', 'whatsapp', 'creci', 'status', 'logo',
-        'whatsapp_hub_config', 'whatsapp_messages_config'
+        'whatsapp_hub_config', 'whatsapp_messages_config',
+        'is_verified', 'verification_status', 'id_front', 'id_back', 'selfie', 'verification_notes',
+        'liveness_data'
     ];
 
     protected bool $allowEmptyInserts = false;

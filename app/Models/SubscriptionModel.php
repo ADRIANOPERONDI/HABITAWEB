@@ -13,8 +13,9 @@ class SubscriptionModel extends Model
     protected $useSoftDeletes   = true;
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'account_id', 'plan_id', 'status', 'data_inicio', 'data_fim', 'proximo_pagamento',
-        'asaas_subscription_id', 'asaas_customer_id', 'payment_method'
+        'account_id', 'plan_id', 'status', 'billing_cycle', 'data_inicio', 'data_fim',
+        'proximo_pagamento', 'asaas_subscription_id', 'asaas_customer_id',
+        'payment_method', 'next_billing_date'
     ];
 
     protected bool $allowEmptyInserts = false;

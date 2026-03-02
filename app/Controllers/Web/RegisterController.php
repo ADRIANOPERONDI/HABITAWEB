@@ -37,7 +37,7 @@ class RegisterController extends BaseController
         // Limpeza de documento para validação de unicidade
         $documento = preg_replace('/[^0-9]/', '', $this->request->getPost('documento'));
         if ($this->accountService->documentExists($documento)) {
-            return redirect()->back()->withInput()->with('errors', ['documento' => 'Este ' . $this->request->getPost('tipo_documento') . ' já está cadastrado.']);
+            return redirect()->back()->withInput()->with('errors', ['documento' => lang('App.msg_document_exists', [$this->request->getPost('tipo_documento')])]);
         }
 
         if (!$this->validate($rules)) {
@@ -49,10 +49,7 @@ class RegisterController extends BaseController
         try {
             $user = $this->accountService->registerUser($data);
 
-            // Login user
-            auth()->login($user);
-
-            return redirect()->to('admin')->with('message', 'Conta criada! Escolha um plano para começar.');
+            return redirect()->to('admin')->with('message', lang('App.register_success'));
 
         } catch (\Exception $e) {
             return redirect()->back()->withInput()->with('error', $e->getMessage());
@@ -76,7 +73,7 @@ class RegisterController extends BaseController
         return $this->response->setJSON([
             'exists' => $exists, 
             'valid' => true,
-            'message' => $exists ? 'Este e-mail já está cadastrado.' : 'E-mail disponível.'
+            'message' => $exists ? lang('App.msg_email_exists') : lang('App.msg_email_available')
         ]);
     }
 
@@ -96,7 +93,7 @@ class RegisterController extends BaseController
                      
         return $this->response->setJSON([
             'exists' => $exists, 
-            'message' => $exists ? 'Este ' . $tipo . ' já está cadastrado.' : 'Disponível.'
+            'message' => $exists ? lang('App.msg_document_exists', [$tipo]) : lang('App.msg_document_available')
         ]);
     }
 }

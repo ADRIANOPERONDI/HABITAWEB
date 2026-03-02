@@ -52,14 +52,18 @@
                         <div class="form-text">Deixe vazio para ilimitado ou defina um número exato.</div>
                     </div>
 
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label">Fotos por Imóvel</label>
                             <input type="number" name="limite_fotos_por_imovel" class="form-control" value="<?= old('limite_fotos_por_imovel', $plan->limite_fotos_por_imovel ?? '10') ?>" required>
                         </div>
-                         <div class="col-md-6">
+                         <div class="col-md-4">
                             <label class="form-label">Destaques Mensais</label>
                             <input type="number" name="destaques_mensais" class="form-control" value="<?= old('destaques_mensais', $plan->destaques_mensais ?? '0') ?>" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Carência (Dias)</label>
+                            <input type="number" name="carencia_dias" class="form-control" value="<?= old('carencia_dias', $plan->carencia_dias ?? '3') ?>" required>
+                            <div class="form-text">P/ a 1ª Fatura.</div>
                         </div>
                     </div>
 

@@ -147,6 +147,17 @@
             <a href="<?= site_url('admin/accounts') ?>" class="nav-link">
                 <i class="fa-solid fa-briefcase"></i> Contas
             </a>
+
+            <?php 
+                $pendingVerifications = model('App\Models\AccountModel')->where('verification_status', 'PENDING')->countAllResults(false);
+            ?>
+            <a href="<?= site_url('admin/verification') ?>" class="nav-link <?= strpos(uri_string(), 'verification') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-shield-halved"></i> Verificações
+                <?php if ($pendingVerifications > 0): ?>
+                    <span class="badge bg-danger rounded-pill ms-auto"><?= $pendingVerifications ?></span>
+                <?php endif; ?>
+            </a>
+
              <a href="<?= site_url('admin/users') ?>" class="nav-link">
                 <i class="fa-solid fa-user-gear"></i> Usuários
             </a>

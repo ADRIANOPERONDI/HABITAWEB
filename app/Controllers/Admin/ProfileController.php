@@ -52,6 +52,40 @@ class ProfileController extends BaseController
             $data['logo'] = 'uploads/accounts/' . $newName;
         }
 
+        // --- VERIFICATION DOCUMENTS ---
+        $docUploaded = false;
+        foreach (['id_front', 'id_back', 'selfie'] as $field) {
+            $docFile = $this->request->getFile($field);
+            if ($docFile && $docFile->isValid() && !$docFile->hasMoved()) {
+                $newName = $docFile->getRandomName();
+                $docFile->move(FCPATH . 'uploads/verification', $newName);
+                $data[$field] = 'uploads/verification/' . $newName;
+                $docUploaded = true;
+            }
+        }
+
+        // --- LIVENESS FRAMES (BIOMETRY) ---
+        $livenessFrames = $this->request->getFiles();
+        if (isset($livenessFrames['liveness_frames'])) {
+            $capturedPaths = [];
+            foreach ($livenessFrames['liveness_frames'] as $frame) {
+                if ($frame && $frame->isValid() && !$frame->hasMoved()) {
+                    $newName = $frame->getRandomName();
+                    $frame->move(FCPATH . 'uploads/verification/liveness', $newName);
+                    $capturedPaths[] = 'uploads/verification/liveness/' . $newName;
+                }
+            }
+            if (!empty($capturedPaths)) {
+                $data['liveness_data'] = json_encode($capturedPaths);
+                $docUploaded = true;
+            }
+        }
+
+        // Se enviou novos documentos e não está APROVADO, muda para PENDING
+        if ($docUploaded && $account->verification_status !== 'APPROVED') {
+            $data['verification_status'] = 'PENDING';
+        }
+
         if ($accountModel->update($account->id, $data)) {
             return redirect()->back()->with('message', 'Perfil atualizado com sucesso!');
         }

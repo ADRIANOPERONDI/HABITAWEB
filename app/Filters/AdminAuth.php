@@ -31,13 +31,19 @@ class AdminAuth implements FilterInterface
         $currentPath = uri_string();
         log_message('debug', '[AdminAuth] Verificando Rota: ' . $currentPath);
         
-        // Allowed paths for unpaid users
-        $allowed = ['checkout', 'admin/logout', 'admin/subscription', 'api-keys'];
+        // Allowed paths for unpaid users or users needing verification
+        $allowed = ['checkout', 'admin/logout', 'admin/subscription', 'api-keys', 'auth/a/'];
         foreach ($allowed as $path) {
             if (str_starts_with($currentPath, $path)) {
                 log_message('debug', '[AdminAuth] Rota permitida: ' . $currentPath);
                 return;
             }
+        }
+
+        // Check if user is active (email verified)
+        $user = auth()->user();
+        if ($user && ! $user->active) {
+            return redirect()->to(site_url('auth/a/show'));
         }
 
         // Force Re-fetch to bypass Session Cache issues
@@ -56,24 +62,39 @@ class AdminAuth implements FilterInterface
                 $txModel = model('App\Models\PaymentTransactionModel');
                 $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($userRow->account_id, 3);
 
-                // If not ACTIVE, block access
-                if ($isBlockedByOverdue || ($account && $account->status !== 'ACTIVE')) {
+                // PROACTIVE SYNC: Se parecer bloqueado, tenta sincronizar com o Gateway antes de barrar
+                if ($isBlockedByOverdue) {
+                    try {
+                        $paymentService = new \App\Services\PaymentService();
+                        $paymentService->syncPendingPayments($userRow->account_id);
+                        // Re-check after sync
+                        $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($userRow->account_id, 3);
+                    } catch (\Exception $e) {
+                        log_message('error', '[AdminAuth] Falha na sincronização proativa: ' . $e->getMessage());
+                    }
+                }
+
+                // Priority 1: Strict block by overdue invoices (> 3 days grace period)
+                if ($isBlockedByOverdue) {
+                    return redirect()->to('admin/subscription')->with('error', lang('App.filter_overdue_error'));
+                }
+
+                // Priority 2: Block by Account Status (PENDING, SUSPENDED, etc)
+                // If account is SUSPENDED but NOT strictly overdue (isBlockedByOverdue is false), 
+                // we allow access to avoid sync issues/false positives for future invoices.
+                if ($account && $account->status !== 'ACTIVE' && $account->status !== 'SUSPENDED') {
                      
-                     if ($isBlockedByOverdue) {
-                         return redirect()->to('admin/subscription')->with('error', 'Conta bloqueada. Você possui uma fatura com mais de 3 dias de atraso. Efetue o pagamento para liberar o sistema e seus anúncios.');
-                     }
-                     
-                     // Check if there is a pending subscription
+                     // Check if there is a pending subscription (New Account flow)
                      $hasPendingSub = $db->table('subscriptions')
                         ->where('account_id', $userRow->account_id)
-                        ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                        ->where('status', 'PENDING')
                         ->countAllResults() > 0;
 
                      if ($hasPendingSub) {
-                        return redirect()->to('admin/subscription')->with('error', 'Sua conta está pendente de pagamento. Acesse os detalhes da fatura abaixo.');
+                        return redirect()->to('admin/subscription')->with('error', lang('App.filter_pending_activation'));
                      }
                      
-                     return redirect()->to('admin/subscription')->with('info', 'Escolha um plano para ativar sua conta.');
+                     return redirect()->to('admin/subscription')->with('info', lang('App.filter_inactive_account'));
                 }
             }
         }

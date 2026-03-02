@@ -24,7 +24,8 @@ class PropertyModel extends Model
         'suites', 'is_destaque', 'is_novo', 'meta_title', 'meta_description',
         'is_exclusivo', 'aceita_pets', 'mobiliado', 'semimobiliado',
         'is_desocupado', 'is_locado', 'renda_mensal_estimada', 'condominio',
-        'indicado_investidor', 'indicado_primeira_moradia', 'indicado_temporada'
+        'indicado_investidor', 'indicado_primeira_moradia', 'indicado_temporada',
+        'is_verified', 'verification_status'
     ];
 
     protected bool $allowEmptyInserts = false;
