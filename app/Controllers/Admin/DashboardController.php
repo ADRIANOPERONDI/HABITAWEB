@@ -36,6 +36,6 @@ class DashboardController extends BaseController
         // Merge filters para a view manter o estado dos selects
         $data['filters'] = $filters;
 
-        return view('admin/dashboard', $data);
+        return view('Admin/dashboard', $data);
     }
 }

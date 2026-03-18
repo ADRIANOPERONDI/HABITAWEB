@@ -21,12 +21,12 @@ class PlanController extends BaseController
 
         $plans = $this->planModel->orderBy('preco_mensal', 'ASC')->findAll();
 
-        return view('admin/plans/index', ['plans' => $plans]);
+        return view('Admin/plans/index', ['plans' => $plans]);
     }
 
     public function new()
     {
-        return view('admin/plans/form', ['plan' => null]);
+        return view('Admin/plans/form', ['plan' => null]);
     }
 
     public function create()
@@ -61,7 +61,7 @@ class PlanController extends BaseController
         if (!$plan) {
             return redirect()->to('admin/plans')->with('error', 'Plano não encontrado.');
         }
-        return view('admin/plans/form', ['plan' => $plan]);
+        return view('Admin/plans/form', ['plan' => $plan]);
     }
 
     public function update($id)

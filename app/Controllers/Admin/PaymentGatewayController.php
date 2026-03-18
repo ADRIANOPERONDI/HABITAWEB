@@ -22,7 +22,7 @@ class PaymentGatewayController extends BaseController
     {
         $gateways = $this->gatewayModel->findAll();
         
-        return view('admin/payment_gateways/index', [
+        return view('Admin/payment_gateways/index', [
             'gateways' => $gateways
         ]);
     }
@@ -54,7 +54,7 @@ class PaymentGatewayController extends BaseController
             }
         }
 
-        return view('admin/payment_gateways/configure', [
+        return view('Admin/payment_gateways/configure', [
             'gateway' => $gateway,
             'configs' => $configs
         ]);

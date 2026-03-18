@@ -62,7 +62,7 @@ class ApiKeysController extends BaseController
         // Fallback para superadmin sem account_id vinculado
         $currentAccountId = $user->account_id ?? ($isSuperAdmin ? 1 : null);
 
-        return view('admin/api-keys/index', [
+        return view('Admin/api-keys/index', [
             'keys' => $keys,
             'pager' => $pager,
             'accounts' => $accounts,

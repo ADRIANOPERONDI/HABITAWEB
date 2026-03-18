@@ -15,7 +15,7 @@ class AccountsController extends BaseController
             'pager' => $model->pager
         ];
 
-        return view('admin/accounts/index', $data);
+        return view('Admin/accounts/index', $data);
     }
 
     public function edit($id)
@@ -27,7 +27,7 @@ class AccountsController extends BaseController
             return redirect()->to('admin/accounts')->with('error', 'Conta não encontrada.');
         }
 
-        return view('admin/accounts/form', [
+        return view('Admin/accounts/form', [
             'account' => $account
         ]);
     }

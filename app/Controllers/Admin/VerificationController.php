@@ -26,7 +26,7 @@ class VerificationController extends BaseController
             ->orderBy('updated_at', 'DESC')
             ->findAll();
 
-        return view('admin/verification/index', [
+        return view('Admin/verification/index', [
             'accounts' => $accounts,
             'currentStatus' => $status
         ]);
@@ -43,7 +43,7 @@ class VerificationController extends BaseController
             return redirect()->to('admin/verification')->with('error', 'Conta não encontrada.');
         }
 
-        return view('admin/verification/show', [
+        return view('Admin/verification/show', [
             'account' => $account
         ]);
     }

@@ -27,7 +27,7 @@ class PromotionPackageController extends BaseController
 
         $packages = $this->packageModel->findAll();
 
-        return view('admin/packages/index', [
+        return view('Admin/packages/index', [
             'packages' => $packages
         ]);
     }
@@ -42,7 +42,7 @@ class PromotionPackageController extends BaseController
             return redirect()->back()->with('error', 'Acesso negado.');
         }
 
-        return view('admin/packages/form', [
+        return view('Admin/packages/form', [
             'package' => null
         ]);
     }
@@ -89,7 +89,7 @@ class PromotionPackageController extends BaseController
             throw PageNotFoundException::forPageNotFound();
         }
 
-        return view('admin/packages/form', [
+        return view('Admin/packages/form', [
             'package' => $package
         ]);
     }

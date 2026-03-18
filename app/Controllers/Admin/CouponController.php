@@ -19,12 +19,12 @@ class CouponController extends BaseController
         $data = [
             'coupons' => $this->couponModel->orderBy('created_at', 'DESC')->findAll()
         ];
-        return view('admin/coupons/index', $data);
+        return view('Admin/coupons/index', $data);
     }
 
     public function create()
     {
-        return view('admin/coupons/form', ['coupon' => null]);
+        return view('Admin/coupons/form', ['coupon' => null]);
     }
 
     public function store()
@@ -61,7 +61,7 @@ class CouponController extends BaseController
         if (!$coupon) {
             return redirect()->to('admin/coupons')->with('error', 'Cupom não encontrado.');
         }
-        return view('admin/coupons/form', ['coupon' => $coupon]);
+        return view('Admin/coupons/form', ['coupon' => $coupon]);
     }
 
     public function update($id)

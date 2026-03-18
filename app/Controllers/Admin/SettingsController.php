@@ -31,7 +31,7 @@ class SettingsController extends BaseController
             $grouped[$s->group][] = $s;
         }
 
-        return view('admin/settings/index', [
+        return view('Admin/settings/index', [
             'grouped' => $grouped,
             'isSuperAdmin' => $isSuperAdmin
         ]);

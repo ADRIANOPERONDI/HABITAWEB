@@ -38,7 +38,7 @@ class TeamController extends BaseController
         // Shield UserModel retorna Entity, mas groups ficam em outra tabela.
         // O Entity User tem método ->getGroups() se carregado corretamento.
         
-        return view('admin/team/index', [
+        return view('Admin/team/index', [
             'team' => $team
         ]);
     }
@@ -49,7 +49,7 @@ class TeamController extends BaseController
             return redirect()->back()->with('error', 'Acesso negado.');
         }
 
-        return view('admin/team/form', ['member' => null]);
+        return view('Admin/team/form', ['member' => null]);
     }
 
     public function create()
@@ -158,7 +158,7 @@ class TeamController extends BaseController
              return redirect()->to(site_url('admin/team'))->with('error', 'Usuário não encontrado ou de outra conta.');
         }
 
-        return view('admin/team/form', ['member' => $user]);
+        return view('Admin/team/form', ['member' => $user]);
     }
 
     public function update($id)

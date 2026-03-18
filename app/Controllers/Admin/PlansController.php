@@ -24,7 +24,7 @@ class PlansController extends BaseController
 
         $plans = $this->planModel->orderBy('preco_mensal', 'ASC')->findAll();
 
-        return view('admin/plans/index', [
+        return view('Admin/plans/index', [
             'plans' => $plans
         ]);
     }
@@ -38,7 +38,7 @@ class PlansController extends BaseController
             return redirect()->back()->with('error', 'Acesso negado.');
         }
 
-        return view('admin/plans/form', [
+        return view('Admin/plans/form', [
             'plan' => null,
             'action' => 'create'
         ]);
@@ -101,7 +101,7 @@ class PlansController extends BaseController
             return redirect()->to('admin/plans')->with('error', 'Plano não encontrado.');
         }
 
-        return view('admin/plans/form', [
+        return view('Admin/plans/form', [
             'plan' => $plan,
             'action' => 'edit'
         ]);

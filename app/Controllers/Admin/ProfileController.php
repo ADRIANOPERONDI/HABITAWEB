@@ -18,7 +18,7 @@ class ProfileController extends BaseController
             return redirect()->to('admin')->with('error', 'Conta não encontrada.');
         }
 
-        return view('admin/profile/index', [
+        return view('Admin/profile/index', [
             'account' => $account,
             'user'    => $user
         ]);

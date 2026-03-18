@@ -114,7 +114,7 @@ class SubscriptionController extends BaseController
             }
         }
 
-        return view('admin/subscription/index', [
+        return view('Admin/subscription/index', [
             'subscription' => $subscription,
             'pendingSubscription' => $pendingSubscription,
             'lastTransaction' => $lastTransaction, // Pass transaction to view
@@ -294,7 +294,7 @@ class SubscriptionController extends BaseController
             ->get()
             ->getResult();
 
-        return view('admin/subscription/invoices', [
+        return view('Admin/subscription/invoices', [
             'transactions' => $transactions
         ]);
     }

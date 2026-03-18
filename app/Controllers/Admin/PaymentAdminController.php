@@ -56,7 +56,7 @@ class PaymentAdminController extends BaseController
             ];
         }
         
-        return view('admin/payments/dashboard', [
+        return view('Admin/payments/dashboard', [
             'subscriptionStats' => $subscriptionStats,
             'transactionStats' => $transactionStats,
             'monthRevenue' => $monthRevenue->revenue ?? 0,
@@ -83,7 +83,7 @@ class PaymentAdminController extends BaseController
             $accounts = $this->accountModel->select('id, name')->findAll();
         }
         
-        return view('admin/payments/transactions', [
+        return view('Admin/payments/transactions', [
             'accounts' => $accounts,
             'isAdmin' => $isAdmin
         ]);
@@ -164,7 +164,7 @@ class PaymentAdminController extends BaseController
             $plan = $this->planModel->find($subscription->plan_id);
         }
         
-        return view('admin/payments/view_transaction', [
+        return view('Admin/payments/view_transaction', [
             'transaction' => $transaction,
             'subscription' => $subscription,
             'account' => $account,

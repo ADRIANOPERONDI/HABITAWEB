@@ -22,7 +22,7 @@ class UsersController extends BaseController
             'pager' => $model->pager
         ];
 
-        return view('admin/users/index', $data);
+        return view('Admin/users/index', $data);
     }
 
     public function edit($id)
@@ -36,7 +36,7 @@ class UsersController extends BaseController
             return redirect()->to('admin/users')->with('error', 'Usuário não encontrado.');
         }
 
-        return view('admin/users/form', [
+        return view('Admin/users/form', [
             'user' => $user
         ]);
     }

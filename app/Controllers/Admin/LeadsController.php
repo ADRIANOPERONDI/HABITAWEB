@@ -23,13 +23,13 @@ class LeadsController extends BaseController
                 $filters['account_id_anunciante'] = $user->account_id;
             } else {
                  // Usuario sem conta e sem ser superadmin -> nao vê nada
-                 return view('admin/leads/index', ['leads' => [], 'pager' => \Config\Services::pager(), 'isAdmin' => false]);
+                 return view('Admin/leads/index', ['leads' => [], 'pager' => \Config\Services::pager(), 'isAdmin' => false]);
             }
         }
 
         $data = $service->listLeads($filters, 20);
 
-        return view('admin/leads/index', [
+        return view('Admin/leads/index', [
             'leads' => $data['leads'],
             'pager' => $data['pager'],
             'isAdmin' => $isAdmin

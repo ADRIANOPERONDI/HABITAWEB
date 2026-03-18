@@ -14,6 +14,6 @@ class FinancialDashboardController extends BaseController
         $financialService = new \App\Services\FinancialService();
         $data = $financialService->getFinancialDashboardData();
 
-        return view('admin/financial/dashboard', $data);
+        return view('Admin/financial/dashboard', $data);
     }
 }

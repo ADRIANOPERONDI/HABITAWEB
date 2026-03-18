@@ -28,7 +28,7 @@ class CouponsController extends BaseController
             ->orderBy('coupons.created_at', 'DESC')
             ->findAll();
 
-        return view('admin/coupons/index', [
+        return view('Admin/coupons/index', [
             'coupons' => $coupons
         ]);
     }
@@ -45,7 +45,7 @@ class CouponsController extends BaseController
         $accountModel = model('App\Models\AccountModel');
         $accounts = $accountModel->orderBy('nome', 'ASC')->findAll();
 
-        return view('admin/coupons/form', [
+        return view('Admin/coupons/form', [
             'coupon' => null,
             'accounts' => $accounts,
             'action' => 'create'
@@ -119,7 +119,7 @@ class CouponsController extends BaseController
         $accountModel = model('App\Models\AccountModel');
         $accounts = $accountModel->orderBy('nome', 'ASC')->findAll();
 
-        return view('admin/coupons/form', [
+        return view('Admin/coupons/form', [
             'coupon' => $coupon,
             'accounts' => $accounts,
             'action' => 'edit'
@@ -258,7 +258,7 @@ class CouponsController extends BaseController
             ->getRow()
             ->total_discount ?? 0;
 
-        return view('admin/coupons/report', [
+        return view('Admin/coupons/report', [
             'topCoupons' => $topCoupons,
             'expiredCoupons' => $expiredCoupons,
             'totalDiscount' => $totalDiscount

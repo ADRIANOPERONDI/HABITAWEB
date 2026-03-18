@@ -25,7 +25,7 @@ class PromotionController extends BaseController
         $promotions = $builder->orderBy('promotions.created_at', 'DESC')
                               ->findAll();
 
-        return view('admin/promotions/list', ['promotions' => $promotions]);
+        return view('Admin/promotions/list', ['promotions' => $promotions]);
     }
 
     /**
@@ -57,7 +57,7 @@ class PromotionController extends BaseController
                                        ->where('ativo', true)
                                        ->findAll();
 
-        return view('admin/promotions/index', [
+        return view('Admin/promotions/index', [
             'property' => $property,
             'packages' => $packages,
             'activePromos' => $activePromos
@@ -93,7 +93,7 @@ class PromotionController extends BaseController
             $promotionPackageModel = model('App\Models\PromotionPackageModel');
             $package = $promotionPackageModel->where('chave', $packageKey)->first();
 
-            return view('admin/promotions/checkout', [
+            return view('Admin/promotions/checkout', [
                 'property'    => $property,
                 'package'     => $package,
                 'invoice_url' => $result['invoice_url'],
