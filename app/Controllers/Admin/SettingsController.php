@@ -82,6 +82,9 @@ class SettingsController extends BaseController
             'notify.low_limits' => ['value' => '1', 'group' => 'notifications', 'label' => 'Alertas de Limite de Imóveis', 'type' => 'boolean'],
 
             // Appearance
+            'style.logo_url'        => ['value' => 'assets/img/logo.png', 'group' => 'appearance', 'label' => 'Logo Principal', 'type' => 'image'],
+            'style.logo_footer_url' => ['value' => 'assets/img/logo-light.png', 'group' => 'appearance', 'label' => 'Logo para Rodapé (Fundos Escuros)', 'type' => 'image'],
+            'style.favicon_url'     => ['value' => 'assets/img/favicon.png', 'group' => 'appearance', 'label' => 'Favicon', 'type' => 'image'],
             'style.primary_color'   => ['value' => '#6366f1', 'group' => 'appearance', 'label' => 'Cor Principal', 'type' => 'color'],
             'style.secondary_color' => ['value' => '#a855f7', 'group' => 'appearance', 'label' => 'Cor Secundária', 'type' => 'color'],
             'style.tertiary_color'  => ['value' => '#10b981', 'group' => 'appearance', 'label' => 'Cor Terciária', 'type' => 'color'],

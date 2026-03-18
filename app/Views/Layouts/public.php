@@ -258,10 +258,14 @@
             <div class="row g-4">
                 <div class="col-lg-4 mb-4 mb-lg-0">
                     <div class="footer-brand mb-4">
-                        <?php if ($logo = app_setting('style.logo_url')): ?>
-                            <img src="<?= base_url($logo) ?>" alt="Logo" height="40" class="object-fit-contain brightness-0 invert">
+                        <?php 
+                            $footerLogo = app_setting('style.logo_footer_url') ?: app_setting('style.logo_url');
+                            if ($footerLogo): 
+                        ?>
+                            <img src="<?= base_url($footerLogo) ?>" alt="Logo" height="40" class="object-fit-contain">
+                        <?php else: ?>
+                            <span class="fs-4 fw-bold text-white"><?= app_setting('seo.title', 'Habitaweb') ?></span>
                         <?php endif; ?>
-                        <span class="fs-4 fw-bold ms-2 text-white"><?= app_setting('seo.title', 'Habitaweb') ?></span>
                     </div>
                     <p class="opacity-75 mb-4">
                         <?= app_setting('footer.description', 'O portal imobiliário mais completo da região. Conectando pessoas aos seus sonhos.') ?>
