@@ -82,11 +82,11 @@ class Filters extends BaseFilters
             'installation_check', // Redireciona para instalador se não instalado
             // 'honeypot',
             'csrf' => ['except' => ['install/*', 'api/*', 'webhook/*']], // Desabilita CSRF no instalador, API e webhooks
-            // 'invalidchars',
+            'invalidchars',
         ],
         'after' => [
             // 'honeypot',
-            // 'secureheaders',
+            'secureheaders',
         ],
     ];
 

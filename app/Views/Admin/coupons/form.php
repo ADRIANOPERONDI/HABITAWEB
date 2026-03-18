@@ -16,7 +16,7 @@
                         <div class="form-group">
                             <label class="form-label fw-bold">Código do Cupom</label>
                             <div class="input-group">
-                                <input type="text" name="code" id="couponCode" class="form-control text-uppercase" placeholder="Ex: PROMOCAO10" value="<?= old('code', $coupon->code ?? '') ?>" required>
+                                <input type="text" name="code" id="couponCode" class="form-control text-uppercase" placeholder="Ex: PROMOCAO10" value="<?= esc(old('code', $coupon->code ?? '')) ?>" required>
                                 <button type="button" class="btn btn-outline-secondary" onclick="generateCouponCode()">
                                     <i class="fas fa-magic"></i> Gerar
                                 </button>
@@ -51,26 +51,26 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Valor do Desconto</label>
-                        <input type="number" step="0.01" name="discount_value" class="form-control" placeholder="10.00" value="<?= old('discount_value', $coupon->discount_value ?? '') ?>" required>
+                        <input type="number" step="0.01" name="discount_value" class="form-control" placeholder="10.00" value="<?= esc(old('discount_value', $coupon->discount_value ?? '')) ?>" required>
                     </div>
                 </div>
 
                 <div class="row mb-3">
                     <div class="col-md-3">
                         <label class="form-label">Limite de Usos (Opcional)</label>
-                        <input type="number" name="max_uses" class="form-control" placeholder="Infinito" value="<?= old('max_uses', $coupon->max_uses ?? '') ?>">
+                        <input type="number" name="max_uses" class="form-control" placeholder="Infinito" value="<?= esc(old('max_uses', $coupon->max_uses ?? '')) ?>">
                         <small class="text-muted">Deixe em branco para ilimitado.</small>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Validade (Opcional)</label>
-                        <input type="date" name="valid_until" class="form-control" value="<?= old('valid_until', isset($coupon->valid_until) ? date('Y-m-d', strtotime($coupon->valid_until)) : '') ?>">
+                        <input type="date" name="valid_until" class="form-control" value="<?= esc(old('valid_until', isset($coupon->valid_until) ? date('Y-m-d', strtotime($coupon->valid_until)) : '')) ?>">
                     </div>
                 </div>
 
                 <div class="row mb-3">
                     <div class="col-md-3">
                         <label class="form-label fw-bold"><i class="fas fa-clock"></i> Carência por Cupom</label>
-                        <input type="number" name="carencia_valor" class="form-control" placeholder="0" value="<?= old('carencia_valor', $coupon->carencia_valor ?? 0) ?>">
+                        <input type="number" name="carencia_valor" class="form-control" placeholder="0" value="<?= esc(old('carencia_valor', $coupon->carencia_valor ?? 0)) ?>">
                         <small class="text-muted">Valor da carência (0 = sem carência)</small>
                     </div>
                     <div class="col-md-3">

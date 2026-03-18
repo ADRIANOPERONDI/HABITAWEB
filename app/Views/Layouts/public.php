@@ -39,17 +39,17 @@
     ?>
     <style>
         :root { 
-            --primary-color: <?= $primary ?>;
-            --primary-rgb: <?= $primaryRgb ?>;
-            --secondary-color: <?= $secondary ?>;
-            --secondary-rgb: <?= $secondaryRgb ?>;
-            --bs-primary: <?= $primary ?>; 
-            --bs-link-color: <?= $primary ?>; 
+            --primary-color: <?= esc($primary) ?>;
+            --primary-rgb: <?= esc($primaryRgb) ?>;
+            --secondary-color: <?= esc($secondary) ?>;
+            --secondary-rgb: <?= esc($secondaryRgb) ?>;
+            --bs-primary: <?= esc($primary) ?>; 
+            --bs-link-color: <?= esc($primary) ?>; 
             
-            --primary-gradient: linear-gradient(135deg, <?= $primary ?> 0%, <?= $secondary ?> 100%);
-            --secondary-gradient: linear-gradient(135deg, <?= $secondary ?> 0%, #10b981 100%);
+            --primary-gradient: linear-gradient(135deg, <?= esc($primary) ?> 0%, <?= esc($secondary) ?> 100%);
+            --secondary-gradient: linear-gradient(135deg, <?= esc($secondary) ?> 0%, #10b981 100%);
         }
-        .bg-primary-soft { background-color: rgba(<?= $primaryRgb ?>, 0.1) !important; }
+        .bg-primary-soft { background-color: rgba(<?= esc($primaryRgb) ?>, 0.1) !important; }
         .text-primary { color: var(--primary-color) !important; }
         .btn-primary { background-color: var(--primary-color) !important; border-color: var(--primary-color) !important; border-radius: 50px !important; }
         .btn-outline-primary { color: var(--primary-color) !important; border-color: var(--primary-color) !important; border-radius: 50px !important; }

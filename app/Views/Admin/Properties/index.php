@@ -212,9 +212,9 @@
                         <p class="text-muted small mb-2 text-truncate"><?= esc($property->bairro) ?>, <?= esc($property->cidade) ?></p>
                         
                         <div class="d-flex gap-2 mb-3">
-                            <span class="badge bg-light text-dark border-0 small"><i class="fa-solid fa-bed me-1"></i> <?= $property->quartos ?? 0 ?></span>
-                            <span class="badge bg-light text-dark border-0 small"><i class="fa-solid fa-bath me-1"></i> <?= $property->banheiros ?? 0 ?></span>
-                            <span class="badge bg-light text-dark border-0 small"><i class="fa-solid fa-maximize me-1"></i> <?= $property->area_util ?? $property->area_total ?? 0 ?>m²</span>
+                            <span class="badge bg-light text-dark border-0 small"><i class="fa-solid fa-bed me-1"></i> <?= esc($property->quartos ?? 0) ?></span>
+                            <span class="badge bg-light text-dark border-0 small"><i class="fa-solid fa-bath me-1"></i> <?= esc($property->banheiros ?? 0) ?></span>
+                            <span class="badge bg-light text-dark border-0 small"><i class="fa-solid fa-maximize me-1"></i> <?= esc($property->area_util ?? $property->area_total ?? 0) ?>m²</span>
                         </div>
 
                         <div class="d-flex justify-content-between align-items-center border-top pt-3 mt-1">

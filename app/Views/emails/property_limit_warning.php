@@ -46,18 +46,18 @@
                     <p style="margin: 10px 0 0 0;">Para publicar novos anúncios, você precisa fazer upgrade do plano ou desativar alguns imóveis existentes.</p>
                 </div>
             <?php else: ?>
-                <p style="font-size: 16px;">Você está usando <strong><?= $percentage ?>%</strong> do seu limite de imóveis ativos.</p>
+                <p style="font-size: 16px;">Você está usando <strong><?= esc($percentage) ?>%</strong> do seu limite de imóveis ativos.</p>
             <?php endif; ?>
             
             <div class="usage-box">
                 <div>Uso Atual</div>
-                <div class="usage-number"><?= $currentCount ?> / <?= $limitCount ?></div>
+                <div class="usage-number"><?= esc($currentCount) ?> / <?= esc($limitCount) ?></div>
                 <div style="color: #666; font-size: 14px;">imóveis ativos</div>
             </div>
             
             <div class="progress-container">
                 <div class="progress-bar">
-                    <?= $percentage ?>%
+                    <?= esc($percentage) ?>%
                 </div>
             </div>
             
