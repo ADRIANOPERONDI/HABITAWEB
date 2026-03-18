@@ -31,8 +31,11 @@
         <div class="card card-premium overflow-hidden border-0" style="background: var(--primary-gradient); min-height: 200px;">
             <div class="card-body p-5 d-flex align-items-center justify-content-between position-relative">
                 <div class="text-white z-1">
-                    <?php if ($logo = app_setting('style.logo_url')): ?>
-                        <img src="<?= base_url($logo) ?>" class="system-logo-dash mb-3" alt="Logo">
+                    <?php 
+                        $lightLogo = app_setting('style.logo_footer_url') ?: app_setting('style.logo_url');
+                        if ($lightLogo): 
+                    ?>
+                        <img src="<?= base_url($lightLogo) ?>" class="system-logo-dash mb-3" alt="Logo">
                     <?php endif; ?>
                     <h2 class="fw-bold mb-2">Bom dia, <?= esc($userDisplayName) ?>! ✨</h2>
                     <p class="opacity-75 mb-4">Veja o que está acontecendo no <?= esc(app_setting('site.name', 'Portal')) ?> hoje.</p>
