@@ -82,8 +82,8 @@ class SettingsController extends BaseController
             'notify.low_limits' => ['value' => '1', 'group' => 'notifications', 'label' => 'Alertas de Limite de Imóveis', 'type' => 'boolean'],
 
             // Appearance
-            'style.logo_url'        => ['value' => 'assets/img/logo.png', 'group' => 'appearance', 'label' => 'Logo Principal', 'type' => 'image'],
-            'style.logo_footer_url' => ['value' => 'assets/img/logo-light.png', 'group' => 'appearance', 'label' => 'Logo para Rodapé (Fundos Escuros)', 'type' => 'image'],
+            'style.logo_url'        => ['value' => 'assets/img/logo.png', 'group' => 'appearance', 'label' => 'Logo Original', 'type' => 'image', 'description' => 'Logo principal do site. Recomendado fundo transparente (PNG).'],
+            'style.logo_footer_url' => ['value' => 'assets/img/logo-light.png', 'group' => 'appearance', 'label' => 'Logo Branca', 'type' => 'image', 'description' => 'Versão para fundos escuros (Rodapé e Dashboard).'],
             'style.favicon_url'     => ['value' => 'assets/img/favicon.png', 'group' => 'appearance', 'label' => 'Favicon', 'type' => 'image'],
             'style.primary_color'   => ['value' => '#6366f1', 'group' => 'appearance', 'label' => 'Cor Principal', 'type' => 'color'],
             'style.secondary_color' => ['value' => '#a855f7', 'group' => 'appearance', 'label' => 'Cor Secundária', 'type' => 'color'],
@@ -109,8 +109,17 @@ class SettingsController extends BaseController
         ];
 
         foreach ($essential as $key => $data) {
-            if (!$model->where('key', $key)->first()) {
+            $existing = $model->where('key', $key)->first();
+            if (!$existing) {
                 $model->insert(array_merge(['key' => $key, 'created_at' => $now], $data));
+            } else {
+                // Sincroniza labels e descrições se eles mudarem no código
+                $model->update($key, [
+                    'label'       => $data['label'],
+                    'description' => $data['description'] ?? $existing->description,
+                    'group'       => $data['group'],
+                    'type'        => $data['type'],
+                ]);
             }
         }
         
