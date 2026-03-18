@@ -5,7 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="<?= $this->renderSection('meta_description') ?: esc(app_setting('seo.description', 'Portal imobiliário')) ?>">
     <meta name="keywords" content="<?= esc(app_setting('seo.keywords', 'imoveis')) ?>">
-    <title><?= $this->renderSection('meta_title') ?: ($this->renderSection('title') . ' - ' . esc(app_setting('seo.title', 'Habitaweb'))) ?></title>
+    <title>
+        <?php 
+            $pageTitle = $this->renderSection('title');
+            $siteName = app_setting('seo.title', 'Habitaweb');
+            $tagline = app_setting('seo.tagline', 'Encontre seu lugar');
+            
+            if ($pageTitle) {
+                echo $pageTitle . ' - ' . $siteName;
+            } else {
+                echo $siteName . ' - ' . $tagline;
+            }
+        ?>
+    </title>
     
     <?php if ($favicon = app_setting('style.favicon_url')): ?>
         <link rel="icon" type="image/x-icon" href="<?= base_url($favicon) ?>">
@@ -185,7 +197,7 @@
         <div class="container">
             <a class="navbar-brand fw-bold fs-4 d-flex align-items-center gap-2" href="<?= site_url('/') ?>">
                 <?php if ($logo = app_setting('style.logo_url')): ?>
-                    <img src="<?= base_url($logo) ?>" alt="Logo" height="40" class="object-fit-contain">
+                    <img src="<?= base_url($logo) ?>" alt="Logo" height="<?= app_setting('style.logo_height', 70) ?>" class="object-fit-contain">
                 <?php else: ?>
                     <i class="fa-solid fa-map-location-dot text-primary"></i> 
                     <span><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
@@ -241,34 +253,73 @@
     </main>
     
     <!-- Footer -->
-    <footer class="bg-white border-top py-5 mt-5">
+    <footer class="py-5 mt-5" style="background-color: #1a1a1a; color: rgba(255,255,255,0.7);">
         <div class="container">
             <div class="row g-4">
-                <div class="col-lg-4">
-                     <h5 class="fw-bold mb-3 d-flex align-items-center gap-2">
-                        <i class="fa-solid fa-map-location-dot text-primary"></i> <?= esc(app_setting('site.name', 'Habitaweb')) ?>
-                    </h5>
-                    <p class="text-muted small">
-                        O maior portal imobiliário da região. Encontre seu novo lar compra venda ou aluguel com segurança e agilidade.
+                <div class="col-lg-4 mb-4 mb-lg-0">
+                    <div class="footer-brand mb-4">
+                        <?php if ($logo = app_setting('style.logo_url')): ?>
+                            <img src="<?= base_url($logo) ?>" alt="Logo" height="40" class="object-fit-contain brightness-0 invert">
+                        <?php endif; ?>
+                        <span class="fs-4 fw-bold ms-2 text-white"><?= app_setting('seo.title', 'Habitaweb') ?></span>
+                    </div>
+                    <p class="opacity-75 mb-4">
+                        <?= app_setting('footer.description', 'O portal imobiliário mais completo da região. Conectando pessoas aos seus sonhos.') ?>
                     </p>
-                    <div class="d-flex gap-3 mt-4">
-                        <a href="#" class="text-muted"><i class="fa-brands fa-instagram fa-lg"></i></a>
-                        <a href="#" class="text-muted"><i class="fa-brands fa-facebook fa-lg"></i></a>
-                        <a href="#" class="text-muted"><i class="fa-brands fa-whatsapp fa-lg"></i></a>
+                    <div class="footer-social d-flex gap-3">
+                        <a href="<?= app_setting('social.facebook', '#') ?>" class="text-white opacity-75"><i class="fa-brands fa-facebook-f fs-5"></i></a>
+                        <a href="<?= app_setting('social.instagram', '#') ?>" class="text-white opacity-75"><i class="fa-brands fa-instagram fs-5"></i></a>
+                        <a href="<?= app_setting('social.whatsapp', '#') ?>" class="text-white opacity-75"><i class="fa-brands fa-whatsapp fs-5"></i></a>
                     </div>
                 </div>
-                <div class="col-6 col-md-3 col-lg-2">
-                    <h6 class="fw-bold text-uppercase small text-muted mb-3">Soluções</h6>
-                    <ul class="list-unstyled small d-flex flex-column gap-2 mb-0">
-                        <li><a href="#" class="text-decoration-none text-secondary">Anunciar</a></li>
-                        <li><a href="#" class="text-decoration-none text-secondary">Planos</a></li>
-                        <li><a href="#" class="text-decoration-none text-secondary">Para Corretores</a></li>
-                        <li><a href="#" class="text-decoration-none text-secondary">Para Imobiliárias</a></li>
+                
+                <div class="col-lg-2 col-md-4 mb-4 mb-md-0">
+                    <h6 class="fw-bold text-white mb-4">Navegação</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2 opacity-75">
+                        <li><a href="<?= site_url('imoveis') ?>" class="text-white text-decoration-none">Comprar</a></li>
+                        <li><a href="<?= site_url('imoveis?tipo_negocio=ALUGUEL') ?>" class="text-white text-decoration-none">Alugar</a></li>
+                        <li><a href="<?= site_url('anuncie') ?>" class="text-white text-decoration-none">Anunciar</a></li>
+                        <li><a href="<?= site_url('parceiros') ?>" class="text-white text-decoration-none">Parceiros</a></li>
+                    </ul>
+                </div>
+                
+                <div class="col-lg-2 col-md-4 mb-4 mb-md-0">
+                    <h6 class="fw-bold text-white mb-4">Institucional</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-2 opacity-75">
+                        <li><a href="#" class="text-white text-decoration-none">Sobre Nós</a></li>
+                        <li><a href="#" class="text-white text-decoration-none">Política de Privacidade</a></li>
+                        <li><a href="#" class="text-white text-decoration-none">Termos de Uso</a></li>
+                    </ul>
+                </div>
+
+                <div class="col-lg-4 col-md-4">
+                    <h6 class="fw-bold text-white mb-4">Contato</h6>
+                    <ul class="list-unstyled d-flex flex-column gap-3 opacity-75">
+                        <li class="d-flex align-items-start gap-3">
+                            <i class="fa-solid fa-location-dot mt-1"></i>
+                            <span><?= app_setting('footer.address', 'Av. Principal, 123 - Centro') ?></span>
+                        </li>
+                        <li class="d-flex align-items-center gap-3">
+                            <i class="fa-solid fa-phone"></i>
+                            <span><?= app_setting('site.phone', '(00) 0000-0000') ?></span>
+                        </li>
+                        <li class="d-flex align-items-center gap-3">
+                            <i class="fa-solid fa-envelope"></i>
+                            <span><?= app_setting('site.email', 'contato@habitaweb.com.br') ?></span>
+                        </li>
                     </ul>
                 </div>
             </div>
-            <div class="border-top mt-5 pt-4 text-center text-muted small">
-                © <?= date('Y') ?> <?= esc(app_setting('site.name', 'Habitaweb')) ?>. Todos os direitos reservados.
+            
+            <hr class="my-5 opacity-25">
+            
+            <div class="footer-bottom d-md-flex justify-content-between align-items-center opacity-75 small">
+                <p class="mb-md-0">
+                    <?= app_setting('site.copyright', '&copy; ' . date('Y') . ' Habitaweb. Todos os direitos reservados.') ?>
+                </p>
+                <div class="d-flex gap-4">
+                    <span>Feito com <i class="fa-solid fa-heart text-danger"></i> pela Equipe</span>
+                </div>
             </div>
         </div>
     </footer>

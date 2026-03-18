@@ -5,10 +5,10 @@
 <?= $this->section('content') ?>
 
 <!-- Hero Section Airbnb-style -->
-<section class="hero-section-clean" style="background-image: url('https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1920&q=80');">
+<section class="hero-section-clean" style="background-image: url('<?= app_setting('home.hero_banner', 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1920&q=80') ?>');">
     <div class="hero-text-content px-3">
-        <h1 class="display-3 fw-bold text-white mb-2 animate-fade-in">Onde você quer morar?</h1>
-        <p class="fs-4 text-white opacity-75 animate-fade-in" style="animation-delay: 0.1s;">Descubra os melhores imóveis da sua região com quem entende do assunto.</p>
+        <h1 class="display-3 fw-bold text-white mb-2 animate-fade-in"><?= app_setting('home.hero_title', 'Onde você quer morar?') ?></h1>
+        <p class="fs-4 text-white opacity-75 animate-fade-in" style="animation-delay: 0.1s;"><?= app_setting('home.hero_subtitle', 'Descubra os melhores imóveis da sua região com quem entende do assunto.') ?></p>
     </div>
 </section>
 
@@ -252,11 +252,11 @@
 <!-- Call to Action Section -->
 <section class="py-5">
     <div class="container">
-        <div class="rounded-5 overflow-hidden position-relative p-5 text-white" style="background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url('https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80'); background-size: cover; background-position: center;">
+        <div class="rounded-5 overflow-hidden position-relative p-5 text-white" style="background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url('<?= app_setting('home.cta_banner', 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80') ?>'); background-size: cover; background-position: center;">
             <div class="row align-items-center">
                 <div class="col-lg-6">
-                    <h2 class="display-5 fw-bold mb-4">Anuncie seu imóvel para milhares de pessoas</h2>
-                    <p class="fs-5 mb-5 opacity-75">Seja você um proprietário, corretor ou imobiliária, o nosso portal é o lugar certo para fechar negócio.</p>
+                    <h2 class="display-5 fw-bold mb-4"><?= app_setting('home.cta_title', 'Anuncie seu imóvel para milhares de pessoas') ?></h2>
+                    <p class="fs-5 mb-5 opacity-75"><?= app_setting('home.cta_subtitle', 'Seja você um proprietário, corretor ou imobiliária, o nosso portal é o lugar certo para fechar negócio.') ?></p>
                     <a href="<?= site_url('register') ?>" class="btn btn-light btn-lg rounded-pill px-5 py-3 fw-bold text-primary">Começar agora</a>
                 </div>
             </div>

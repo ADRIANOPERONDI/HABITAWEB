@@ -91,7 +91,7 @@
         <div class="sidebar-header">
             <a href="<?= site_url('admin') ?>" class="sidebar-brand text-decoration-none">
                 <?php if ($logo = app_setting('style.logo_url')): ?>
-                    <img src="<?= base_url($logo) ?>" alt="Logo" height="35" class="object-fit-contain">
+                    <img src="<?= base_url($logo) ?>" alt="Logo" height="55" class="object-fit-contain">
                 <?php else: ?>
                     <i class="fa-solid fa-house-chimney-user"></i>
                     <span><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>

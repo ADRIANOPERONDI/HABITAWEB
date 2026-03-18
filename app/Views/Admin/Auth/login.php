@@ -183,7 +183,7 @@
         }
 
         .brand-logo {
-            height: 50px;
+            height: 80px;
             margin-bottom: 40px;
         }
 

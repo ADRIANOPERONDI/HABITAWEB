@@ -1,4 +1,5 @@
 <?= $this->extend('Layouts/public') ?>
+<?= $this->section('title') ?><?= $title ?? 'Encontre Imobiliárias e Corretores' ?><?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 

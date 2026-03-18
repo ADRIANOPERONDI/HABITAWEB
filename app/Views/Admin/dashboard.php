@@ -15,7 +15,7 @@
     .recent-img-mini { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; }
     .quick-action-card { border-radius: 20px; border: 1px dashed #ddd; transition: all 0.3s; background: #fafafa; }
     .quick-action-card:hover { background: #fff; border-color: var(--primary-color); color: var(--primary-color) !important; }
-    .system-logo-dash { max-height: 50px; width: auto; object-fit: contain; }
+    .system-logo-dash { max-height: 80px; width: auto; object-fit: contain; }
     
     /* Select2 Tweaks */
     .select2-container .select2-selection--single { height: 44px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #dfe3e8; }

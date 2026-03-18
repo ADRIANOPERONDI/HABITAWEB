@@ -25,6 +25,8 @@
         'seo'           => ['label' => 'SEO / Google', 'icon' => 'fa-search'],
         'appearance'    => ['label' => 'Identidade Visual', 'icon' => 'fa-palette'],
         'social'        => ['label' => 'Redes Sociais', 'icon' => 'fa-share-nodes'],
+        'home'          => ['label' => 'Página Inicial', 'icon' => 'fa-house-chimney'],
+        'footer'        => ['label' => 'Rodapé', 'icon' => 'fa-table-columns'],
         'email'         => ['label' => 'E-mail / SMTP', 'icon' => 'fa-envelope'],
         'notifications' => ['label' => 'Notificações', 'icon' => 'fa-bell'],
     ];

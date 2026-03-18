@@ -1,4 +1,5 @@
 <?= $this->extend('Layouts/public') ?>
+<?= $this->section('title') ?><?= $partner->nome ?? 'Parceiro' ?><?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 

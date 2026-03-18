@@ -85,6 +85,24 @@ class SettingsController extends BaseController
             'style.primary_color'   => ['value' => '#6366f1', 'group' => 'appearance', 'label' => 'Cor Principal', 'type' => 'color'],
             'style.secondary_color' => ['value' => '#a855f7', 'group' => 'appearance', 'label' => 'Cor Secundária', 'type' => 'color'],
             'style.tertiary_color'  => ['value' => '#10b981', 'group' => 'appearance', 'label' => 'Cor Terciária', 'type' => 'color'],
+            'style.logo_height'     => ['value' => '70', 'group' => 'appearance', 'label' => 'Altura da Logo (Público)', 'type' => 'number'],
+
+            // Home Page
+            'home.hero_banner'      => ['value' => 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1920&q=80', 'group' => 'home', 'label' => 'Banner Principal', 'type' => 'image'],
+            'home.hero_title'       => ['value' => 'Onde você quer morar?', 'group' => 'home', 'label' => 'Título Principal', 'type' => 'string'],
+            'home.hero_subtitle'    => ['value' => 'Descubra os melhores imóveis da sua região com quem entende do assunto.', 'group' => 'home', 'label' => 'Subtítulo Principal', 'type' => 'string'],
+            'home.cta_banner'       => ['value' => 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80', 'group' => 'home', 'label' => 'Banner de Anúncio (CTA)', 'type' => 'image'],
+            'home.cta_title'        => ['value' => 'Anuncie seu imóvel para milhares de pessoas', 'group' => 'home', 'label' => 'Título de Anúncio', 'type' => 'string'],
+            'home.cta_subtitle'     => ['value' => 'Seja você um proprietário, corretor ou imobiliária, o nosso portal é o lugar certo para fechar negócio.', 'group' => 'home', 'label' => 'Subtítulo de Anúncio', 'type' => 'string'],
+
+            // Footer
+            'footer.description'    => ['value' => 'O portal imobiliário mais completo da região. Conectando pessoas aos seus sonhos.', 'group' => 'footer', 'label' => 'Texto do Rodapé', 'type' => 'text'],
+            'footer.address'        => ['value' => 'Av. Principal, 123 - Centro', 'group' => 'footer', 'label' => 'Endereço', 'type' => 'string'],
+            'site.copyright'        => ['value' => '&copy; ' . date('Y') . ' Habitaweb. Todos os direitos reservados.', 'group' => 'footer', 'label' => 'Copyright', 'type' => 'string'],
+
+            // SEO Default
+            'seo.title'             => ['value' => 'Habitaweb', 'group' => 'seo', 'label' => 'Nome da Marca (Título)', 'type' => 'string'],
+            'seo.tagline'           => ['value' => 'Encontre seu lugar', 'group' => 'seo', 'label' => 'Slogan / Tagline', 'type' => 'string'],
         ];
 
         foreach ($essential as $key => $data) {

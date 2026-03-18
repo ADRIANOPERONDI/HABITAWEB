@@ -117,6 +117,7 @@ class AccountService
             'partners' => $this->accountModel
                 ->select('accounts.*')
                 ->where('status', 'ACTIVE')
+                ->where('accounts.nome !=', 'Administrador')
                 ->orderBy('nome', 'ASC')
                 ->paginate($perPage),
             'pager' => $this->accountModel->pager
@@ -132,6 +133,7 @@ class AccountService
             ->select('accounts.*')
             ->where('logo !=', null)
             ->where('status', 'ACTIVE')
+            ->where('accounts.nome !=', 'Administrador')
             ->orderBy('tipo_conta', 'ASC')
             ->findAll($limit);
     }
