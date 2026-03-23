@@ -66,6 +66,11 @@ $routes->group('ativacao', ['namespace' => 'CodeIgniter\Shield\Controllers'], fu
     $routes->get('reenviar', 'ActionController::resend', ['as' => 'auth-action-resend']);
 });
 
+// Redirect legacy Shield routes to humanized versions
+$routes->addRedirect('auth/a/show', 'ativacao/codigo');
+$routes->addRedirect('auth/a/verify', 'ativacao/verificar');
+$routes->addRedirect('auth/a/resend', 'ativacao/reenviar');
+
 // FORCE redirect from /login to /admin/login
 $routes->get('login', function() {
     return redirect()->to('/admin/login');
