@@ -30,9 +30,10 @@ class PropertyService
      *
      * @param array $data
      * @param int|null $id
+     * @param bool $isStaff Se true, ignora limites de plano.
      * @return array
      */
-    public function trySaveProperty(array $data, ?int $id = null): array
+    public function trySaveProperty(array $data, ?int $id = null, bool $isStaff = false): array
     {
         try {
             // 0. Load or New
@@ -91,7 +92,7 @@ class PropertyService
 
             // 4. PLAN LIMITS
             if ($property->status === 'ACTIVE') {
-                $limitCheck = $this->checkPlanLimits((int)$property->account_id, $id);
+                $limitCheck = $this->checkPlanLimits((int)$property->account_id, $id, $isStaff);
                 if (!$limitCheck['allowed']) {
                     return [
                         'success' => false,
@@ -183,8 +184,13 @@ class PropertyService
     /**
      * Verifica limites do plano. Retorna array ['allowed' => bool, 'message' => string]
      */
-    public function checkPlanLimits(int $accountId, ?int $currentPropertyId = null): array
+    public function checkPlanLimits(int $accountId, ?int $currentPropertyId = null, bool $isStaff = false): array
     {
+        // 0. BYPASS FOR STAFF
+        if ($isStaff) {
+            return ['allowed' => true, 'message' => 'Bypass Admin'];
+        }
+
         // 1. Busca ASSINATURA MAIS RECENTE (Independente do status)
         $subscription = $this->subscriptionModel
             ->where('account_id', $accountId)
@@ -599,8 +605,11 @@ class PropertyService
      * @param int|null $currentPropertyId Se for edição, ignora o imóvel atual na contagem
      * @return array
      */
-    public function canMarkAsDestaque(int $accountId, ?int $currentPropertyId = null): array
+    public function canMarkAsDestaque(int $accountId, ?int $currentPropertyId = null, bool $isStaff = false): array
     {
+        if ($isStaff) {
+             return ['allowed' => true, 'remaining' => 999, 'message' => 'Staff Bypass'];
+        }
         log_message('info', "[canMarkAsDestaque] Início - accountId: {$accountId}, currentPropertyId: " . ($currentPropertyId ?? 'null'));
         
         // 1. Busca ASSINATURA ATIVA

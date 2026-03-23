@@ -90,7 +90,8 @@ class PropertyController extends BaseController
         }
 
         if (!empty($data['is_destaque'])) {
-            $check = $this->propertyService->canMarkAsDestaque($data['account_id']);
+            $isAdmin = $user->inGroup('superadmin', 'admin');
+            $check = $this->propertyService->canMarkAsDestaque($data['account_id'], null, $isAdmin);
             if (!$check['allowed']) {
                 if ($this->request->isAJAX()) {
                     return $this->response->setJSON(['success' => false, 'message' => $check['message']]);
@@ -99,7 +100,8 @@ class PropertyController extends BaseController
             }
         }
 
-        $result = $this->propertyService->trySaveProperty($data);
+        $isAdmin = $user->inGroup('superadmin', 'admin');
+        $result = $this->propertyService->trySaveProperty($data, null, $isAdmin);
 
         if ($this->request->isAJAX()) {
             if ($result['success']) {
@@ -187,7 +189,7 @@ class PropertyController extends BaseController
         $data = $this->request->getPost();
         unset($data['account_id']);
 
-        $result = $this->propertyService->trySaveProperty($data, $id);
+        $result = $this->propertyService->trySaveProperty($data, $id, $isAdmin);
         log_message('emergency', '[PropertyController] Result from Service: ' . json_encode($result));
 
         if ($this->request->isAJAX()) {
@@ -328,7 +330,8 @@ class PropertyController extends BaseController
             return $this->response->setJSON(['allowed' => false, 'message' => 'Conta não encontrada.']);
         }
 
-        $check = $this->propertyService->canMarkAsDestaque($user->account_id, $id ? (int)$id : null);
+        $isAdmin = $user->inGroup('superadmin', 'admin');
+        $check = $this->propertyService->canMarkAsDestaque($user->account_id, $id ? (int)$id : null, $isAdmin);
         return $this->response->setJSON($check);
     }
 

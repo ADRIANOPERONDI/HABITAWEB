@@ -601,16 +601,8 @@
                 <div class="tab-pane fade" id="media">
                     <div class="card form-section-card">
                         <div class="card-body p-4 text-center">
-                            <div id="mediaTabPlaceholder" class="<?= isset($property) ? 'd-none' : '' ?>">
-                                <div class="py-5">
-                                    <i class="fa-solid fa-lock fa-4x text-muted mb-4"></i>
-                                    <h4 class="fw-bold text-muted">Aguardando rascunho</h4>
-                                    <p class="text-muted">Primeiro salve as informações básicas para poder enviar as fotos.</p>
-                                    <button type="button" class="btn btn-primary px-5 rounded-pill mt-3 btn-ajax-save" data-status="DRAFT">Salvar Rascunho e Liberar Fotos</button>
-                                </div>
-                            </div>
-                            
-                            <div id="mediaTabContent" class="<?= !isset($property) ? 'd-none' : '' ?>">
+                            <!-- Media Tab Content (Always Visible now) -->
+                            <div id="mediaTabContent">
                                 <h5 class="fw-bold text-dark mb-4">Galeria de Fotos</h5>
                                 <div class="dropzone-premium mb-4" id="dropZone">
                                     <i class="fa-solid fa-cloud-arrow-up fa-3x text-primary mb-3"></i>
@@ -955,6 +947,43 @@ $(document).ready(function() {
         function handleFiles(files) {
             if(files.length === 0) return;
             
+            // Se não temos ID, precisamos salvar o rascunho primeiro
+            if (!propertyId) {
+                console.log("No propertyId found. Saving draft first...");
+                $('#uploadProgress').removeClass('d-none');
+                $('.progress-bar').css('width', '10%').text('Iniciando rascunho...');
+                
+                const formData = getFormData();
+                formData.status = 'DRAFT';
+                
+                $.ajax({
+                    url: '<?= site_url("admin/properties") ?>',
+                    type: 'POST',
+                    data: formData,
+                    success: function(res) {
+                        if (res.success && res.id) {
+                            propertyId = res.id;
+                            uploadUrl = '<?= site_url("admin/properties") ?>/' + propertyId + '/media';
+                            console.log("Draft saved! New ID:", propertyId);
+                            // Agora continua com os arquivos
+                            processUploadQueue(files);
+                        } else {
+                            $('#uploadProgress').addClass('d-none');
+                            Swal.fire('Atenção', 'Para enviar fotos, preencha as informações básicas primeiro.', 'warning');
+                        }
+                    },
+                    error: function() {
+                        $('#uploadProgress').addClass('d-none');
+                        Swal.fire('Erro', 'Não foi possível criar o rascunho para as fotos.', 'error');
+                    }
+                });
+                return;
+            }
+
+            processUploadQueue(files);
+        }
+
+        function processUploadQueue(files) {
             $('#uploadProgress').removeClass('d-none');
             let total = files.length;
             let done = 0;
@@ -978,7 +1007,7 @@ $(document).ready(function() {
                     },
                     complete: function() {
                         done++;
-                        $('.progress-bar').css('width', (done/total*100) + '%');
+                        $('.progress-bar').css('width', (done/total*100) + '%').text('');
                         if(done === total) {
                             setTimeout(() => {
                                 $('#uploadProgress').addClass('d-none');
@@ -995,7 +1024,7 @@ $(document).ready(function() {
             // Converte explicitamente para boolean para evitar strings "false" serem truthy
             isMain = !!isMain;
             let activeClass = isMain ? 'border-primary border-3 shadow-lg' : '';
-            let btnClass = isMain ? 'btn-warning text-white' : 'btn-outline-secondary';
+            let btnClass = isMain ? 'btn-warning text-white' : 'btn-light text-muted';
             let badge = isMain ? '<span class="position-absolute top-0 start-0 badge bg-warning m-2 shadow-sm"><i class="fa-solid fa-crown me-1"></i>CAPA</span>' : '';
 
             let html = `
@@ -1038,7 +1067,7 @@ $(document).ready(function() {
                     // Set new active
                     let $container = $(`#media-${id} .gallery-item-premium`);
                     $container.addClass('border-primary border-3 shadow-lg');
-                    $container.append('<span class="position-absolute top-0 start-0 badge bg-warning m-2 shadow-sm">CAPA</span>');
+                    $container.append('<span class="position-absolute top-0 start-0 badge bg-warning m-2 shadow-sm"><i class="fa-solid fa-crown me-1"></i>CAPA</span>');
                     $container.find('button[onclick^="setMain"]').removeClass('btn-light text-muted').addClass('btn-warning text-white');
                 }
             }
