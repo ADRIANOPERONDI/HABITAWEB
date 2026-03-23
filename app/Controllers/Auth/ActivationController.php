@@ -30,7 +30,7 @@ class ActivationController extends ActionController
             $user = auth()->user();
 
             if ($user !== null && ! $user->active) {
-                $authenticator->startUpAction('login', $user);
+                $authenticator->startUpAction('register', $user);
                 $this->action = $authenticator->getAction();
             }
         }

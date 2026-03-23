@@ -5,6 +5,7 @@ namespace App\Filters;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
+use CodeIgniter\Shield\Authentication\Authenticators\Session;
 
 class AdminAuth implements FilterInterface
 {
@@ -43,6 +44,12 @@ class AdminAuth implements FilterInterface
         // Check if user is active (email verified)
         $user = auth()->user();
         if ($user && ! $user->active) {
+            /** @var Session $authenticator */
+            $authenticator = auth('session')->getAuthenticator();
+            if (! $authenticator->hasAction()) {
+                $authenticator->startUpAction('register', $user);
+            }
+
             log_message('debug', '[AdminAuth] Redirecionando usuário INATIVO (' . $user->id . ') para ativação.');
             return redirect()->to(site_url('ativacao/codigo'));
         }

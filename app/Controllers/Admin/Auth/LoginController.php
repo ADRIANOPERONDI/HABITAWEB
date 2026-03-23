@@ -18,6 +18,17 @@ class LoginController extends ShieldLoginController
     public function loginView()
     {
         if (auth()->loggedIn()) {
+            $user = auth()->user();
+            if ($user !== null && ! $user->active) {
+                /** @var Session $authenticator */
+                $authenticator = auth('session')->getAuthenticator();
+                if (! $authenticator->hasAction()) {
+                    $authenticator->startUpAction('register', $user);
+                }
+
+                return redirect()->to(site_url('ativacao/codigo'));
+            }
+
             return redirect()->to(config('Auth')->loginRedirect());
         }
 
@@ -81,6 +92,14 @@ class LoginController extends ShieldLoginController
         if ($user !== null) {
             if ($user->requiresPasswordReset()) {
                 return redirect()->to(config('Auth')->forcePasswordResetRedirect());
+            }
+
+            if (! $user->active) {
+                if (! $authenticator->hasAction()) {
+                    $authenticator->startUpAction('register', $user);
+                }
+
+                return redirect()->to(site_url('ativacao/codigo'))->withCookies();
             }
         }
 
