@@ -43,7 +43,7 @@ class AdminAuth implements FilterInterface
         // Check if user is active (email verified)
         $user = auth()->user();
         if ($user && ! $user->active) {
-            return redirect()->to(url_to('auth-action-show'));
+            return redirect()->to(site_url('ativacao/codigo'));
         }
 
         // Force Re-fetch to bypass Session Cache issues

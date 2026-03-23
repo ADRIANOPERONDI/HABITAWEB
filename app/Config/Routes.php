@@ -59,15 +59,15 @@ $routes->group('', ['filter' => 'session'], function($routes) {
 // DISABLE Shield default routes (we use custom admin routes)
 // service('auth')->routes($routes);
 
-// Enable only Email Activation routes for Shield
-$routes->get('ativacao/codigo', '\CodeIgniter\Shield\Controllers\ActionController::show', ['as' => 'auth-action-show']);
+// Enable both humanized and legacy routes for Email Activation
+$routes->get('ativacao/codigo',    '\CodeIgniter\Shield\Controllers\ActionController::show',   ['as' => 'auth-action-show']);
 $routes->post('ativacao/verificar', '\CodeIgniter\Shield\Controllers\ActionController::verify', ['as' => 'auth-action-verify']);
-$routes->get('ativacao/reenviar', '\CodeIgniter\Shield\Controllers\ActionController::resend', ['as' => 'auth-action-resend']);
+$routes->get('ativacao/reenviar',  '\CodeIgniter\Shield\Controllers\ActionController::resend', ['as' => 'auth-action-resend']);
 
-// Redirect legacy Shield routes to humanized versions
-$routes->addRedirect('auth/a/show', 'ativacao/codigo');
-$routes->addRedirect('auth/a/verify', 'ativacao/verificar');
-$routes->addRedirect('auth/a/resend', 'ativacao/reenviar');
+// Legacy Shield routes (fallback to avoid 404)
+$routes->get('auth/a/show',       '\CodeIgniter\Shield\Controllers\ActionController::show');
+$routes->post('auth/a/verify',     '\CodeIgniter\Shield\Controllers\ActionController::verify');
+$routes->get('auth/a/resend',     '\CodeIgniter\Shield\Controllers\ActionController::resend');
 
 // FORCE redirect from /login to /admin/login
 $routes->get('login', function() {
