@@ -65,7 +65,11 @@ $routes->group('', ['filter' => 'session'], function($routes) {
 // service('auth')->routes($routes);
 
 // Enable both humanized and legacy routes for Email Activation
-$routes->get('ativacao/codigo',    '\CodeIgniter\Shield\Controllers\ActionController::show',   ['as' => 'auth-action-show']);
+$routes->get('ativacao/codigo', function() {
+    $instance = new \CodeIgniter\Shield\Controllers\ActionController();
+    $instance->initController(service('request'), service('response'), service('logger'));
+    return $instance->show();
+}, ['as' => 'auth-action-show']);
 $routes->post('ativacao/verificar', '\CodeIgniter\Shield\Controllers\ActionController::verify', ['as' => 'auth-action-verify']);
 $routes->get('ativacao/reenviar',  '\CodeIgniter\Shield\Controllers\ActionController::resend', ['as' => 'auth-action-resend']);
 
