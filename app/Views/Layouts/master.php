@@ -2,7 +2,14 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="X-CSRF-TOKEN" content="<?= csrf_hash() ?>">
     <title><?= $this->renderSection('title') ?> | <?= esc(app_setting('site.name', 'Habitaweb')) ?> Admin</title>
     
     <?php if ($favicon = app_setting('style.favicon_url')): ?>
@@ -27,33 +34,38 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     
+    <?php 
+        $primary   = app_setting('style.primary_color', '#6366f1');
+        $secondary = app_setting('style.secondary_color', '#a855f7');
+        $tertiary  = app_setting('style.tertiary_color', '#10b981');
+
+        if (!function_exists('hex2rgb_local')) {
+            function hex2rgb_local($hex) {
+                $hex = str_replace("#", "", $hex);
+                if(strlen($hex) == 3) {
+                    $r = hexdec(substr($hex,0,1).substr($hex,0,1));
+                    $g = hexdec(substr($hex,1,1).substr($hex,1,1));
+                    $b = hexdec(substr($hex,2,1).substr($hex,2,1));
+                } else {
+                    $r = hexdec(substr($hex,0,2));
+                    $g = hexdec(substr($hex,2,2));
+                    $b = hexdec(substr($hex,4,2));
+                }
+                return "$r, $g, $b";
+            }
+        }
+        $primaryRgb = hex2rgb_local($primary);
+        $secondaryRgb = hex2rgb_local($secondary);
+        $tertiaryRgb = hex2rgb_local($tertiary);
+    ?>
     <style>
         :root {
-            <?php 
-                $primary   = app_setting('style.primary_color', '#6366f1');
-                $secondary = app_setting('style.secondary_color', '#a855f7');
-                $tertiary  = app_setting('style.tertiary_color', '#10b981');
-
-                function hex2rgb($hex) {
-                    $hex = str_replace("#", "", $hex);
-                    if(strlen($hex) == 3) {
-                        $r = hexdec(substr($hex,0,1).substr($hex,0,1));
-                        $g = hexdec(substr($hex,1,1).substr($hex,1,1));
-                        $b = hexdec(substr($hex,2,1).substr($hex,2,1));
-                    } else {
-                        $r = hexdec(substr($hex,0,2));
-                        $g = hexdec(substr($hex,2,2));
-                        $b = hexdec(substr($hex,4,2));
-                    }
-                    return "$r, $g, $b";
-                }
-            ?>
             --primary-color: <?= $primary ?>;
             --secondary-color: <?= $secondary ?>;
             --tertiary-color: <?= $tertiary ?>;
-            --primary-rgb: <?= hex2rgb($primary) ?>;
-            --secondary-rgb: <?= hex2rgb($secondary) ?>;
-            --tertiary-rgb: <?= hex2rgb($tertiary) ?>;
+            --primary-rgb: <?= $primaryRgb ?>;
+            --secondary-rgb: <?= $secondaryRgb ?>;
+            --tertiary-rgb: <?= $tertiaryRgb ?>;
             
             --bs-primary: <?= $primary ?>;
             --bs-secondary: <?= $secondary ?>;
@@ -61,7 +73,52 @@
             
             --primary-gradient: linear-gradient(135deg, <?= $primary ?> 0%, <?= $secondary ?> 100%);
             --secondary-gradient: linear-gradient(135deg, <?= $secondary ?> 0%, <?= $tertiary ?> 100%);
+
+            /* Admin Theme Variables - Light */
+            --admin-bg: #f4f7fe;
+            --admin-card-bg: #ffffff;
+            --admin-text: #2b3674;
+            --admin-text-muted: #a3aed0;
+            --admin-border: #e9edf7;
+            --admin-sidebar-bg: #ffffff;
+            --admin-topbar-bg: rgba(255, 255, 255, 0.8);
         }
+
+        [data-theme='dark'] {
+            --admin-bg: #0b1437;
+            --admin-card-bg: #111c44;
+            --admin-text: #ffffff;
+            --admin-text-muted: #8f9bba;
+            --admin-border: #1b254b;
+            --admin-sidebar-bg: #111c44;
+            --admin-topbar-bg: rgba(11, 20, 55, 0.8);
+
+            --bs-body-bg: var(--admin-bg);
+            --bs-body-color: var(--admin-text);
+        }
+
+        body { 
+            background-color: var(--admin-bg) !important; 
+            color: var(--admin-text);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        
+        .card { background-color: var(--admin-card-bg) !important; border-color: var(--admin-border) !important; color: var(--admin-text) !important; }
+        .sidebar { background-color: var(--admin-sidebar-bg) !important; border-right: 1px solid var(--admin-border); }
+        .top-navbar-premium { background-color: var(--admin-topbar-bg) !important; backdrop-filter: blur(20px); border-bottom: 1px solid var(--admin-border); }
+        .text-dark { color: var(--admin-text) !important; }
+        .text-muted { color: var(--admin-text-muted) !important; }
+        .bg-white { background-color: var(--admin-card-bg) !important; }
+        .bg-light { background-color: var(--admin-bg) !important; }
+        .table { color: var(--admin-text) !important; }
+        .table tr { border-color: var(--admin-border) !important; }
+        .list-group-item { background-color: var(--admin-card-bg) !important; color: var(--admin-text) !important; border-color: var(--admin-border) !important; }
+        .dropdown-menu { background-color: var(--admin-card-bg) !important; border-color: var(--admin-border) !important; }
+        .dropdown-item { color: var(--admin-text) !important; }
+        .dropdown-item:hover { background-color: var(--admin-bg) !important; }
+        .sidebar-brand { color: var(--admin-text) !important; }
+        .nav-link { color: var(--admin-text-muted) !important; }
+        .nav-link:hover, .nav-link.active { color: var(--primary-color) !important; background: rgba(var(--primary-rgb), 0.05) !important; }
 
         /* Override basic BS classes to respect dynamic colors */
         .text-primary { color: var(--primary-color) !important; }
@@ -88,10 +145,20 @@
 
     <!-- Sidebar -->
     <nav class="sidebar">
+        <style>
+            .logo-dark-theme { display: none; }
+            [data-theme='dark'] .logo-light-theme { display: none; }
+            [data-theme='dark'] .logo-dark-theme { display: inline-block; }
+        </style>
         <div class="sidebar-header">
             <a href="<?= site_url('admin') ?>" class="sidebar-brand text-decoration-none">
-                <?php if ($logo = app_setting('style.logo_url')): ?>
-                    <img src="<?= base_url($logo) ?>" alt="Logo" height="55" class="object-fit-contain">
+                <?php 
+                    $logoOriginal = app_setting('style.logo_url');
+                    $logoWhite = app_setting('style.logo_footer_url') ?: $logoOriginal;
+                ?>
+                <?php if ($logoOriginal): ?>
+                    <img src="<?= base_url($logoOriginal) ?>" alt="Logo" height="55" class="object-fit-contain logo-light-theme">
+                    <img src="<?= base_url($logoWhite) ?>" alt="Logo" height="55" class="object-fit-contain logo-dark-theme">
                 <?php else: ?>
                     <i class="fa-solid fa-house-chimney-user"></i>
                     <span><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
@@ -230,6 +297,11 @@
             </div>
             
             <div class="d-flex align-items-center gap-3">
+                <!-- Theme Toggle -->
+                <button id="theme-toggle" class="btn btn-light rounded-circle shadow-sm p-2" title="Alternar Tema">
+                    <i class="fa-solid fa-moon" id="theme-toggle-icon"></i>
+                </button>
+
                 <div class="dropdown me-3 d-none d-sm-block">
                     <button class="btn btn-light rounded-circle position-relative p-2" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="notifyBtn">
                         <i class="fa-regular fa-bell"></i>
@@ -352,7 +424,6 @@
                         url: url,
                         method: method,
                         data: {
-                            '<?= csrf_token() ?>': '<?= csrf_hash() ?>',
                             '_method': method,
                             ...extraData
                         },
@@ -460,14 +531,14 @@
         }
 
         window.markAllNotificationsRead = function() {
-            $.post('<?= site_url("admin/notifications/mark-all-read") ?>', {<?= csrf_token() ?>: '<?= csrf_hash() ?>'}, function() {
+            $.post('<?= site_url("admin/notifications/mark-all-read") ?>', {}, function() {
                 loadNotifications();
                 Toast.fire({ icon: 'success', title: 'Notificações limpas!' });
             });
         };
 
         window.markRead = function(id, link) {
-            $.post(`<?= site_url("admin/notifications/mark-read") ?>/${id}`, {<?= csrf_token() ?>: '<?= csrf_hash() ?>'}, function() {
+            $.post(`<?= site_url("admin/notifications/mark-read") ?>/${id}`, {}, function() {
                 if(link && link !== 'null' && link !== '') {
                     window.location.href = link;
                 } else {
@@ -526,7 +597,62 @@
             });
         }
     </script>
+    <script>
+        // Global AJAX CSRF Setup
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (settings.type === 'POST' || settings.type === 'PUT' || settings.type === 'DELETE' || settings.type === 'PATCH') {
+                    const token = $('meta[name="X-CSRF-TOKEN"]').attr('content');
+                    if (token) {
+                        xhr.setRequestHeader('X-CSRF-TOKEN', token);
+                    }
+                }
+            }
+        });
+
+        // Update CSRF token on every AJAX completion
+        $(document).ajaxComplete(function(event, xhr, settings) {
+            const newToken = xhr.getResponseHeader('X-CSRF-TOKEN');
+            if (newToken) {
+                // Update Meta Tag
+                $('meta[name="X-CSRF-TOKEN"]').attr('content', newToken);
+                // Update all CSRF inputs in forms
+                $('input[name="<?= csrf_token() ?>"]').val(newToken);
+            }
+        });
+    </script>
     <?= $this->renderSection('modals') ?>
     <?= $this->renderSection('scripts') ?>
+    <script>
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-toggle-icon');
+        
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+                themeToggle.classList.replace('btn-light', 'btn-dark');
+            } else {
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+                themeToggle.classList.replace('btn-dark', 'btn-light');
+            }
+        }
+
+        // Initialize icon
+        updateThemeIcon(document.documentElement.getAttribute('data-theme'));
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+
+            // Notify about theme change
+            window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: newTheme } }));
+        });
+    </script>
 </body>
 </html>

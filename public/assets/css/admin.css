@@ -14,12 +14,12 @@
     --primary-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
     --secondary-gradient: linear-gradient(135deg, var(--secondary-color) 0%, var(--tertiary-color) 100%);
 
-    --bg-light: #f8fafc;
-    --sidebar-bg: #ffffff;
-    --card-bg: rgba(255, 255, 255, 0.8);
-    --glass-border: rgba(255, 255, 255, 0.3);
-    --text-dark: #1e293b;
-    --text-muted: #64748b;
+    --bg-light: var(--admin-bg, #f8fafc);
+    --sidebar-bg: var(--admin-sidebar-bg, #ffffff);
+    --card-bg: var(--admin-card-bg, #ffffff);
+    --glass-border: var(--admin-border, rgba(255, 255, 255, 0.3));
+    --text-dark: var(--admin-text, #1e293b);
+    --text-muted: var(--admin-text-muted, #64748b);
     --radius-xl: 24px;
     --radius-lg: 16px;
     --shadow-premium: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 5px 15px -5px rgba(0, 0, 0, 0.03);
@@ -159,7 +159,7 @@ body {
     padding: 30px;
     min-height: 100vh;
     transition: all 0.4s ease;
-    background: #fdfdfd;
+    background: var(--admin-bg);
 }
 
 .sidebar-collapsed .sidebar {
@@ -178,7 +178,7 @@ body {
     border-radius: 16px;
     padding: 15px 25px;
     margin-bottom: 30px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--admin-border);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -343,7 +343,9 @@ body {
 .input-premium {
     padding: 12px 15px;
     border-radius: 12px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--admin-border);
+    background-color: var(--admin-card-bg);
+    color: var(--admin-text);
     font-size: 0.95rem;
     transition: all 0.2s ease;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
@@ -368,7 +370,7 @@ body {
 /* --- SELECT2 CUSTOMIZATION (High Specificity) --- */
 body .select2-container--bootstrap-5 .select2-selection {
     border-radius: 12px !important;
-    border: 1px solid #e2e8f0 !important;
+    border: 1px solid var(--admin-border) !important;
     padding: 0.5rem 0.75rem !important;
     height: auto !important;
     min-height: 42px;
@@ -376,7 +378,7 @@ body .select2-container--bootstrap-5 .select2-selection {
     font-size: 0.9rem;
     display: flex !important;
     align-items: center !important;
-    background-color: #fff !important;
+    background-color: var(--admin-card-bg) !important;
     position: relative;
     transition: all 0.2s ease;
 }
@@ -432,9 +434,9 @@ body .select2-container--bootstrap-5 .select2-search--dropdown {
 body .select2-container--bootstrap-5 .select2-search__field {
     padding: 8px 12px !important;
     margin-bottom: 0 !important;
-    border: 1px solid #e2e8f0 !important;
+    border: 1px solid var(--admin-border) !important;
     border-radius: 8px !important;
-    background-color: #f8fafc;
+    background-color: var(--admin-bg);
     font-size: 0.85rem;
     color: var(--text-dark) !important;
 }

@@ -601,7 +601,7 @@ class PropertyService
      */
     public function canMarkAsDestaque(int $accountId, ?int $currentPropertyId = null): array
     {
-        log_message('emergency', "[canMarkAsDestaque] Início - accountId: {$accountId}, currentPropertyId: " . ($currentPropertyId ?? 'null'));
+        log_message('info', "[canMarkAsDestaque] Início - accountId: {$accountId}, currentPropertyId: " . ($currentPropertyId ?? 'null'));
         
         // 1. Busca ASSINATURA ATIVA
         $subscription = $this->subscriptionModel
@@ -610,7 +610,7 @@ class PropertyService
             ->orderBy('id', 'DESC')
             ->first();
 
-        log_message('emergency', "[canMarkAsDestaque] Subscription encontrada: " . ($subscription ? "ID {$subscription->id}, Status: {$subscription->status}, Plan ID: {$subscription->plan_id}" : 'NENHUMA'));
+        log_message('info', "[canMarkAsDestaque] Subscription encontrada: " . ($subscription ? "ID {$subscription->id}, Status: {$subscription->status}, Plan ID: {$subscription->plan_id}" : 'NENHUMA'));
 
         if (!$subscription) {
             return ['allowed' => false, 'message' => 'Nenhuma assinatura ativa encontrada. Assine um plano para usar selos.'];

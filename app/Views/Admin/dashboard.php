@@ -9,18 +9,18 @@
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
 <style>
-    .metric-card { border: 1px solid #f0f0f0; border-radius: 20px; transition: all 0.3s; }
+    .metric-card { border: 1px solid var(--admin-border); border-radius: 20px; transition: all 0.3s; background-color: var(--admin-card-bg); }
     .metric-card:hover { border-color: var(--primary-color); transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
     .metric-icon { width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
     .recent-img-mini { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; }
-    .quick-action-card { border-radius: 20px; border: 1px dashed #ddd; transition: all 0.3s; background: #fafafa; }
-    .quick-action-card:hover { background: #fff; border-color: var(--primary-color); color: var(--primary-color) !important; }
+    .quick-action-card { border-radius: 20px; border: 1px dashed var(--admin-border); transition: all 0.3s; background: var(--admin-bg); color: var(--admin-text) !important; }
+    .quick-action-card:hover { background: var(--admin-card-bg); border-color: var(--primary-color); color: var(--primary-color) !important; }
     .system-logo-dash { max-height: 80px; width: auto; object-fit: contain; }
     
     /* Select2 Tweaks */
-    .select2-container .select2-selection--single { height: 44px; display: flex; align-items: center; border-radius: 10px; border: 1px solid #dfe3e8; }
-    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered { padding-left: 15px; font-size: 0.95rem; color: #495057; }
-    .filter-bar { background: #fff; padding: 20px; border-radius: 16px; border: 1px solid #eff2f5; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+    .select2-container .select2-selection--single { height: 44px; display: flex; align-items: center; border-radius: 10px; border: 1px solid var(--admin-border); background-color: var(--admin-card-bg); }
+    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered { padding-left: 15px; font-size: 0.95rem; color: var(--admin-text); }
+    .filter-bar { background: var(--admin-card-bg); padding: 20px; border-radius: 16px; border: 1px solid var(--admin-border); box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
     .btn-filter { height: 44px; border-radius: 10px; font-weight: 600; }
 </style>
 <?= $this->endSection() ?>

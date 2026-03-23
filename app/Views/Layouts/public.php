@@ -2,6 +2,13 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            if (savedTheme === 'dark') document.documentElement.classList.add('dark-mode');
+        })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="<?= $this->renderSection('meta_description') ?: esc(app_setting('seo.description', 'Portal imobiliário')) ?>">
     <meta name="keywords" content="<?= esc(app_setting('seo.keywords', 'imoveis')) ?>">
@@ -60,7 +67,46 @@
             
             --primary-gradient: linear-gradient(135deg, <?= esc($primary) ?> 0%, <?= esc($secondary) ?> 100%);
             --secondary-gradient: linear-gradient(135deg, <?= esc($secondary) ?> 0%, #10b981 100%);
+
+            /* Theme Variables - Light (Default) */
+            --bg-body: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-main: #2d3748;
+            --text-muted: #718096;
+            --border-color: #f0f0f0;
+            --nav-bg: rgba(255, 255, 255, 0.95);
         }
+
+        [data-theme='dark'] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --nav-bg: rgba(15, 23, 42, 0.95);
+            
+            --bs-body-bg: var(--bg-body);
+            --bs-body-color: var(--text-main);
+        }
+
+        body { 
+            background-color: var(--bg-body) !important; 
+            color: var(--text-main);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .bg-light { background-color: var(--bg-body) !important; }
+        .bg-white { background-color: var(--bg-card) !important; }
+        .card { background-color: var(--bg-card); border-color: var(--border-color); }
+        .text-dark { color: var(--text-main) !important; }
+        .text-muted { color: var(--text-muted) !important; }
+        .border-bottom, .border-top, .border { border-color: var(--border-color) !important; }
+        
+        .navbar { 
+            background-color: var(--nav-bg) !important; 
+            backdrop-filter: blur(10px);
+        }
+        .nav-link { color: var(--text-main) !important; }
+        .nav-link:hover { color: var(--primary-color) !important; }
         .bg-primary-soft { background-color: rgba(<?= esc($primaryRgb) ?>, 0.1) !important; }
         .text-primary { color: var(--primary-color) !important; }
         .btn-primary { background-color: var(--primary-color) !important; border-color: var(--primary-color) !important; border-radius: 50px !important; }
@@ -195,14 +241,24 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom fixed-top py-3 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold fs-4 d-flex align-items-center gap-2" href="<?= site_url('/') ?>">
-                <?php if ($logo = app_setting('style.logo_url')): ?>
-                    <img src="<?= base_url($logo) ?>" alt="Logo" height="<?= app_setting('style.logo_height', 70) ?>" class="object-fit-contain">
-                <?php else: ?>
-                    <i class="fa-solid fa-map-location-dot text-primary"></i> 
-                    <span><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
-                <?php endif; ?>
-            </a>
+        <style>
+            .logo-dark-theme { display: none; }
+            [data-theme='dark'] .logo-light-theme { display: none; }
+            [data-theme='dark'] .logo-dark-theme { display: inline-block; }
+        </style>
+        <a class="navbar-brand py-2" href="<?= site_url() ?>">
+            <?php 
+                $logoOriginal = app_setting('style.logo_url');
+                $logoWhite = app_setting('style.logo_footer_url') ?: $logoOriginal;
+                $logoHeight = app_setting('style.logo_height', 70);
+            ?>
+            <?php if ($logoOriginal): ?>
+                <img src="<?= base_url($logoOriginal) ?>" class="logo-light-theme" alt="Logo" height="<?= $logoHeight ?>">
+                <img src="<?= base_url($logoWhite) ?>" class="logo-dark-theme" alt="Logo" height="<?= $logoHeight ?>">
+            <?php else: ?>
+                <span class="fw-bold fs-4 text-primary"><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
+            <?php endif; ?>
+        </a>
             
             <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
                 <span class="navbar-toggler-icon"></span>
@@ -225,6 +281,11 @@
                 </ul>
                 
                 <div class="d-flex align-items-center gap-3">
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle" class="btn btn-link text-main p-2 text-decoration-none shadow-none" title="Alternar Tema">
+                        <i class="fa-solid fa-moon fs-5" id="theme-toggle-icon"></i>
+                    </button>
+
                     <a href="<?= site_url('anuncie') ?>" class="btn btn-outline-primary rounded-pill px-4 fw-bold d-none d-md-block">
                         Anunciar Grátis
                     </a>
@@ -335,5 +396,34 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <?= view('Scripts/public_layout') ?>
     <?= $this->renderSection('scripts') ?>
+    <script>
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-toggle-icon');
+        
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.classList.remove('fa-moon');
+                themeIcon.classList.add('fa-sun');
+            } else {
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+            }
+        }
+
+        // Initialize icon
+        updateThemeIcon(document.documentElement.getAttribute('data-theme'));
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+
+            // Notify about theme change (useful for charts)
+            window.dispatchEvent(new CustomEvent('themeChanged', { detail: { theme: newTheme } }));
+        });
+    </script>
 </body>
 </html>

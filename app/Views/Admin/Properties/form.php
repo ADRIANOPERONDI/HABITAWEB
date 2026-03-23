@@ -886,8 +886,7 @@ $(document).ready(function() {
             contentType: 'application/json',
             data: JSON.stringify(formData),
             headers: { 
-                'X-Requested-With': 'XMLHttpRequest',
-                '<?= csrf_header() ?>': '<?= csrf_hash() ?>'
+                'X-Requested-With': 'XMLHttpRequest'
             },
             success: function(res) {
                 if(res.success) {
@@ -963,7 +962,6 @@ $(document).ready(function() {
             Array.from(files).forEach(file => {
                 let fd = new FormData();
                 fd.append('file', file);
-                fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
                 
                 $.ajax({
                     url: uploadUrl,
@@ -1027,7 +1025,7 @@ $(document).ready(function() {
         $.ajax({
             url: '<?= site_url("admin/media") ?>/' + id + '/main',
             type: 'POST',
-            data: { '<?= csrf_token() ?>': '<?= csrf_hash() ?>' },
+            data: {},
             success: function(res) {
                 if(res.success) {
                     Toast.fire({ icon: 'success', title: 'Capa atualizada!' });
@@ -1062,7 +1060,7 @@ $(document).ready(function() {
                 $.ajax({
                     url: '<?= site_url("admin/media") ?>/' + id,
                     type: 'DELETE',
-                    data: { '<?= csrf_token() ?>': '<?= csrf_hash() ?>' },
+                    data: {},
                     success: function(res) {
                         if(res.success) {
                             $(`#media-${id}`).fadeOut(function() { $(this).remove(); });
@@ -1102,8 +1100,7 @@ $(document).ready(function() {
             contentType: 'application/json',
             data: JSON.stringify(formData),
             headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
+                'X-Requested-With': 'XMLHttpRequest'
             },
             success: function(res) {
                 if(res.status && res.data) {
