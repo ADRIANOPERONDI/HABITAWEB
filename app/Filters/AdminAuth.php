@@ -32,7 +32,7 @@ class AdminAuth implements FilterInterface
         log_message('debug', '[AdminAuth] Verificando Rota: ' . $currentPath);
         
         // Allowed paths for unpaid users or users needing verification
-        $allowed = ['checkout', 'admin/logout', 'admin/subscription', 'api-keys', 'auth/a/'];
+        $allowed = ['checkout', 'admin/logout', 'admin/subscription', 'api-keys', 'ativacao/'];
         foreach ($allowed as $path) {
             if (str_starts_with($currentPath, $path)) {
                 log_message('debug', '[AdminAuth] Rota permitida: ' . $currentPath);
@@ -43,7 +43,7 @@ class AdminAuth implements FilterInterface
         // Check if user is active (email verified)
         $user = auth()->user();
         if ($user && ! $user->active) {
-            return redirect()->to(site_url('auth/a/show'));
+            return redirect()->to(url_to('auth-action-show'));
         }
 
         // Force Re-fetch to bypass Session Cache issues
