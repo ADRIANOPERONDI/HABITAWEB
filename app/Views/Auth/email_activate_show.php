@@ -45,9 +45,12 @@
                     <hr class="my-4 opacity-50">
 
                     <p class="text-muted small mb-3"><?= lang('App.activation_resend_txt') ?></p>
-                    <a href="<?= url_to('auth-action-resend') ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-4">
-                        <i class="fas fa-redo me-2"></i> <?= lang('App.activation_btn_resend') ?>
-                    </a>
+                    <form action="<?= url_to('auth-action-resend') ?>" method="post" class="d-inline-block">
+                        <?= csrf_field() ?>
+                        <button type="submit" class="btn btn-outline-secondary btn-sm rounded-pill px-4">
+                            <i class="fas fa-redo me-2"></i> <?= lang('App.activation_btn_resend') ?>
+                        </button>
+                    </form>
                 </div>
             </div>
             

@@ -96,6 +96,8 @@ class ActivationController extends ActionController
         /** @var Session $authenticator */
         $authenticator = auth('session')->getAuthenticator();
 
+        log_message('debug', '[ActivationController] Reenvio solicitado via POST.');
+
         $this->action = $authenticator->getAction();
 
         if (! $this->action instanceof ActionInterface) {
@@ -109,6 +111,8 @@ class ActivationController extends ActionController
 
         $code = $this->issueActivationCode($user);
         $sent = $this->sendActivationEmail($user, $code);
+
+        log_message('debug', '[ActivationController] Reenvio processado para user_id=' . $user->id . ' email=' . ($user->email ?? 'null') . ' sent=' . ($sent ? '1' : '0'));
 
         if (! $sent) {
             return redirect()->back()->with('error', lang('App.activation_send_error'));
