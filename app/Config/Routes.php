@@ -6,6 +6,11 @@ use CodeIgniter\Router\RouteCollection;
  * @var RouteCollection $routes
  */
 
+// TEST ROUTE - DELETE AFTER VERIFYING
+$routes->get('test-debug', function() {
+    die('O arquivo de rotas está SENDO LIDO no servidor!');
+});
+
 // ========== INSTALADOR (Wizard de Setup Inicial) ==========
 $routes->group('install', ['namespace' => 'App\Controllers\Install'], function($routes) {
     $routes->get('/', 'InstallController::index');
