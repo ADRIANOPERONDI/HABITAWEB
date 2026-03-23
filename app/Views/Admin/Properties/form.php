@@ -237,9 +237,34 @@
                                     <label class="form-label-premium">IPTU Anual (R$)</label>
                                     <input type="text" name="iptu" class="form-control input-premium double3" value="<?= number_format((float)old('iptu', $property->iptu ?? 0), 2, ',', '.') ?>" placeholder="0,00">
                                 </div>
+                                <?php if($isAdmin): ?>
+                                    <div class="col-md-12 mb-3">
+                                        <div class="card bg-primary bg-opacity-10 border-primary border-opacity-25 shadow-none pb-0">
+                                            <div class="card-body py-3">
+                                                <div class="row align-items-center">
+                                                    <div class="col-md-1 text-center d-none d-md-block">
+                                                        <i class="fa-solid fa-building-user fa-2x text-primary op-50"></i>
+                                                    </div>
+                                                    <div class="col-md-11">
+                                                        <label class="form-label fw-bold text-primary mb-1 text-uppercase small">Atribuir a qual Conta / Imobiliária?</label>
+                                                        <select name="account_id" id="main_account_id" class="form-select select2-premium" required>
+                                                            <option value="">-- Selecione a Conta --</option>
+                                                            <?php foreach($accounts as $acc): ?>
+                                                                <option value="<?= $acc->id ?>" <?= (old('account_id', $property->account_id ?? '') == $acc->id) ? 'selected' : '' ?>>
+                                                                    <?= esc($acc->nome) ?>
+                                                                </option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+
                                 <div class="col-md-6">
                                     <label class="form-label-premium">Corretor Responsável</label>
-                                    <select name="user_id_responsavel" class="form-select input-premium" required>
+                                    <select name="user_id_responsavel" id="user_id_responsavel" class="form-select input-premium" required>
                                         <option value="">-- Selecione o corretor --</option>
                                         <?php foreach($brokers as $broker): ?>
                                             <option value="<?= $broker->id ?>" <?= (old('user_id_responsavel', $property->user_id_responsavel ?? auth()->id()) == $broker->id) ? 'selected' : '' ?>>
@@ -1198,7 +1223,28 @@ $(document).ready(function() {
         })
         .catch(error => console.error(error));
 
-    // --- Masks & ViaCEP ---
+    // --- Admin: Troca de Conta ---
+    $('#main_account_id').on('change', function() {
+        const accId = $(this).val();
+        if(!accId) return;
+
+        // 1. Atualizar Corretores
+        const brokerSelect = $('#user_id_responsavel');
+        brokerSelect.prop('disabled', true).html('<option>Carregando...</option>');
+
+        $.get('<?= site_url("admin/properties/get-brokers-by-account") ?>', { account_id: accId }, function(data) {
+            let html = '<option value="">-- Selecione o corretor --</option>';
+            data.forEach(b => {
+                html += `<option value="${b.id}">${b.nome}</option>`;
+            });
+            brokerSelect.html(html).prop('disabled', false);
+        });
+
+        // 2. Limpar Cliente selecionado (evitar cross-account)
+        $('select[name="client_id"]').val(null).trigger('change');
+    });
+
+    // --- FORM SUBMISSION ---
     $.getScript('https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js', function() {
         $('input[name="cep"]').mask('00000-000');
     });

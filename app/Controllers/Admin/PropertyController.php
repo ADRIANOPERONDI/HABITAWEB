@@ -71,12 +71,19 @@ class PropertyController extends BaseController
     public function new()
     {
         $user = auth()->user();
-        $brokers = $user->account_id ? $this->propertyService->getBrokers($user->account_id) : [];
+        $isAdmin = $user->inGroup('superadmin', 'admin');
+        $accounts = [];
+        if ($isAdmin) {
+             $accountService = new \App\Services\AccountService();
+             $accounts = $accountService->getAllAccountsSortedByName();
+        }
 
         return view('Admin/Properties/form', [
             'property' => null,
             'clients'  => [],
-            'brokers'  => $brokers
+            'brokers'  => $brokers,
+            'accounts' => $accounts,
+            'isAdmin'  => $isAdmin
         ]);
     }
 
@@ -85,7 +92,9 @@ class PropertyController extends BaseController
         $data = $this->request->getPost();
         
         $user = auth()->user();
-        if ($user && $user->account_id) {
+        $isAdmin = $user->inGroup('superadmin', 'admin');
+        
+        if ($user && $user->account_id && (!$isAdmin || empty($data['account_id']))) {
             $data['account_id'] = $user->account_id;
         }
 
@@ -158,10 +167,18 @@ class PropertyController extends BaseController
             }
         }
 
+        $accounts = [];
+        if ($isAdmin) {
+             $accountService = new \App\Services\AccountService();
+             $accounts = $accountService->getAllAccountsSortedByName();
+        }
+
         return view('Admin/Properties/form', [
             'property' => $property,
             'clients'  => $clients,
-            'brokers'  => $brokers
+            'brokers'  => $brokers,
+            'accounts' => $accounts,
+            'isAdmin'  => $isAdmin
         ]);
     }
 
@@ -187,7 +204,9 @@ class PropertyController extends BaseController
         }
 
         $data = $this->request->getPost();
-        unset($data['account_id']);
+        if (!$isAdmin) {
+            unset($data['account_id']);
+        }
 
         $result = $this->propertyService->trySaveProperty($data, $id, $isAdmin);
         log_message('emergency', '[PropertyController] Result from Service: ' . json_encode($result));
@@ -357,5 +376,31 @@ class PropertyController extends BaseController
         $result = $this->propertyService->setPlanHighlight($id, $newState);
         
         return $this->response->setJSON($result);
+    }
+
+    /**
+     * Retorna corretores de uma conta específica (AJAX para Admin)
+     */
+    public function getBrokersByAccount()
+    {
+        $user = auth()->user();
+        if (!$user->inGroup('superadmin', 'admin')) {
+            return $this->response->setJSON([]);
+        }
+
+        $accountId = $this->request->getGet('account_id');
+        if (!$accountId) return $this->response->setJSON([]);
+
+        $brokers = $this->propertyService->getBrokers((int)$accountId);
+        
+        // Formata para facilitar no JS
+        $data = array_map(function($b) {
+            return [
+                'id'   => $b->id,
+                'nome' => $b->getDisplayName()
+            ];
+        }, $brokers);
+
+        return $this->response->setJSON($data);
     }
 }
