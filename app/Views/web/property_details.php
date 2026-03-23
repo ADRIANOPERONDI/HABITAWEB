@@ -200,7 +200,7 @@
                     <?php foreach($features as $feature): ?>
                         <div class="col-md-4">
                             <i class="fa-solid fa-check text-success me-2"></i> 
-                            <?= esc($feature->chave) ?> 
+                            <?= esc(\App\Helpers\PropertyCategoryHelper::getFeatureLabel($feature->chave)) ?> 
                             <?php if($feature->valor && $feature->valor != '1'): ?>
                                 <span class="text-muted small">(<?= esc($feature->valor) ?>)</span>
                             <?php endif; ?>
@@ -449,40 +449,18 @@ function showWhatsAppSelectionModal() {
 
 const whatsappMessagesConfig = <?= json_encode($property->whatsapp_messages_config ?? []) ?>;
 
-async function handleWhatsAppClick(number, channelName) {
+function handleWhatsAppClick(number, channelName) {
     if (!number) return;
     
-    // 1. Prepara o registro do evento de lead (rastreamento silencioso)
-    const formData = new FormData();
-    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>'); // Fix CSRF
-    formData.append('property_id', propertyInfo.id);
-    formData.append('evento', 'whatsapp_click');
-    formData.append('payload', JSON.stringify({ channel: channelName, number: number }));
-
-    let leadId = null;
-    try {
-        const response = await fetch('<?= site_url('leads/register-event') ?>', {
-            method: 'POST',
-            body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        const data = await response.json();
-        if(data.success) leadId = data.lead_id;
-    } catch (e) {
-        console.error('Erro ao registrar lead:', e);
-    }
-
-    // 2. Gera a mensagem padrão baseada no SOW ou template customizado
+    // 1. Gera a mensagem padrão baseada no SOW ou template customizado
     let msgTemplate = whatsappMessagesConfig[propertyInfo.operacao.toUpperCase()] || 
                       whatsappMessagesConfig['DEFAULT'] ||
-                      "Olá! Tenho interesse no imóvel [#{id}] {lead_ref} em {bairro}/{cidade} ({operacao}). Valor: R$ {preco}. Link: {url}. Podemos agendar uma visita?";
+                      "Olá! Tenho interesse no imóvel [#{id}] em {bairro}/{cidade} ({operacao}). Valor: R$ {preco}. Link: {url}. Podemos agendar uma visita?";
 
-    const leadRef = leadId ? `(Ref: L${leadId})` : '';
-
-    // Substitui variáveis no template
+    // Substitui variáveis no template (sem lead_ref fixo agora para ser instantâneo)
     const msg = msgTemplate
         .replace('{id}', propertyInfo.id)
-        .replace('{lead_ref}', leadRef)
+        .replace('{lead_ref}', '') // Removido para evitar fetch bloqueante
         .replace('{bairro}', propertyInfo.bairro)
         .replace('{cidade}', propertyInfo.cidade)
         .replace('{operacao}', propertyInfo.operacao)
@@ -491,8 +469,21 @@ async function handleWhatsAppClick(number, channelName) {
     
     const waUrl = `https://api.whatsapp.com/send?phone=${number.replace(/\D/g, '')}&text=${encodeURIComponent(msg)}`;
 
-    // 3. Redireciona
+    // 2. Redireciona IMEDIATAMENTE (Síncrono para evitar pop-up blocker)
     window.open(waUrl, '_blank');
+
+    // 3. Registra o lead em background (Fire and forget)
+    const formData = new FormData();
+    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    formData.append('property_id', propertyInfo.id);
+    formData.append('evento', 'whatsapp_click');
+    formData.append('payload', JSON.stringify({ channel: channelName, number: number }));
+
+    fetch('<?= site_url('leads/register-event') ?>', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
 }
 </script>
 <?= $this->endSection() ?>

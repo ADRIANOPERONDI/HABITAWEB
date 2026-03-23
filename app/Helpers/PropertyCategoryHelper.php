@@ -68,6 +68,32 @@ class PropertyCategoryHelper
     }
 
     /**
+     * Map of feature keys to human-readable labels
+     */
+    public const FEATURE_LABELS = [
+        'ar_condicionado'  => 'Ar Condicionado',
+        'salao_festas'     => 'Salão de Festas',
+        'piscina'          => 'Piscina',
+        'churrasqueira'    => 'Churrasqueira',
+        'playground'       => 'Playground',
+        'academia'         => 'Academia',
+        'portaria_24h'     => 'Portaria 24h',
+        'elevador'         => 'Elevador',
+        'gas_central'      => 'Gás Central',
+        'aquecimento_solar'=> 'Aquecimento Solar',
+        'poco_artesiano'   => 'Poço Artesiano',
+        'gerador'          => 'Gerador Energia',
+    ];
+
+    /**
+     * Returns a human-readable label for a feature key
+     */
+    public static function getFeatureLabel(string $key): string
+    {
+        return self::FEATURE_LABELS[$key] ?? ucfirst(str_replace('_', ' ', $key));
+    }
+
+    /**
      * Check if a specific field is applicable for a given property type
      */
     public static function isFieldApplicable(string $type, string $field): bool

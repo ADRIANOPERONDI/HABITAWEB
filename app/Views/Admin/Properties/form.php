@@ -326,30 +326,20 @@
                                 <!-- Características & Lazer -->
                                 <div class="col-12 mt-4">
                                     <h6 class="fw-bold mb-3"><i class="fa-solid fa-list-check text-primary me-2"></i> Comodidades & Diferenciais</h6>
-                                    <div class="row g-3">
-                                        <?php 
-                                            $possibleFeatures = [
-                                                'piscina' => 'Piscina',
-                                                'academia' => 'Academia',
-                                                'churrasqueira' => 'Churrasqueira',
-                                                'ar_condicionado' => 'Ar Condicionado',
-                                                'elevador' => 'Elevador',
-                                                'salao_festas' => 'Salão de Festas',
-                                                'playground' => 'Playground',
-                                                'varanda' => 'Varanda/Terraço',
-                                                'portaria_24h' => 'Portaria 24h'
-                                            ];
+                                                 <?php 
+                                            $dbFeatures = $property->features ?? [];
+                                            $allFeatures = \App\Helpers\PropertyCategoryHelper::FEATURE_LABELS;
                                             
                                             $currentFeatures = [];
-                                            // Carrega as características vinculadas
-                                            $dbFeatures = $property->features ?? [];
-                                            foreach ($dbFeatures as $f) {
-                                                // Suporta tanto Objeto quanto Array
-                                                $key = is_object($f) ? ($f->chave ?? '') : ($f['chave'] ?? '');
-                                                if ($key) $currentFeatures[$key] = true;
+                                            if (is_array($dbFeatures)) {
+                                                foreach ($dbFeatures as $feat) {
+                                                    $key = is_object($feat) ? ($feat->chave ?? '') : ($feat['chave'] ?? $feat);
+                                                    if ($key) $currentFeatures[$key] = true;
+                                                }
                                             }
                                         ?>
-                                        <?php foreach($possibleFeatures as $key => $label): ?>
+                                        <div class="row g-3">
+                                        <?php foreach($allFeatures as $key => $label): ?>
                                             <div class="col-6 col-md-4 col-lg-3">
                                                 <div class="form-check custom-checkbox-premium">
                                                     <input class="form-check-input" type="checkbox" name="features[]" value="<?= $key ?>" id="feat_<?= $key ?>" <?= isset($currentFeatures[$key]) ? 'checked' : '' ?>>
