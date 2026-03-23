@@ -236,8 +236,13 @@ class LivenessCheck {
 
     captureFrame() {
         const ctx = this.canvas.getContext('2d');
-        this.canvas.width = this.video.videoWidth;
-        this.canvas.height = this.video.videoHeight;
+        const maxWidth = 640;
+        const sourceWidth = this.video.videoWidth;
+        const sourceHeight = this.video.videoHeight;
+        const scale = Math.min(1, maxWidth / sourceWidth);
+
+        this.canvas.width = Math.round(sourceWidth * scale);
+        this.canvas.height = Math.round(sourceHeight * scale);
 
         // Mirror (standard for selfie)
         ctx.save();
@@ -246,7 +251,7 @@ class LivenessCheck {
         ctx.restore();
 
         // Use toDataURL (SYNCHRONOUS) to guarantee the frame is captured immediately
-        const dataUrl = this.canvas.toDataURL('image/jpeg', 0.85);
+        const dataUrl = this.canvas.toDataURL('image/jpeg', 0.72);
         const byteString = atob(dataUrl.split(',')[1]);
         const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
         const ab = new ArrayBuffer(byteString.length);

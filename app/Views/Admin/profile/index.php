@@ -126,7 +126,7 @@
                             <label for="logoInput" class="upload-btn-chip">
                                 <i class="fa-solid fa-camera"></i>
                             </label>
-                            <input type="file" name="logo" id="logoInput" class="d-none" accept="image/*" onchange="previewImage(this)">
+                            <input type="file" name="logo" id="logoInput" class="d-none" accept="image/*" onchange="optimizeAndPreviewLogo(this)">
                         </div>
                         <div>
                             <h4 class="fw-bold mb-1"><?= esc($account->nome) ?></h4>
@@ -400,6 +400,81 @@ function previewImage(input) {
     }
 }
 
+async function optimizeAndPreviewLogo(input) {
+    await optimizeImageInput(input, { maxWidth: 900, maxHeight: 900, quality: 0.82, outputName: 'logo.jpg' });
+    previewImage(input);
+}
+
+async function optimizeImageInput(input, options = {}) {
+    if (!input || !input.files || !input.files[0]) {
+        return;
+    }
+
+    const original = input.files[0];
+    if (!original.type.startsWith('image/')) {
+        return;
+    }
+
+    try {
+        const optimized = await optimizeImageFile(original, options);
+        if (!optimized) {
+            return;
+        }
+
+        const dt = new DataTransfer();
+        dt.items.add(optimized);
+        input.files = dt.files;
+    } catch (e) {
+        console.warn('Falha ao otimizar imagem no cliente:', e);
+    }
+}
+
+function optimizeImageFile(file, {
+    maxWidth = 1600,
+    maxHeight = 1600,
+    quality = 0.8,
+    outputName = 'optimized.jpg'
+} = {}) {
+    return new Promise((resolve) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+
+            let { width, height } = img;
+            const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob((blob) => {
+                URL.revokeObjectURL(objectUrl);
+
+                if (!blob) {
+                    resolve(file);
+                    return;
+                }
+
+                const out = new File([blob], outputName, { type: 'image/jpeg' });
+                resolve(out.size < file.size ? out : file);
+            }, 'image/jpeg', quality);
+        };
+
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(file);
+        };
+
+        img.src = objectUrl;
+    });
+}
+
 function previewDoc(input) {
     if (input.files && input.files[0]) {
         var reader = new FileReader();
@@ -410,7 +485,8 @@ function previewDoc(input) {
     }
 }
 
-$('#idFrontInput, #idBackInput, #selfieInput').on('change', function() {
+$('#idFrontInput, #idBackInput, #selfieInput').on('change', async function() {
+    await optimizeImageInput(this, { maxWidth: 1600, maxHeight: 1600, quality: 0.8, outputName: 'documento.jpg' });
     previewDoc(this);
 });
 
@@ -458,7 +534,7 @@ function takePicture() {
     ctx.restore();
 
     // Convert to blob and assign to the hidden file input
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
     const byteString = atob(dataUrl.split(',')[1]);
     const ab = new ArrayBuffer(byteString.length);
     const ia = new Uint8Array(ab);
