@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin\Auth;
 
 use CodeIgniter\HTTP\RedirectResponse;
+use CodeIgniter\Shield\Authentication\Authenticators\Session;
 use CodeIgniter\Shield\Controllers\LoginController as ShieldLoginController;
 
 /**
@@ -18,6 +19,12 @@ class LoginController extends ShieldLoginController
     {
         if (auth()->loggedIn()) {
             return redirect()->to(config('Auth')->loginRedirect());
+        }
+
+        /** @var Session $authenticator */
+        $authenticator = auth('session')->getAuthenticator();
+        if ($authenticator->hasAction()) {
+            return redirect()->route('auth-action-show');
         }
 
         return view('Admin/Auth/login');
@@ -59,7 +66,9 @@ class LoginController extends ShieldLoginController
 
         log_message('debug', '[LoginController] Tentando autenticar: ' . json_encode($credentials));
 
-        $attempt = auth('session')->remember($remember)->attempt($credentials);
+        /** @var Session $authenticator */
+        $authenticator = auth('session')->getAuthenticator();
+        $attempt = $authenticator->remember($remember)->attempt($credentials);
 
         if (! $attempt->isOK()) {
             log_message('error', '[LoginController] Falha na autenticação: ' . $attempt->reason());
@@ -73,6 +82,10 @@ class LoginController extends ShieldLoginController
             if ($user->requiresPasswordReset()) {
                 return redirect()->to(config('Auth')->forcePasswordResetRedirect());
             }
+        }
+
+        if ($authenticator->hasAction()) {
+            return redirect()->route('auth-action-show')->withCookies();
         }
 
         return redirect()->to(config('Auth')->loginRedirect())->withCookies();
