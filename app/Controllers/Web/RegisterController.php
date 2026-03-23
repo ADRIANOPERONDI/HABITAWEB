@@ -49,6 +49,11 @@ class RegisterController extends BaseController
         try {
             $user = $this->accountService->registerUser($data);
 
+            // Inicializa a ação do Shield (Ativação de E-mail)
+            $authenticator = auth('session')->getAuthenticator();
+            $authenticator->startLogin($user);
+            $authenticator->startUpAction('register', $user);
+
             return redirect()->to(url_to('auth-action-show'))->with('message', lang('App.register_success'));
 
         } catch (\Exception $e) {
