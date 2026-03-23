@@ -32,6 +32,10 @@ return [
     'activation_btn_resend'    => 'Reenviar Código',
     'activation_logout'        => 'Sair e entrar com outra conta',
     'activation_email_sent_to' => 'Enviado para',
+    'activation_code_sent_success' => 'Código de validação enviado com sucesso para o seu e-mail.',
+    'activation_resend_success' => 'Novo código de validação enviado com sucesso.',
+    'activation_send_error'    => 'Não foi possível enviar o código de validação. Tente novamente em instantes.',
+    'activation_invalid_session' => 'Sessão de ativação inválida. Faça login novamente.',
 
     // Email Template
     'email_activation_subject' => 'Ative sua conta - Habitaweb',

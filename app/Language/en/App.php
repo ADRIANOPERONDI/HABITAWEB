@@ -32,6 +32,10 @@ return [
     'activation_btn_resend'    => 'Resend Code',
     'activation_logout'        => 'Logout and sign in with another account',
     'activation_email_sent_to' => 'Sent to',
+    'activation_code_sent_success' => 'Validation code sent successfully to your email.',
+    'activation_resend_success' => 'A new validation code was sent successfully.',
+    'activation_send_error'    => 'Could not send the validation code. Please try again shortly.',
+    'activation_invalid_session' => 'Invalid activation session. Please sign in again.',
 
     // Email Template
     'email_activation_subject' => 'Activate your account - Habitaweb',
