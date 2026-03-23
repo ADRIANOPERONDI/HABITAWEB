@@ -20,7 +20,13 @@
                         <div class="alert alert-danger rounded-3"><?= session('error') ?></div>
                     <?php endif ?>
 
-                    <form action="<?= site_url('auth/a/verify') ?>" method="post">
+                    <?php if (session('message')) : ?>
+                        <div class="alert alert-success rounded-3 shadow-sm border-0">
+                            <i class="fas fa-check-circle me-2"></i> <?= session('message') ?>
+                        </div>
+                    <?php endif ?>
+
+                    <form action="<?= url_to('auth-action-verify') ?>" method="post">
                         <?= csrf_field() ?>
 
                         <div class="mb-4">
@@ -39,7 +45,7 @@
                     <hr class="my-4 opacity-50">
 
                     <p class="text-muted small mb-3"><?= lang('App.activation_resend_txt') ?></p>
-                    <a href="<?= site_url('auth/a/resend') ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-4">
+                    <a href="<?= url_to('auth-action-resend') ?>" class="btn btn-outline-secondary btn-sm rounded-pill px-4">
                         <i class="fas fa-redo me-2"></i> <?= lang('App.activation_btn_resend') ?>
                     </a>
                 </div>

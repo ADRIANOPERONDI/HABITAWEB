@@ -49,7 +49,7 @@ class RegisterController extends BaseController
         try {
             $user = $this->accountService->registerUser($data);
 
-            return redirect()->to('admin')->with('message', lang('App.register_success'));
+            return redirect()->to(url_to('auth-action-show'))->with('message', lang('App.register_success'));
 
         } catch (\Exception $e) {
             return redirect()->back()->withInput()->with('error', $e->getMessage());

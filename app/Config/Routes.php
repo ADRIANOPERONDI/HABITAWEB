@@ -60,10 +60,10 @@ $routes->group('', ['filter' => 'session'], function($routes) {
 // service('auth')->routes($routes);
 
 // Enable only Email Activation routes for Shield
-$routes->group('auth/a', ['namespace' => 'CodeIgniter\Shield\Controllers'], function ($routes) {
-    $routes->get('show', 'ActionController::show');
-    $routes->post('verify', 'ActionController::verify');
-    $routes->get('resend', 'ActionController::resend');
+$routes->group('ativacao', ['namespace' => 'CodeIgniter\Shield\Controllers'], function ($routes) {
+    $routes->get('codigo', 'ActionController::show', ['as' => 'auth-action-show']);
+    $routes->post('verificar', 'ActionController::verify', ['as' => 'auth-action-verify']);
+    $routes->get('reenviar', 'ActionController::resend', ['as' => 'auth-action-resend']);
 });
 
 // FORCE redirect from /login to /admin/login
