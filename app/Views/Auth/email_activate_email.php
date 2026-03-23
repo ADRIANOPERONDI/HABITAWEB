@@ -24,12 +24,12 @@
             <p><?= lang('App.email_activation_main') ?></p>
             
             <div class="code-box">
-                <?= $hash ?>
+                <?= esc($code ?? '') ?>
             </div>
             
             <p style="font-size: 14px; color: #64748b;"><?= lang('App.email_activation_footer') ?></p>
             
-            <a href="<?= url_to('verify-magic-link') ?>?token=<?= $hash ?>" class="btn"><?= lang('App.email_activation_btn') ?></a>
+            <a href="<?= url_to('auth-action-show') ?>" class="btn"><?= lang('App.email_activation_btn') ?></a>
         </div>
         <div class="footer">
             &copy; <?= date('Y') ?> Habitaweb - <?= lang('App.email_copyright') ?>
