@@ -2,9 +2,10 @@
 
 namespace App\Controllers\Auth;
 
+use CodeIgniter\Shield\Authentication\Authenticators\Session;
 use CodeIgniter\Shield\Controllers\ActionController;
-
 use CodeIgniter\Shield\Authentication\Actions\ActionInterface;
+use CodeIgniter\Shield\Models\UserIdentityModel;
 
 /**
  * Custom Activation Controller to handle activation routes with friendly URLs.
@@ -22,7 +23,7 @@ class ActivationController extends ActionController
      */
     public function _remap(string $method, ...$params)
     {
-        /** @var \CodeIgniter\Shield\Authentication\Authenticators\Session $authenticator */
+        /** @var Session $authenticator */
         $authenticator = auth('session')->getAuthenticator();
         $this->action = $authenticator->getAction();
 
@@ -30,7 +31,11 @@ class ActivationController extends ActionController
             $user = auth()->user();
 
             if ($user !== null && ! $user->active) {
-                $authenticator->startUpAction('register', $user);
+                // Reaproveita a action existente no banco sem recriar código sempre.
+                if (! $authenticator->hasAction($user->id)) {
+                    $authenticator->startUpAction('register', $user);
+                }
+
                 $this->action = $authenticator->getAction();
             }
         }
@@ -40,6 +45,35 @@ class ActivationController extends ActionController
         }
 
         return $this->{$method}(...$params);
+    }
+
+    /**
+     * Exibe tela de ativação sem reenviar e-mail/código a cada refresh.
+     * O reenvio explícito permanece em /ativacao/reenviar.
+     *
+     * @return \CodeIgniter\HTTP\Response|string
+     */
+    public function show()
+    {
+        /** @var Session $authenticator */
+        $authenticator = auth('session')->getAuthenticator();
+
+        $user = $authenticator->getPendingUser();
+        if ($user === null) {
+            return redirect()->to(site_url('admin/login'))->with('error', 'Sessão de ativação inválida. Faça login novamente.');
+        }
+
+        /** @var UserIdentityModel $identityModel */
+        $identityModel = model(UserIdentityModel::class);
+        $identity = $identityModel->getIdentityByType($user, Session::ID_TYPE_EMAIL_ACTIVATE);
+
+        // Sem identidade ativa: executa fluxo padrão (gera código e envia e-mail).
+        if ($identity === null) {
+            return $this->action->show();
+        }
+
+        // Com identidade existente: só renderiza a tela, sem trabalho pesado.
+        return view(setting('Auth.views')['action_email_activate_show'], ['user' => $user]);
     }
 
     /**
