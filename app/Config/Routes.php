@@ -65,18 +65,14 @@ $routes->group('', ['filter' => 'session'], function($routes) {
 // service('auth')->routes($routes);
 
 // Enable both humanized and legacy routes for Email Activation
-$routes->get('ativacao/codigo', function() {
-    $instance = new \CodeIgniter\Shield\Controllers\ActionController();
-    $instance->initController(service('request'), service('response'), service('logger'));
-    return $instance->show();
-}, ['as' => 'auth-action-show']);
-$routes->post('ativacao/verificar', '\CodeIgniter\Shield\Controllers\ActionController::verify', ['as' => 'auth-action-verify']);
-$routes->get('ativacao/reenviar',  '\CodeIgniter\Shield\Controllers\ActionController::resend', ['as' => 'auth-action-resend']);
+$routes->get('ativacao/codigo',    '\App\Controllers\Auth\ActivationController::show',   ['as' => 'auth-action-show']);
+$routes->post('ativacao/verificar', '\App\Controllers\Auth\ActivationController::verify', ['as' => 'auth-action-verify']);
+$routes->get('ativacao/reenviar',  '\App\Controllers\Auth\ActivationController::resend', ['as' => 'auth-action-resend']);
 
 // Legacy Shield routes (fallback to avoid 404)
-$routes->get('auth/a/show',       '\CodeIgniter\Shield\Controllers\ActionController::show');
-$routes->post('auth/a/verify',     '\CodeIgniter\Shield\Controllers\ActionController::verify');
-$routes->get('auth/a/resend',     '\CodeIgniter\Shield\Controllers\ActionController::resend');
+$routes->get('auth/a/show',       '\App\Controllers\Auth\ActivationController::show');
+$routes->post('auth/a/verify',     '\App\Controllers\Auth\ActivationController::verify');
+$routes->get('auth/a/resend',     '\App\Controllers\Auth\ActivationController::resend');
 
 // FORCE redirect from /login to /admin/login
 $routes->get('login', function() {
