@@ -43,6 +43,7 @@ class AdminAuth implements FilterInterface
         // Check if user is active (email verified)
         $user = auth()->user();
         if ($user && ! $user->active) {
+            log_message('debug', '[AdminAuth] Redirecionando usuário INATIVO (' . $user->id . ') para ativação.');
             return redirect()->to(site_url('ativacao/codigo'));
         }
 
