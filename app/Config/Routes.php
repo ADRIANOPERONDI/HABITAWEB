@@ -60,11 +60,9 @@ $routes->group('', ['filter' => 'session'], function($routes) {
 // service('auth')->routes($routes);
 
 // Enable only Email Activation routes for Shield
-$routes->group('ativacao', ['namespace' => 'CodeIgniter\Shield\Controllers'], function ($routes) {
-    $routes->get('codigo', 'ActionController::show', ['as' => 'auth-action-show']);
-    $routes->post('verificar', 'ActionController::verify', ['as' => 'auth-action-verify']);
-    $routes->get('reenviar', 'ActionController::resend', ['as' => 'auth-action-resend']);
-});
+$routes->get('ativacao/codigo', '\CodeIgniter\Shield\Controllers\ActionController::show', ['as' => 'auth-action-show']);
+$routes->post('ativacao/verificar', '\CodeIgniter\Shield\Controllers\ActionController::verify', ['as' => 'auth-action-verify']);
+$routes->get('ativacao/reenviar', '\CodeIgniter\Shield\Controllers\ActionController::resend', ['as' => 'auth-action-resend']);
 
 // Redirect legacy Shield routes to humanized versions
 $routes->addRedirect('auth/a/show', 'ativacao/codigo');
