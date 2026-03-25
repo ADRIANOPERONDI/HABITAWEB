@@ -1233,9 +1233,6 @@ $(document).ready(function() {
             });
             brokerSelect.html(html).prop('disabled', false);
         });
-
-        // 2. Limpar Cliente selecionado (evitar cross-account)
-        $('select[name="client_id"]').val(null).trigger('change');
     });
 
     // --- FORM SUBMISSION ---

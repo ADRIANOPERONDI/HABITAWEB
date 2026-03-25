@@ -118,6 +118,7 @@
         .dropdown-item:hover { background-color: var(--admin-bg) !important; }
         .sidebar-brand { color: var(--admin-text) !important; }
         .nav-link { color: var(--admin-text-muted) !important; }
+        .nav-link i { color: var(--primary-color) !important; }
         .nav-link:hover, .nav-link.active { color: var(--primary-color) !important; background: rgba(var(--primary-rgb), 0.05) !important; }
 
         /* Override basic BS classes to respect dynamic colors */
@@ -163,6 +164,9 @@
                     <i class="fa-solid fa-house-chimney-user"></i>
                     <span><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
                 <?php endif; ?>
+            </a>
+            <a href="<?= site_url('/') ?>" target="_blank" class="btn btn-sm w-100 rounded-3 mt-2 mb-1" style="background: rgba(var(--primary-rgb), 0.1); color: var(--primary-color); border: 1px solid rgba(var(--primary-rgb), 0.2); font-weight: 600;">
+                <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Ir ao Site
             </a>
         </div>
         
