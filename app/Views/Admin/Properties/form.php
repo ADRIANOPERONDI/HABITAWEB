@@ -246,15 +246,38 @@
                                                         <i class="fa-solid fa-building-user fa-2x text-primary op-50"></i>
                                                     </div>
                                                     <div class="col-md-11">
-                                                        <label class="form-label fw-bold text-primary mb-1 text-uppercase small">Atribuir a qual Conta / Imobiliária?</label>
-                                                        <select name="account_id" id="main_account_id" class="form-select select2-premium" required>
-                                                            <option value="">-- Selecione a Conta --</option>
-                                                            <?php foreach($accounts as $acc): ?>
-                                                                <option value="<?= $acc->id ?>" <?= (old('account_id', $property->account_id ?? '') == $acc->id) ? 'selected' : '' ?>>
-                                                                    <?= esc($acc->nome) ?>
-                                                                </option>
-                                                            <?php endforeach; ?>
-                                                        </select>
+                                                        <label class="form-label fw-bold text-primary mb-2 text-uppercase small">
+                                                            <i class="fa-solid fa-circle-exclamation text-danger small me-1"></i>
+                                                            Vincular Anúncio à Conta <span class="text-danger">*</span>
+                                                        </label>
+                                                        <?php if(empty($accounts)): ?>
+                                                            <div class="alert alert-warning py-2 small mb-0">
+                                                                <i class="fa-solid fa-exclamation-triangle me-1"></i>
+                                                                Nenhuma conta disponível para vincular.
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <select name="account_id" id="main_account_id" class="form-select select2-premium account-selector" required data-placeholder="Escolha a conta/imobiliária">
+                                                                <option value="" disabled selected class="d-none">-- Selecione a Conta/Imobiliária --</option>
+                                                                <?php foreach($accounts as $acc): ?>
+                                                                    <option value="<?= $acc->id ?>" data-type="<?= esc($acc->tipo_conta) ?>" <?= (old('account_id', $property->account_id ?? '') == $acc->id) ? 'selected' : '' ?>>
+                                                                        <?= esc($acc->nome) ?> 
+                                                                        <?php 
+                                                                            $tipoConta = match($acc->tipo_conta) {
+                                                                                'PF' => '(Pessoa Física)',
+                                                                                'CORRETOR' => '(Corretor)',
+                                                                                'IMOBILIARIA' => '(Imobiliária)',
+                                                                                default => ''
+                                                                            };
+                                                                            if($tipoConta) echo "- $tipoConta";
+                                                                        ?>
+                                                                    </option>
+                                                                <?php endforeach; ?>
+                                                            </select>
+                                                            <div class="small text-info mt-2">
+                                                                <i class="fa-solid fa-info-circle me-1"></i>
+                                                                Este é o responsável que verá e gerenciará o anúncio no sistema.
+                                                            </div>
+                                                        <?php endif; ?>
                                                     </div>
                                                 </div>
                                             </div>
@@ -780,6 +803,19 @@ $(document).ready(function() {
         const $btn = $(this);
         const forceStatus = $btn.data('status');
         const $form = $('#propertyForm');
+        
+        // Validar account_id (obrigatório para admin)
+        const $accountSelect = $form.find('#main_account_id');
+        if ($accountSelect.length > 0 && !$accountSelect.val()) {
+            Swal.fire({
+                title: 'Campo Obrigatório',
+                text: 'Você deve selecionar a conta/imobiliária para vincular o anúncio.',
+                icon: 'warning',
+                confirmButtonText: 'OK'
+            });
+            $accountSelect.focus();
+            return;
+        }
         
         // Sincroniza CKEditor se existir
         if (window.editorInstance) {

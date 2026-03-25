@@ -139,11 +139,15 @@ class AccountService
     }
 
     /**
-     * Retorna todas as contas ordenadas por nome.
+     * Retorna todas as contas (exceto administrador) ordenadas por nome.
+     * Usada para vincular anúncios/propriedades às contas disponíveis.
      */
     public function getAllAccountsSortedByName(): array
     {
-        return $this->accountModel->orderBy('nome', 'ASC')->findAll();
+        return $this->accountModel
+            ->where('tipo_conta !=', 'ADMIN')
+            ->orderBy('nome', 'ASC')
+            ->findAll();
     }
 
     /**

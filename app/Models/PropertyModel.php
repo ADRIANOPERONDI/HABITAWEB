@@ -55,8 +55,15 @@ class PropertyModel extends Model
     protected $deletedField  = 'deleted_at';
 
     // Validation
-    protected $validationRules      = [];
-    protected $validationMessages   = [];
+    protected $validationRules      = [
+        'account_id' => 'required|integer'
+    ];
+    protected $validationMessages   = [
+        'account_id' => [
+            'required' => 'A conta/imobiliária é obrigatória',
+            'integer' => 'Selecione uma conta/imobiliária válida'
+        ]
+    ];
     protected $skipValidation       = false;
     protected $cleanValidationRules = true;
 
