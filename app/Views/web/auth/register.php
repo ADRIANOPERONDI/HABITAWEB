@@ -166,7 +166,7 @@
                         <div class="form-check mb-4">
                             <input class="form-check-input" type="checkbox" value="" id="terms" required>
                             <label class="form-check-label text-muted small" for="terms">
-                                Eu concordo com os <a href="#" class="text-primary fw-bold text-decoration-none">Termos de Uso</a> e <a href="#" class="text-primary fw-bold text-decoration-none">Política de Privacidade</a>.
+                                Eu concordo com os <a href="<?= site_url('termos') ?>" class="text-primary fw-bold text-decoration-none">Termos de Uso</a> e <a href="<?= site_url('privacidade') ?>" class="text-primary fw-bold text-decoration-none">Política de Privacidade</a>.
                             </label>
                         </div>
 

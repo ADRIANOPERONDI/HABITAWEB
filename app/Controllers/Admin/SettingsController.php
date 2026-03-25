@@ -23,7 +23,9 @@ class SettingsController extends BaseController
             $query->whereNotIn('group', ['email', 'notifications', 'legal', 'about']);
         }
 
-        $settings = $query->findAll();
+        $settings = array_values(array_filter($query->findAll(), static function ($setting) {
+            return !in_array($setting->key, ['about.stats_experience', 'about.stats_clients', 'about.stats_properties'], true);
+        }));
 
         // Agrupa pro view
         $grouped = [];
@@ -119,9 +121,7 @@ class SettingsController extends BaseController
             'about.vision_text'      => ['value' => '', 'group' => 'about', 'label' => 'Texto da Visão', 'type' => 'text', 'description' => 'Explique a visão da empresa de forma objetiva.'],
             'about.values_title'     => ['value' => 'Nossos valores', 'group' => 'about', 'label' => 'Título dos Valores', 'type' => 'string', 'description' => 'Título da seção que lista os valores da empresa.'],
             'about.values_content'   => ['value' => '', 'group' => 'about', 'label' => 'Conteúdo dos Valores', 'type' => 'richtext', 'description' => 'Liste e descreva os valores institucionais com texto rico.'],
-            'about.stats_experience' => ['value' => '10', 'group' => 'about', 'label' => 'Anos de Experiência', 'type' => 'number', 'description' => 'Número exibido na estatística de experiência.'],
-            'about.stats_clients'    => ['value' => '500', 'group' => 'about', 'label' => 'Clientes Atendidos', 'type' => 'number', 'description' => 'Número exibido na estatística de clientes.'],
-            'about.stats_properties' => ['value' => '1000', 'group' => 'about', 'label' => 'Imóveis Anunciados', 'type' => 'number', 'description' => 'Número exibido na estatística de imóveis.'],
+            'about.foundation_year'  => ['value' => (string) (date('Y') - 10), 'group' => 'about', 'label' => 'Ano de Fundação', 'type' => 'number', 'description' => 'Ano usado para calcular automaticamente os anos de experiência exibidos no site.'],
             'about.cta_title'        => ['value' => 'Vamos conversar sobre o seu próximo imóvel?', 'group' => 'about', 'label' => 'Título do CTA', 'type' => 'string', 'description' => 'Título da chamada final da página Sobre Nós.'],
             'about.cta_text'         => ['value' => 'Entre em contato com a nossa equipe ou anuncie conosco para alcançar mais oportunidades.', 'group' => 'about', 'label' => 'Texto do CTA', 'type' => 'text', 'description' => 'Texto de apoio da chamada final.'],
 

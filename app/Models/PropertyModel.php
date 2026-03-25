@@ -137,6 +137,14 @@ class PropertyModel extends Model
     }
 
     /**
+     * Conta imóveis ativos públicos do portal.
+     */
+    public function countPublicActiveProperties(): int
+    {
+        return $this->where('status', 'ACTIVE')->countAllResults();
+    }
+
+    /**
      * Soma total de visitas com filtros.
      */
     public function sumVisitsWithFilters(int $accountId, array $filters = [], ?int $brokerId = null): int

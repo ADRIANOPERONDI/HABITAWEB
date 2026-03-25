@@ -39,4 +39,9 @@ class ClientModel extends Model
     protected $validationMessages   = [];
     protected $skipValidation       = false;
     protected $cleanValidationRules = true;
+
+    public function countRegisteredClients(): int
+    {
+        return $this->countAllResults();
+    }
 }

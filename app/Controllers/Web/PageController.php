@@ -3,11 +3,28 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
+use App\Models\ClientModel;
+use App\Models\PropertyModel;
 
 class PageController extends BaseController
 {
+    private function calculateYearsExperience(): int
+    {
+        $foundationYear = (int) app_setting('about.foundation_year', 0);
+        $currentYear = (int) date('Y');
+
+        if ($foundationYear <= 0 || $foundationYear > $currentYear) {
+            return 0;
+        }
+
+        return $currentYear - $foundationYear;
+    }
+
     public function sobre()
     {
+        $clientModel = model(ClientModel::class);
+        $propertyModel = model(PropertyModel::class);
+
         return view('web/sobre', [
             'heroTitle' => app_setting('about.hero_title', 'Sobre a nossa empresa'),
             'heroSubtitle' => app_setting('about.hero_subtitle', ''),
@@ -20,9 +37,9 @@ class PageController extends BaseController
             'visionText' => app_setting('about.vision_text', ''),
             'valuesTitle' => app_setting('about.values_title', 'Nossos valores'),
             'valuesContent' => app_setting('about.values_content', ''),
-            'statsExperience' => (int) app_setting('about.stats_experience', 0),
-            'statsClients' => (int) app_setting('about.stats_clients', 0),
-            'statsProperties' => (int) app_setting('about.stats_properties', 0),
+            'statsExperience' => $this->calculateYearsExperience(),
+            'statsClients' => $clientModel->countRegisteredClients(),
+            'statsProperties' => $propertyModel->countPublicActiveProperties(),
             'ctaTitle' => app_setting('about.cta_title', ''),
             'ctaText' => app_setting('about.cta_text', ''),
         ]);

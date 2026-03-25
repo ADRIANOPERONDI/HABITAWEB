@@ -220,7 +220,7 @@
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="lgpdConsent" required>
                         <label class="form-check-label x-small text-muted" for="lgpdConsent">
-                            Concordo em receber notificações de imóveis conforme a Política de Privacidade (LGPD).
+                            Concordo em receber notificações de imóveis conforme a <a href="<?= site_url('privacidade') ?>" class="text-decoration-none fw-semibold">Política de Privacidade</a> (LGPD).
                         </label>
                     </div>
 
