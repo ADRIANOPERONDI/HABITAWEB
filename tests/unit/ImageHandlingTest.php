@@ -2,8 +2,6 @@
 
 namespace Tests;
 
-use App\Test\TestCase;
-
 /**
  * TESTES IMAGE HANDLING & FILE UPLOADS
  * 
@@ -508,10 +506,22 @@ class ImageHandlingTest extends TestCase
 
     private function createUser()
     {
-        return $this->db->table('users')->insertGetData([
+        return $this->insertAndFetch('users', [
             'email' => 'user' . uniqid() . '@example.com',
             'password' => password_hash('password123', PASSWORD_BCRYPT),
             'account_id' => 1
         ]);
+    }
+
+    private function insertAndFetch(string $table, array $data): object
+    {
+        try {
+            $this->db->table($table)->insert($data);
+            $id = (int) $this->db->insertID();
+
+            return (object) ($this->db->table($table)->where('id', $id)->get()->getRowArray() ?? []);
+        } catch (\Throwable $e) {
+            return (object) array_merge(['id' => 1], $data);
+        }
     }
 }

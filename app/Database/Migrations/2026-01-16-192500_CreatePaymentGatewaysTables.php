@@ -133,16 +133,38 @@ class CreatePaymentGatewaysTables extends Migration
             ]
         ];
         
-        $this->forge->addColumn('payment_transactions', $fields);
+        if ($this->db->tableExists('payment_transactions')) {
+            $missingFields = [];
+            foreach ($fields as $fieldName => $fieldConfig) {
+                if (! $this->db->fieldExists($fieldName, 'payment_transactions')) {
+                    $missingFields[$fieldName] = $fieldConfig;
+                }
+            }
+
+            if (! empty($missingFields)) {
+                $this->forge->addColumn('payment_transactions', $missingFields);
+            }
+        }
     }
 
     public function down()
     {
-        // Remover colunas de payment_transactions
-        $this->forge->dropColumn('payment_transactions', ['gateway_code', 'gateway_customer_id', 'gateway_subscription_id', 'metadata']);
-        
-        // Dropar tabelas
-        $this->forge->dropTable('payment_gateway_configs', true);
-        $this->forge->dropTable('payment_gateways', true);
+        // Remover colunas de payment_transactions de forma segura
+        if ($this->db->tableExists('payment_transactions')) {
+            foreach (['gateway_code', 'gateway_customer_id', 'gateway_subscription_id', 'metadata'] as $column) {
+                if ($this->db->fieldExists($column, 'payment_transactions')) {
+                    $this->forge->dropColumn('payment_transactions', $column);
+                }
+            }
+        }
+
+        // Dropar tabelas apenas se existirem
+        if ($this->db->tableExists('payment_gateway_configs')) {
+            $this->forge->dropTable('payment_gateway_configs', true);
+        }
+
+        if ($this->db->tableExists('payment_gateways')) {
+            $this->forge->dropTable('payment_gateways', true);
+        }
     }
 }

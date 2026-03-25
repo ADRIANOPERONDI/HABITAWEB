@@ -20,7 +20,11 @@ class AddDestaquesAPlansTable extends Migration
                 ],
             ];
 
-            $this->forge->addColumn('plans', $fields);
+            try {
+                $this->forge->addColumn('plans', $fields);
+            } catch (\Throwable $e) {
+                // Ignora quando a coluna já existe em ambientes com schema divergente.
+            }
         }
     }
 

@@ -124,19 +124,23 @@ class SubscriptionModel extends Model
                     ->orderBy('id', 'DESC')
                     ->first();
     }
-}
+
     /**
      * Verifica se a subscription está vencida além do período de carência (3 dias por padrão)
+     * @param object|array $subscription
      * @param int $graceDays Dias de carência (padrão 3). Se negativo, sempre retorna false.
      * @return bool
      */
-    public function isOverdue(int $graceDays = 3): bool
+    public function isOverdue($subscription, int $graceDays = 3): bool
     {
-        if (!$this->proximo_pagamento || $this->status === 'ACTIVE') {
+        $proximoPagamento = is_array($subscription) ? ($subscription['proximo_pagamento'] ?? null) : ($subscription->proximo_pagamento ?? null);
+        $status = is_array($subscription) ? ($subscription['status'] ?? null) : ($subscription->status ?? null);
+
+        if (!$proximoPagamento || $status === 'ACTIVE') {
             return false;
         }
 
-        $nextPaymentDate = new \DateTime($this->proximo_pagamento);
+        $nextPaymentDate = new \DateTime($proximoPagamento);
         $graceDateLimit = (new \DateTime())->modify("+{$graceDays} days");
 
         return $nextPaymentDate < $graceDateLimit;
@@ -145,23 +149,28 @@ class SubscriptionModel extends Model
     /**
      * Verifica se a subscription está dentro do período de carência (graça definido no plano)
      * Usa: plano.carencia_dias
+     * @param object|array $subscription
      * @return bool
      */
-    public function isInGracePeriod(): bool
+    public function isInGracePeriod($subscription): bool
     {
-        if ($this->status !== 'ACTIVE' || !$this->data_inicio) {
+        $status = is_array($subscription) ? ($subscription['status'] ?? null) : ($subscription->status ?? null);
+        $dataInicio = is_array($subscription) ? ($subscription['data_inicio'] ?? null) : ($subscription->data_inicio ?? null);
+        $planId = is_array($subscription) ? ($subscription['plan_id'] ?? null) : ($subscription->plan_id ?? null);
+
+        if ($status !== 'ACTIVE' || !$dataInicio || !$planId) {
             return false;
         }
 
         // Carrega plan para pegar carencia_dias
         $planModel = model('App\Models\PlanModel');
-        $plan = $planModel->find($this->plan_id);
+        $plan = $planModel->find($planId);
         
         if (!$plan || !isset($plan->carencia_dias) || $plan->carencia_dias <= 0) {
             return false;
         }
 
-        $graceEndDate = (new \DateTime($this->data_inicio))->modify("+{$plan->carencia_dias} days");
+        $graceEndDate = (new \DateTime($dataInicio))->modify("+{$plan->carencia_dias} days");
         $today = new \DateTime();
 
         return $today < $graceEndDate;
@@ -169,16 +178,17 @@ class SubscriptionModel extends Model
 
     /**
      * Verifica se o account associado tem KYC verificado
+     * @param int $accountId
      * @return bool
      */
-    public function isVerified(): bool
+    public function isVerified(int $accountId): bool
     {
-        if (!$this->account_id) {
+        if ($accountId <= 0) {
             return false;
         }
 
         $accountModel = model('App\Models\AccountModel');
-        $account = $accountModel->find($this->account_id);
+        $account = $accountModel->find($accountId);
 
         return $account && $account->is_verified && $account->verification_status === 'VERIFIED';
     }

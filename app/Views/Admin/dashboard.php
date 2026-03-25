@@ -258,6 +258,25 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const ctx = document.getElementById('leadsChart').getContext('2d');
+    const rootStyles = getComputedStyle(document.documentElement);
+    const primaryColor = (rootStyles.getPropertyValue('--primary-color') || '#2563eb').trim();
+    const secondaryColor = (rootStyles.getPropertyValue('--secondary-color') || '#7c3aed').trim();
+    const tertiaryColor = (rootStyles.getPropertyValue('--tertiary-color') || '#14b8a6').trim();
+
+    const hexToRgba = (hex, alpha) => {
+        const clean = (hex || '').replace('#', '').trim();
+        if (clean.length !== 6) return `rgba(37, 99, 235, ${alpha})`;
+        const r = parseInt(clean.slice(0, 2), 16);
+        const g = parseInt(clean.slice(2, 4), 16);
+        const b = parseInt(clean.slice(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 260);
+    gradient.addColorStop(0, hexToRgba(primaryColor, 0.35));
+    gradient.addColorStop(0.6, hexToRgba(secondaryColor, 0.20));
+    gradient.addColorStop(1, hexToRgba(tertiaryColor, 0.05));
+
     new Chart(ctx, {
         type: 'line',
         data: {
@@ -265,13 +284,15 @@ document.addEventListener("DOMContentLoaded", function() {
             datasets: [{
                 label: 'Leads',
                 data: <?= json_encode($chartData['values']) ?>,
-                borderColor: 'var(--primary-color)',
-                backgroundColor: 'rgba(var(--primary-rgb), 0.1)',
+                borderColor: primaryColor,
+                backgroundColor: gradient,
                 tension: 0.4,
                 fill: true,
                 pointBackgroundColor: '#fff',
+                pointBorderColor: primaryColor,
                 pointBorderWidth: 2,
-                pointRadius: 4
+                pointRadius: 4,
+                pointHoverRadius: 6
             }]
         },
         options: {
@@ -280,7 +301,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 legend: { display: false }
             },
             scales: {
-                y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, color: '#6b7280' },
+                    grid: { color: hexToRgba(primaryColor, 0.12) }
+                },
                 x: { grid: { display: false } }
             }
         }

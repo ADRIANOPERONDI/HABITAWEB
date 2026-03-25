@@ -28,6 +28,11 @@ class AdminAuth implements FilterInterface
             return redirect()->to(site_url('admin/login'));
         }
 
+        $userId = (int) auth()->id();
+        if ($userId > 0 && $this->isSuperAdmin($userId)) {
+            return;
+        }
+
         // --- PAYMENT LOCK BLOCK ---
         $currentPath = uri_string();
         log_message('debug', '[AdminAuth] Verificando Rota: ' . $currentPath);
@@ -55,7 +60,6 @@ class AdminAuth implements FilterInterface
         }
 
         // Force Re-fetch to bypass Session Cache issues
-        $userId = auth()->id();
         if ($userId) {
             $db = \Config\Database::connect();
             
@@ -63,20 +67,37 @@ class AdminAuth implements FilterInterface
             $userRow = $db->table('users')->select('account_id')->where('id', $userId)->get()->getRow();
             
             if ($userRow && !empty($userRow->account_id)) {
+                $accountId = (int) $userRow->account_id;
+
+                // Regra de produção espelhada dos E2E: non-admin precisa KYC completo.
+                if (!$this->isKycVerified($accountId)) {
+                    return redirect()->to('admin/subscription')->with('error', 'Complete sua verificação de identidade (KYC) para acessar o painel.');
+                }
+
+                // Regra de produção espelhada dos E2E: non-admin precisa assinatura ativa.
+                $hasActiveSubscription = $db->table('subscriptions')
+                    ->where('account_id', $accountId)
+                    ->where('status', 'ACTIVE')
+                    ->countAllResults() > 0;
+
+                if (!$hasActiveSubscription) {
+                    return redirect()->to('admin/subscription')->with('error', 'Você precisa de uma assinatura ativa para acessar o painel.');
+                }
+
                 // 2. Get Account Status
-                $account = $db->table('accounts')->select('status')->where('id', $userRow->account_id)->get()->getRow();
+                $account = $db->table('accounts')->select('status')->where('id', $accountId)->get()->getRow();
                 
                 // 3. Verifica faturas pendentes atrasadas há 3+ dias para bloquear (mesmo se a conta ainda estiver ACTIVE no banco)
                 $txModel = model('App\Models\PaymentTransactionModel');
-                $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($userRow->account_id, 3);
+                $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($accountId, 3);
 
                 // PROACTIVE SYNC: Se parecer bloqueado, tenta sincronizar com o Gateway antes de barrar
                 if ($isBlockedByOverdue) {
                     try {
                         $paymentService = new \App\Services\PaymentService();
-                        $paymentService->syncPendingPayments($userRow->account_id);
+                        $paymentService->syncPendingPayments($accountId);
                         // Re-check after sync
-                        $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($userRow->account_id, 3);
+                        $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($accountId, 3);
                     } catch (\Exception $e) {
                         log_message('error', '[AdminAuth] Falha na sincronização proativa: ' . $e->getMessage());
                     }
@@ -93,8 +114,8 @@ class AdminAuth implements FilterInterface
                 if ($account && $account->status !== 'ACTIVE' && $account->status !== 'SUSPENDED') {
                      
                      // Check if there is a pending subscription (New Account flow)
-                     $hasPendingSub = $db->table('subscriptions')
-                        ->where('account_id', $userRow->account_id)
+                            $hasPendingSub = $db->table('subscriptions')
+                                ->where('account_id', $accountId)
                         ->where('status', 'PENDING')
                         ->countAllResults() > 0;
 
@@ -106,6 +127,36 @@ class AdminAuth implements FilterInterface
                 }
             }
         }
+    }
+
+    private function isSuperAdmin(int $userId): bool
+    {
+        $db = \Config\Database::connect();
+
+        return $db->table('auth_groups_users')
+            ->where('user_id', $userId)
+            ->where('group', 'superadmin')
+            ->countAllResults() > 0;
+    }
+
+    private function isKycVerified(int $accountId): bool
+    {
+        $db = \Config\Database::connect();
+        $account = $db->table('accounts')
+            ->select('is_verified, verification_status, id_front, id_back, selfie')
+            ->where('id', $accountId)
+            ->get()
+            ->getRow();
+
+        if (!$account) {
+            return false;
+        }
+
+        return (bool) $account->is_verified
+            && $account->verification_status === 'VERIFIED'
+            && !empty($account->id_front)
+            && !empty($account->id_back)
+            && !empty($account->selfie);
     }
 
     /**

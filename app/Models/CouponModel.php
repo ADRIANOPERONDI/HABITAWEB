@@ -100,24 +100,29 @@ class CouponModel extends Model
     /**
      * Retorna os dias de carência associados ao cupom
      * Se carencia_tipo !== 'dias', retorna 0
+     * @param object|array $coupon
      * @return int
      */
-    public function getGracePeriodDays(): int
+    public function getGracePeriodDays($coupon): int
     {
-        if ($this->carencia_tipo !== 'dias' || empty($this->carencia_valor)) {
+        $carenciaTipo = is_array($coupon) ? ($coupon['carencia_tipo'] ?? null) : ($coupon->carencia_tipo ?? null);
+        $carenciaValor = is_array($coupon) ? ($coupon['carencia_valor'] ?? null) : ($coupon->carencia_valor ?? null);
+
+        if ($carenciaTipo !== 'dias' || empty($carenciaValor)) {
             return 0;
         }
         
-        return (int) $this->carencia_valor;
+        return (int) $carenciaValor;
     }
     
     /**
      * Valida se um cupom com carência pode ser aplicado a uma subscription
      * Regra: OU carência do plano OU carência do cupom, NUNCA ambos
+     * @param object|array $coupon
      * @param int $planId
      * @return array [isValid => bool, message => string]
      */
-    public function canBeAppliedWithPlanGrace(int $planId): array
+    public function canBeAppliedWithPlanGrace($coupon, int $planId): array
     {
         $planModel = model('App\Models\PlanModel');
         $plan = $planModel->find($planId);
@@ -126,7 +131,7 @@ class CouponModel extends Model
             return ['isValid' => false, 'message' => 'Plano não encontrado'];
         }
 
-        $couponHasGrace = $this->getGracePeriodDays() > 0;
+        $couponHasGrace = $this->getGracePeriodDays($coupon) > 0;
         $planHasGrace = isset($plan->carencia_dias) && $plan->carencia_dias > 0;
 
         // Se ambos têm carência, rejeita

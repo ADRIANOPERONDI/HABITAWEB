@@ -78,6 +78,8 @@ class PropertyController extends BaseController
              $accounts = $accountService->getAllAccountsSortedByName();
         }
 
+        $brokers = $user->account_id ? $this->propertyService->getBrokers($user->account_id) : [];
+
         return view('Admin/Properties/form', [
             'property' => null,
             'clients'  => [],

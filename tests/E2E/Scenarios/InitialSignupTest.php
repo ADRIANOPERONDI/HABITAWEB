@@ -26,15 +26,17 @@ class InitialSignupTest extends SubscriptionE2EBase
     public function testInitialSignupFlow()
     {
         // ============ STEP 1-2: Criar conta + documentos ============
-        $testData = $this->createTestAccount('persona_1_initial');
+        $testData = $this->createE2ETestAccount('persona_1_initial');
         $accountId = $testData['accountId'];
         $userId = $testData['userId'];
 
         $this->assertIsInt($accountId);
         $this->assertIsInt($userId);
+        $accountModel = model('App\Models\AccountModel');
+        $createdAccount = $accountModel->find($accountId);
         $this->seeInDatabase('accounts', [
             'id' => $accountId,
-            'email' => 'joao.silva+teste1@example.com',
+            'email' => $createdAccount->email,
             'verification_status' => 'NONE',
         ]);
 
@@ -48,18 +50,23 @@ class InitialSignupTest extends SubscriptionE2EBase
         // Buscar plano (assumir que existe 'PRO')
         $planModel = model('App\Models\PlanModel');
         $plan = $planModel->where('chave', 'PRO')->first();
+        $planPrice = 199.90;
         
         if (!$plan) {
+            $uniqueKey = 'PRO_E2E_TEST_' . time();
             // Criar plano para teste se não existir
             $plan = (object) [
                 'id' => $planModel->insert([
-                    'chave' => 'PRO_E2E_TEST',
+                    'chave' => $uniqueKey,
                     'nome' => 'Pro Test',
                     'preco_mensal' => 199.90,
                     'carencia_dias' => 0,
                     'ativo' => true,
                 ]),
+                'preco_mensal' => $planPrice,
             ];
+        } else {
+            $planPrice = (float) ($plan->preco_mensal ?? $planPrice);
         }
 
         $subData = $this->createSubscription($accountId, $plan->id, 'MONTHLY');
@@ -73,7 +80,7 @@ class InitialSignupTest extends SubscriptionE2EBase
             'id' => 'pay_test_' . time(),
             'subscription' => $subscriptionId,
             'status' => 'CONFIRMED',
-            'value' => $plan->preco_mensal,
+            'value' => $planPrice,
         ]);
 
         // Webhook deve retornar 200 OK
@@ -108,11 +115,11 @@ class InitialSignupTest extends SubscriptionE2EBase
      */
     public function testKYCRejectionInvalidDocument()
     {
-        $testData = $this->createTestAccount('persona_1_initial');
+        $testData = $this->createE2ETestAccount('persona_1_initial');
         $accountId = $testData['accountId'];
 
         // Tentar verificação sem documentos
-        $kycService = service('kyc');
+        $kycService = new \App\Services\KYCService();
         
         // Criar account sem os documentos
         $result = $kycService->verifyFacialLiveness($accountId, ['provider' => 'mock']);
@@ -127,7 +134,7 @@ class InitialSignupTest extends SubscriptionE2EBase
      */
     public function testAccessBlockedWithoutKYC()
     {
-        $testData = $this->createTestAccount('persona_1_initial');
+        $testData = $this->createE2ETestAccount('persona_1_initial');
         $userId = $testData['userId'];
         $accountId = $testData['accountId'];
 
@@ -135,8 +142,9 @@ class InitialSignupTest extends SubscriptionE2EBase
         $planModel = model('App\Models\PlanModel');
         $plan = $planModel->where('chave', 'PRO')->first();
         if (!$plan) {
+            $uniqueKey = 'PRO_E2E_TEST_2_' . time();
             $plan = (object)['id' => $planModel->insert([
-                'chave' => 'PRO_E2E_TEST_2',
+                'chave' => $uniqueKey,
                 'nome' => 'Pro Test 2',
                 'preco_mensal' => 199.90,
                 'carencia_dias' => 0,
@@ -174,7 +182,7 @@ class InitialSignupTest extends SubscriptionE2EBase
         ];
 
         // Buscar plano com grace period
-        $planWithGrace = $planModel->create([
+        $planWithGraceId = $planModel->insert([
             'chave' => 'PLAN_WITH_GRACE_' . time(),
             'nome' => 'Plan With Grace',
             'preco_mensal' => 199.90,
@@ -183,7 +191,7 @@ class InitialSignupTest extends SubscriptionE2EBase
 
         // Tentar aplicar coupon
         $coupon = $couponModel->find($coupon->id);
-        $result = $coupon->canBeAppliedWithPlanGrace($planWithGrace);
+        $result = $couponModel->canBeAppliedWithPlanGrace($coupon, (int) $planWithGraceId);
 
         $this->assertFalse($result['isValid'], "Coupon should not be applicable with plan grace period");
         $this->assertStringContainsString('não', strtolower($result['message']));
