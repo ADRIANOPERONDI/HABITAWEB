@@ -20,7 +20,7 @@ class SettingsController extends BaseController
         
         // Se não for superadmin, remove grupos sensíveis
         if (!$isSuperAdmin) {
-            $query->whereNotIn('group', ['email', 'notifications', 'legal']);
+            $query->whereNotIn('group', ['email', 'notifications', 'legal', 'about']);
         }
 
         $settings = $query->findAll();
@@ -106,6 +106,24 @@ class SettingsController extends BaseController
             // SEO Default
             'seo.title'             => ['value' => 'Habitaweb', 'group' => 'seo', 'label' => 'Nome da Marca (Título)', 'type' => 'string'],
             'seo.tagline'           => ['value' => 'Encontre seu lugar', 'group' => 'seo', 'label' => 'Slogan / Tagline', 'type' => 'string'],
+
+            // About Us (apenas superadmin)
+            'about.hero_title'       => ['value' => 'Sobre a nossa empresa', 'group' => 'about', 'label' => 'Título Principal', 'type' => 'string', 'description' => 'Título de destaque no topo da página Sobre Nós.'],
+            'about.hero_subtitle'    => ['value' => 'Conheça nossa história, propósito e o compromisso que temos com cada cliente.', 'group' => 'about', 'label' => 'Subtítulo Principal', 'type' => 'text', 'description' => 'Texto curto de apoio logo abaixo do título principal.'],
+            'about.hero_image'       => ['value' => '', 'group' => 'about', 'label' => 'Imagem de Destaque', 'type' => 'image', 'description' => 'Imagem principal exibida no topo da página Sobre Nós.'],
+            'about.story_title'      => ['value' => 'Nossa história', 'group' => 'about', 'label' => 'Título da História', 'type' => 'string', 'description' => 'Título da seção principal com a apresentação da empresa.'],
+            'about.story_content'    => ['value' => '', 'group' => 'about', 'label' => 'Conteúdo da História', 'type' => 'richtext', 'description' => 'Conteúdo principal da página Sobre Nós com formatação completa.'],
+            'about.mission_title'    => ['value' => 'Missão', 'group' => 'about', 'label' => 'Título da Missão', 'type' => 'string', 'description' => 'Título do bloco de missão.'],
+            'about.mission_text'     => ['value' => '', 'group' => 'about', 'label' => 'Texto da Missão', 'type' => 'text', 'description' => 'Explique a missão da empresa de forma objetiva.'],
+            'about.vision_title'     => ['value' => 'Visão', 'group' => 'about', 'label' => 'Título da Visão', 'type' => 'string', 'description' => 'Título do bloco de visão.'],
+            'about.vision_text'      => ['value' => '', 'group' => 'about', 'label' => 'Texto da Visão', 'type' => 'text', 'description' => 'Explique a visão da empresa de forma objetiva.'],
+            'about.values_title'     => ['value' => 'Nossos valores', 'group' => 'about', 'label' => 'Título dos Valores', 'type' => 'string', 'description' => 'Título da seção que lista os valores da empresa.'],
+            'about.values_content'   => ['value' => '', 'group' => 'about', 'label' => 'Conteúdo dos Valores', 'type' => 'richtext', 'description' => 'Liste e descreva os valores institucionais com texto rico.'],
+            'about.stats_experience' => ['value' => '10', 'group' => 'about', 'label' => 'Anos de Experiência', 'type' => 'number', 'description' => 'Número exibido na estatística de experiência.'],
+            'about.stats_clients'    => ['value' => '500', 'group' => 'about', 'label' => 'Clientes Atendidos', 'type' => 'number', 'description' => 'Número exibido na estatística de clientes.'],
+            'about.stats_properties' => ['value' => '1000', 'group' => 'about', 'label' => 'Imóveis Anunciados', 'type' => 'number', 'description' => 'Número exibido na estatística de imóveis.'],
+            'about.cta_title'        => ['value' => 'Vamos conversar sobre o seu próximo imóvel?', 'group' => 'about', 'label' => 'Título do CTA', 'type' => 'string', 'description' => 'Título da chamada final da página Sobre Nós.'],
+            'about.cta_text'         => ['value' => 'Entre em contato com a nossa equipe ou anuncie conosco para alcançar mais oportunidades.', 'group' => 'about', 'label' => 'Texto do CTA', 'type' => 'text', 'description' => 'Texto de apoio da chamada final.'],
 
             // Legal (apenas superadmin)
             'legal.terms_of_use'     => ['value' => '', 'group' => 'legal', 'label' => 'Termos de Uso', 'type' => 'richtext', 'description' => 'Conteúdo completo da página de Termos de Uso do portal.'],

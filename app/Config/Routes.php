@@ -51,6 +51,7 @@ $routes->get('parceiros', 'Web\PartnerController::index');
 $routes->get('parceiro/(:num)', 'Web\PartnerController::show/$1');
 
 // Páginas legais
+$routes->get('sobre', 'Web\PageController::sobre');
 $routes->get('termos', 'Web\PageController::termos');
 $routes->get('privacidade', 'Web\PageController::privacidade');
 

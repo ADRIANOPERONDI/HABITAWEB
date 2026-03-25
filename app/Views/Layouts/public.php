@@ -106,7 +106,8 @@
             backdrop-filter: blur(10px);
         }
         .nav-link { color: var(--text-main) !important; }
-        .nav-link:hover { color: var(--primary-color) !important; }
+        .nav-link:hover,
+        .nav-link.active { color: var(--primary-color) !important; }
         .bg-primary-soft { background-color: rgba(<?= esc($primaryRgb) ?>, 0.1) !important; }
         .text-primary { color: var(--primary-color) !important; }
         .btn-primary { background-color: var(--primary-color) !important; border-color: var(--primary-color) !important; border-radius: 50px !important; }
@@ -116,6 +117,7 @@
         /* Premium Gradient Utilities */
         .text-primary-gradient {
             background: var(--primary-gradient);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -238,6 +240,15 @@
 </head>
 <body class="bg-light">
 
+    <?php
+        $currentPath = trim(uri_string(), '/');
+        $isHomeRoute = $currentPath === '';
+        $isBuyRoute = str_starts_with($currentPath, 'imoveis/venda');
+        $isRentRoute = str_starts_with($currentPath, 'imoveis/aluguel');
+        $isAboutRoute = in_array($currentPath, ['sobre', 'termos', 'privacidade'], true);
+        $isPartnersRoute = str_starts_with($currentPath, 'parceiros') || str_starts_with($currentPath, 'parceiro/');
+    ?>
+
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom fixed-top py-3 shadow-sm">
         <div class="container">
@@ -267,16 +278,19 @@
             <div class="collapse navbar-collapse" id="navbarContent">
                 <ul class="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-3">
                     <li class="nav-item">
-                        <a class="nav-link fw-500" href="<?= site_url('/') ?>">Início</a>
+                        <a class="nav-link fw-500 <?= $isHomeRoute ? 'active' : '' ?>" href="<?= site_url('/') ?>">Início</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link fw-500" href="<?= site_url('imoveis/venda') ?>">Comprar</a>
+                        <a class="nav-link fw-500 <?= $isBuyRoute ? 'active' : '' ?>" href="<?= site_url('imoveis/venda') ?>">Comprar</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link fw-500" href="<?= site_url('imoveis/aluguel') ?>">Alugar</a>
+                        <a class="nav-link fw-500 <?= $isRentRoute ? 'active' : '' ?>" href="<?= site_url('imoveis/aluguel') ?>">Alugar</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link fw-500" href="<?= site_url('parceiros') ?>">Parceiros</a>
+                        <a class="nav-link fw-500 <?= $isAboutRoute ? 'active' : '' ?>" href="<?= site_url('sobre') ?>">Sobre Nós</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-500 <?= $isPartnersRoute ? 'active' : '' ?>" href="<?= site_url('parceiros') ?>">Parceiros</a>
                     </li>
                 </ul>
                 
@@ -351,11 +365,12 @@
                 <div class="col-lg-2 col-md-4 mb-4 mb-md-0">
                     <h6 class="fw-bold text-white mb-4">Institucional</h6>
                     <ul class="list-unstyled d-flex flex-column gap-2 opacity-75">
-                        <li><a href="#" class="text-white text-decoration-none">Sobre Nós</a></li>
+                        <li><a href="<?= site_url('sobre') ?>" class="text-white text-decoration-none">Sobre Nós</a></li>
                         <li><a href="<?= site_url('privacidade') ?>" class="text-white text-decoration-none">Política de Privacidade</a></li>
                         <li><a href="<?= site_url('termos') ?>" class="text-white text-decoration-none">Termos de Uso</a></li>
                     </ul>
                 </div>
+
 
                 <div class="col-lg-4 col-md-4">
                     <h6 class="fw-bold text-white mb-4">Contato</h6>

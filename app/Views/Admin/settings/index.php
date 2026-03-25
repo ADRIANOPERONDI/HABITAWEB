@@ -29,6 +29,7 @@
         'footer'        => ['label' => 'Rodapé', 'icon' => 'fa-table-columns'],
         'email'         => ['label' => 'E-mail / SMTP', 'icon' => 'fa-envelope'],
         'notifications' => ['label' => 'Notificações', 'icon' => 'fa-bell'],
+        'about'         => ['label' => 'Sobre Nós', 'icon' => 'fa-building'],
         'legal'         => ['label' => 'Termos & Privacidade', 'icon' => 'fa-shield-halved'],
     ];
     ?>
