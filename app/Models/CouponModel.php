@@ -96,4 +96,47 @@ class CouponModel extends Model
             'used_at' => date('Y-m-d H:i:s')
         ]);
     }
+    
+    /**
+     * Retorna os dias de carência associados ao cupom
+     * Se carencia_tipo !== 'dias', retorna 0
+     * @return int
+     */
+    public function getGracePeriodDays(): int
+    {
+        if ($this->carencia_tipo !== 'dias' || empty($this->carencia_valor)) {
+            return 0;
+        }
+        
+        return (int) $this->carencia_valor;
+    }
+    
+    /**
+     * Valida se um cupom com carência pode ser aplicado a uma subscription
+     * Regra: OU carência do plano OU carência do cupom, NUNCA ambos
+     * @param int $planId
+     * @return array [isValid => bool, message => string]
+     */
+    public function canBeAppliedWithPlanGrace(int $planId): array
+    {
+        $planModel = model('App\Models\PlanModel');
+        $plan = $planModel->find($planId);
+
+        if (!$plan) {
+            return ['isValid' => false, 'message' => 'Plano não encontrado'];
+        }
+
+        $couponHasGrace = $this->getGracePeriodDays() > 0;
+        $planHasGrace = isset($plan->carencia_dias) && $plan->carencia_dias > 0;
+
+        // Se ambos têm carência, rejeita
+        if ($couponHasGrace && $planHasGrace) {
+            return [
+                'isValid' => false,
+                'message' => 'Não é permitido combinar carência do cupom com carência do plano'
+            ];
+        }
+
+        return ['isValid' => true, 'message' => 'Cupom pode ser aplicado'];
+    }
 }

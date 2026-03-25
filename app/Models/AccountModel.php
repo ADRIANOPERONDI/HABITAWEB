@@ -48,4 +48,35 @@ class AccountModel extends Model
     protected $afterFind      = [];
     protected $beforeDelete   = [];
     protected $afterDelete    = [];
+
+    /**
+     * Verifica se a conta tem todas as verificações KYC completas
+     * Requer: id_front, id_back, selfie, verification_status === 'VERIFIED', is_verified === true
+     * @return bool
+     */
+    public function isFullyVerified(): bool
+    {
+        return !empty($this->id_front) 
+               && !empty($this->id_back) 
+               && !empty($this->selfie) 
+               && $this->is_verified === true 
+               && $this->verification_status === 'VERIFIED';
+    }
+
+    /**
+     * Get o status de verificação de forma legível
+     * @return string
+     */
+    public function getVerificationStatusLabel(): string
+    {
+        $labels = [
+            'NONE' => 'Não iniciado',
+            'PENDING' => 'Pendente de revisão',
+            'VERIFIED' => 'Verificado',
+            'REJECTED' => 'Rejeitado',
+            'EXPIRED' => 'Expirado',
+        ];
+        
+        return $labels[$this->verification_status] ?? 'Desconhecido';
+    }
 }

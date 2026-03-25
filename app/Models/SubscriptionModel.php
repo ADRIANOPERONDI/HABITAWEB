@@ -125,4 +125,62 @@ class SubscriptionModel extends Model
                     ->first();
     }
 }
+    /**
+     * Verifica se a subscription está vencida além do período de carência (3 dias por padrão)
+     * @param int $graceDays Dias de carência (padrão 3). Se negativo, sempre retorna false.
+     * @return bool
+     */
+    public function isOverdue(int $graceDays = 3): bool
+    {
+        if (!$this->proximo_pagamento || $this->status === 'ACTIVE') {
+            return false;
+        }
+
+        $nextPaymentDate = new \DateTime($this->proximo_pagamento);
+        $graceDateLimit = (new \DateTime())->modify("+{$graceDays} days");
+
+        return $nextPaymentDate < $graceDateLimit;
+    }
+
+    /**
+     * Verifica se a subscription está dentro do período de carência (graça definido no plano)
+     * Usa: plano.carencia_dias
+     * @return bool
+     */
+    public function isInGracePeriod(): bool
+    {
+        if ($this->status !== 'ACTIVE' || !$this->data_inicio) {
+            return false;
+        }
+
+        // Carrega plan para pegar carencia_dias
+        $planModel = model('App\Models\PlanModel');
+        $plan = $planModel->find($this->plan_id);
+        
+        if (!$plan || !isset($plan->carencia_dias) || $plan->carencia_dias <= 0) {
+            return false;
+        }
+
+        $graceEndDate = (new \DateTime($this->data_inicio))->modify("+{$plan->carencia_dias} days");
+        $today = new \DateTime();
+
+        return $today < $graceEndDate;
+    }
+
+    /**
+     * Verifica se o account associado tem KYC verificado
+     * @return bool
+     */
+    public function isVerified(): bool
+    {
+        if (!$this->account_id) {
+            return false;
+        }
+
+        $accountModel = model('App\Models\AccountModel');
+        $account = $accountModel->find($this->account_id);
+
+        return $account && $account->is_verified && $account->verification_status === 'VERIFIED';
+    }
+}
 
