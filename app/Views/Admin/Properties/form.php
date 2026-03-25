@@ -107,50 +107,7 @@
         margin-top: 0 !important;
     }
 
-    /* Estilos Premium para Account Selector */
-    .account-selector + .select2-container--bootstrap-5 {
-        width: 100% !important;
-    }
-    
-    .account-selector + .select2-container--bootstrap-5 .select2-selection {
-        border: none !important;
-        border-top-right-radius: 1.5rem !important;
-        border-bottom-right-radius: 1.5rem !important;
-        height: 48px !important;
-        background-color: #ffffff !important;
-        display: flex;
-        align-items: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
-    }
 
-    .account-selector + .select2-container--bootstrap-5.select2-container--open .select2-selection {
-        border-radius: 1.5rem 1.5rem 0 0 !important;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08) !important;
-    }
-
-    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
-        padding-left: 1rem !important;
-        color: #344767 !important;
-        font-weight: 500 !important;
-        font-size: 0.95rem !important;
-    }
-
-    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
-        right: 12px !important;
-    }
-
-    .select2-container--bootstrap-5 .select2-results__option {
-        padding: 0.75rem 1rem;
-        font-size: 0.95rem;
-    }
-
-    .select2-container--bootstrap-5 .select2-results__option--highlighted {
-        background-color: #667eea !important;
-    }
-
-    .text-white-75 {
-        color: rgba(255, 255, 255, 0.75);
-    }
 </style>
 <?= $this->endSection() ?>
 
@@ -283,58 +240,16 @@
                                     <input type="text" name="iptu" class="form-control input-premium double3" value="<?= number_format((float)old('iptu', $property->iptu ?? 0), 2, ',', '.') ?>" placeholder="0,00">
                                 </div>
                                 <?php if($isAdmin): ?>
-                                    <div class="col-md-12 mb-4">
-                                        <div class="card border-0 overflow-hidden shadow-sm rounded-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); position: relative;">
-                                            <div class="position-absolute top-0 end-0 opacity-10" style="width: 200px; height: 200px; background: radial-gradient(circle, white 1px, transparent 1px); background-size: 20px 20px;"></div>
-                                            <div class="card-body p-4 p-md-5 position-relative z-2">
-                                                <div class="mb-3">
-                                                    <div class="d-flex align-items-center gap-2 mb-2">
-                                                        <div class="bg-white bg-opacity-25 p-2 rounded-3" style="width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
-                                                            <i class="fa-solid fa-sitemap text-white fs-4"></i>
-                                                        </div>
-                                                        <div>
-                                                            <h5 class="text-white fw-bold mb-0">Vincular Anúncio à Conta/Imobiliária</h5>
-                                                            <small class="text-white-50">Campo obrigatório *</small>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <?php if(empty($accounts)): ?>
-                                                    <div class="alert alert-warning py-3 px-4 mb-0 rounded-3 border-0">
-                                                        <i class="fa-solid fa-exclamation-triangle me-2"></i>
-                                                        <strong>Atenção:</strong> Nenhuma conta disponível para vincular.
-                                                    </div>
-                                                <?php else: ?>
-                                                    <div class="input-group input-group-lg">
-                                                        <span class="input-group-text bg-white border-0 rounded-start-4" style="padding: 0;">
-                                                            <i class="fa-solid fa-cubes text-primary ms-3"></i>
-                                                        </span>
-                                                        <select name="account_id" id="main_account_id" class="form-select form-select-lg select2-premium account-selector border-0 rounded-end-4" required data-placeholder="Escolha a conta/imobiliária" style="padding-left: 0;">
-                                                            <option value="" disabled selected class="d-none">-- Selecione a Conta ou Imobiliária --</option>
-                                                            <?php foreach($accounts as $acc): ?>
-                                                                <option value="<?= $acc->id ?>" data-type="<?= esc($acc->tipo_conta) ?>" <?= (old('account_id', $property->account_id ?? '') == $acc->id) ? 'selected' : '' ?>>
-                                                                    <?php 
-                                                                        $icon = match($acc->tipo_conta) {
-                                                                            'PF' => '👤',
-                                                                            'CORRETOR' => '🎯',
-                                                                            'IMOBILIARIA' => '🏢',
-                                                                            default => '📌'
-                                                                        };
-                                                                        echo "$icon " . esc($acc->nome);
-                                                                    ?>
-                                                                </option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                    </div>
-                                                    <div class="mt-3 p-3 bg-white bg-opacity-10 rounded-3 border border-white border-opacity-20">
-                                                        <p class="text-white-75 fw-500 mb-0 small">
-                                                            <i class="fa-solid fa-lightbulb text-warning me-2"></i>
-                                                            <strong>Dica:</strong> Esta é a conta responsável que gerenciará e visualizará este anúncio no sistema.
-                                                        </p>
-                                                    </div>
-                                                <?php endif; ?>
-                                            </div>
-                                        </div>
+                                    <div class="col-md-12">
+                                        <label class="form-label-premium">Conta / Imobiliária <span class="text-danger">*</span></label>
+                                        <select name="account_id" id="main_account_id" class="form-select input-premium select2-premium" required>
+                                            <option value="">Selecione a conta...</option>
+                                            <?php foreach($accounts as $acc): ?>
+                                                <option value="<?= $acc->id ?>" <?= (old('account_id', $property->account_id ?? '') == $acc->id) ? 'selected' : '' ?>>
+                                                    <?= esc($acc->nome) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
                                     </div>
                                 <?php endif; ?>
 
