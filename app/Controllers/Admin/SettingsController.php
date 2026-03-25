@@ -20,7 +20,7 @@ class SettingsController extends BaseController
         
         // Se não for superadmin, remove grupos sensíveis
         if (!$isSuperAdmin) {
-            $query->whereNotIn('group', ['email', 'notifications']);
+            $query->whereNotIn('group', ['email', 'notifications', 'legal']);
         }
 
         $settings = $query->findAll();
@@ -106,6 +106,10 @@ class SettingsController extends BaseController
             // SEO Default
             'seo.title'             => ['value' => 'Habitaweb', 'group' => 'seo', 'label' => 'Nome da Marca (Título)', 'type' => 'string'],
             'seo.tagline'           => ['value' => 'Encontre seu lugar', 'group' => 'seo', 'label' => 'Slogan / Tagline', 'type' => 'string'],
+
+            // Legal (apenas superadmin)
+            'legal.terms_of_use'     => ['value' => '', 'group' => 'legal', 'label' => 'Termos de Uso', 'type' => 'richtext', 'description' => 'Conteúdo completo da página de Termos de Uso do portal.'],
+            'legal.privacy_policy'   => ['value' => '', 'group' => 'legal', 'label' => 'Política de Privacidade', 'type' => 'richtext', 'description' => 'Conteúdo completo da página de Política de Privacidade do portal.'],
         ];
 
         foreach ($essential as $key => $data) {

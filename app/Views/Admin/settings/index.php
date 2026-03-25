@@ -29,6 +29,7 @@
         'footer'        => ['label' => 'Rodapé', 'icon' => 'fa-table-columns'],
         'email'         => ['label' => 'E-mail / SMTP', 'icon' => 'fa-envelope'],
         'notifications' => ['label' => 'Notificações', 'icon' => 'fa-bell'],
+        'legal'         => ['label' => 'Termos & Privacidade', 'icon' => 'fa-shield-halved'],
     ];
     ?>
 </style>
@@ -116,6 +117,11 @@
                                             </div>
                                         <?php elseif ($setting->type == 'text'): ?>
                                             <textarea class="form-control" name="<?= $setting->key ?>" rows="3" placeholder="Digite aqui..."><?= esc($setting->value) ?></textarea>
+                                        <?php elseif ($setting->type == 'richtext'): ?>
+                                            <textarea id="richtext-<?= str_replace('.', '-', $setting->key) ?>" 
+                                                      name="<?= $setting->key ?>" 
+                                                      class="richtext-editor-settings" 
+                                                      rows="12"><?= $setting->value ?></textarea>
                                         <?php elseif ($setting->type == 'image'): ?>
                                             <div class="mb-3">
                                                 <input type="file" class="form-control input-premium" name="<?= $setting->key ?>" accept="image/*" onchange="previewSettingImage(this, 'preview-<?= str_replace('.', '-', $setting->key) ?>')">
@@ -156,6 +162,7 @@
     </div>
 </div>
 
+<script src="https://cdn.ckeditor.com/ckeditor5/40.0.0/classic/ckeditor.js"></script>
 <script>
 $(document).ready(function() {
     // Sincroniza Color Picker com Input de Texto
@@ -173,6 +180,14 @@ $(document).ready(function() {
     // Submissão via AJAX
     $('#settingsForm').on('submit', function(e) {
         e.preventDefault();
+        
+        // Sincroniza instâncias do CKEditor com seus textareas antes de capturar FormData
+        if (window.ckSettingsInstances) {
+            Object.entries(window.ckSettingsInstances).forEach(function([id, editor]) {
+                var el = document.getElementById(id);
+                if (el) el.value = editor.getData();
+            });
+        }
         
         let form = $(this);
         let btn = $('#btnSaveSettings');
@@ -231,6 +246,29 @@ function previewSettingImage(input, previewId) {
         reader.readAsDataURL(input.files[0]);
     }
 }
+// Inicializa CKEditor para campos richtext
+var richtextFields = document.querySelectorAll('.richtext-editor-settings');
+if (richtextFields.length > 0) {
+    window.ckSettingsInstances = {};
+    richtextFields.forEach(function(el) {
+        ClassicEditor.create(el, {
+            toolbar: {
+                items: [
+                    'heading', '|',
+                    'bold', 'italic', 'underline', '|',
+                    'link', 'bulletedList', 'numberedList', '|',
+                    'indent', 'outdent', 'blockQuote', '|',
+                    'undo', 'redo'
+                ]
+            }
+        })
+        .then(function(editor) {
+            window.ckSettingsInstances[el.id] = editor;
+        })
+        .catch(function(error) { console.error(error); });
+    });
+}
+
 function testSmtp() {
     Swal.fire({
         title: 'Testar Conexão SMTP',
