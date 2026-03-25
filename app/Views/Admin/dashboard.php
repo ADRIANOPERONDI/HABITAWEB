@@ -36,6 +36,11 @@
                         if ($lightLogo): 
                     ?>
                         <img src="<?= base_url($lightLogo) ?>" class="system-logo-dash mb-3" alt="Logo">
+                        <div class="mb-3">
+                            <a href="<?= site_url('/') ?>" target="_blank" class="btn btn-sm btn-light text-primary fw-bold rounded-pill px-3 py-2 shadow-sm" title="Abrir o site em uma nova aba">
+                                <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Ir ao Site
+                            </a>
+                        </div>
                     <?php endif; ?>
                     <h2 class="fw-bold mb-2">Bom dia, <?= esc($userDisplayName) ?>! ✨</h2>
                     <p class="opacity-75 mb-4">Veja o que está acontecendo no <?= esc(app_setting('site.name', 'Portal')) ?> hoje.</p>
