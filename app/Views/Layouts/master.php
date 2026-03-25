@@ -120,6 +120,15 @@
         .nav-link { color: var(--admin-text-muted) !important; }
         .nav-link i { color: var(--primary-color) !important; }
         .nav-link:hover, .nav-link.active { color: var(--primary-color) !important; background: rgba(var(--primary-rgb), 0.05) !important; }
+        .nav-link:hover i, .nav-link.active i { color: var(--primary-color) !important; }
+
+        /* Status badges — cores fixas independente do tema do cliente */
+        .status-active  { background-color: #16a34a !important; color: #fff !important; }
+        .status-draft   { background-color: #64748b !important; color: #fff !important; }
+        .status-paused  { background-color: #f59e0b !important; color: #1a1a1a !important; }
+        .status-sold    { background-color: #2563eb !important; color: #fff !important; }
+        .status-closed  { background-color: #7c3aed !important; color: #fff !important; }
+        .status-default { background-color: #e2e8f0 !important; color: #475569 !important; }
 
         /* Override basic BS classes to respect dynamic colors */
         .text-primary { color: var(--primary-color) !important; }

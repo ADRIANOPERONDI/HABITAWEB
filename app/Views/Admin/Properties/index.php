@@ -106,11 +106,12 @@
                     <!-- Status Badge -->
                     <?php
                         $statusData = match($property->status) {
-                            'ACTIVE' => ['class' => 'bg-success text-white', 'label' => 'Ativo'],
-                            'DRAFT'  => ['class' => 'bg-secondary text-white', 'label' => 'Rascunho'],
-                            'PAUSED' => ['class' => 'bg-warning text-dark', 'label' => 'Pausado'],
-                            'SOLD'   => ['class' => 'bg-primary text-white', 'label' => 'Vendido'],
-                            default  => ['class' => 'bg-light text-muted', 'label' => 'Indisponível']
+                            'ACTIVE' => ['class' => 'status-active',  'label' => 'Ativo'],
+                            'DRAFT'  => ['class' => 'status-draft',   'label' => 'Rascunho'],
+                            'PAUSED' => ['class' => 'status-paused',  'label' => 'Pausado'],
+                            'SOLD'   => ['class' => 'status-sold',    'label' => 'Vendido'],
+                            'CLOSED' => ['class' => 'status-closed',  'label' => 'Fechado'],
+                            default  => ['class' => 'status-default', 'label' => 'Indisponível']
                         };
                     ?>
                     <div class="property-status-badge <?= $statusData['class'] ?>">

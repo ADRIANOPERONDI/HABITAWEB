@@ -662,7 +662,7 @@
                 <button type="button" class="btn btn-outline-primary rounded-pill px-4 btn-ajax-save shadow-sm" data-status="DRAFT" id="btnDraftSave">
                     <i class="fa-solid fa-file-pen me-2"></i> <?= isset($property) ? 'Atualizar Rascunho' : 'Salvar Rascunho' ?>
                 </button>
-                <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-lg" id="btnMainSave">
+                <button type="button" class="btn btn-primary rounded-pill px-4 shadow-lg btn-ajax-save" id="btnMainSave" data-status="ACTIVE">
                     <i class="fa-solid fa-save me-2"></i> Finalizar & Publicar
                 </button>
             </div>
@@ -966,29 +966,42 @@ $(document).ready(function() {
         function handleFiles(files) {
             if(files.length === 0) return;
             
-            // Se não temos ID, precisamos salvar o rascunho primeiro
+            // Se não temos ID, salva rascunho automaticamente antes de fazer upload
             if (!propertyId) {
-                console.log("No propertyId found. Saving draft first...");
                 $('#uploadProgress').removeClass('d-none');
-                $('.progress-bar').css('width', '10%').text('Iniciando rascunho...');
-                
-                const formData = getFormData();
-                formData.status = 'DRAFT';
-                
+                $('.progress-bar').css('width', '10%').text('Salvando rascunho...');
+
+                const $form = $('#propertyForm');
+                if (window.editorInstance) {
+                    $form.find('textarea[name="descricao"]').val(window.editorInstance.getData());
+                }
+
+                const draftData = new FormData($form[0]);
+                draftData.set('status', 'DRAFT');
+
                 $.ajax({
                     url: '<?= site_url("admin/properties") ?>',
                     type: 'POST',
-                    data: formData,
+                    data: draftData,
+                    processData: false,
+                    contentType: false,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
                     success: function(res) {
                         if (res.success && res.id) {
                             propertyId = res.id;
                             uploadUrl = '<?= site_url("admin/properties") ?>/' + propertyId + '/media';
-                            console.log("Draft saved! New ID:", propertyId);
-                            // Agora continua com os arquivos
+                            $form.attr('action', '<?= site_url("admin/properties") ?>/' + res.id);
+                            if ($form.find('input[name="_method"]').length === 0) {
+                                $form.prepend('<input type="hidden" name="_method" value="PUT">');
+                            }
+                            $('#mediaTabPlaceholder').addClass('d-none');
+                            $('#mediaTabContent').removeClass('d-none');
+                            $('#btnDraftSave').html('<i class="fa-solid fa-file-pen me-2"></i> Atualizar Rascunho');
+                            Toast.fire({ icon: 'info', title: 'Rascunho criado! Enviando fotos...' });
                             processUploadQueue(files);
                         } else {
                             $('#uploadProgress').addClass('d-none');
-                            Swal.fire('Atenção', 'Para enviar fotos, preencha as informações básicas primeiro.', 'warning');
+                            Swal.fire('Atenção', 'Preencha pelo menos o título e a conta antes de enviar fotos.', 'warning');
                         }
                     },
                     error: function() {
