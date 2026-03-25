@@ -51,6 +51,23 @@ class PropertyController extends BaseController
      */
     public function update($id = null)
     {
+        if (!$id) {
+            return $this->respondError('ID do imóvel é obrigatório.', 400);
+        }
+
+        // SECURITY: Validate authorization - user can only update properties of their own account
+        $accountId = $this->request->account_id ?? null;
+        if (!$accountId) {
+            return $this->failForbidden('Acesso negado.');
+        }
+
+        // Verify property belongs to user's account
+        $property = $this->propertyModel->find($id);
+        if (!$property || $property->account_id != $accountId) {
+            log_message('warning', "IDOR attempt: User {$accountId} tried to update property {$id} they don't own");
+            return $this->failForbidden('Acesso negado a este imóvel.');
+        }
+
         $data = $this->request->getJSON(true);
         $result = $this->propertyService->trySaveProperty($data, $id);
 

@@ -88,8 +88,12 @@ class Session extends BaseConfig
      * Whether to destroy session data associated with the old session ID
      * when auto-regenerating the session ID. When set to FALSE, the data
      * will be later deleted by the garbage collector.
+     *
+     * SECURITY: Set to TRUE to immediately destroy old session data.
+     * This prevents session fixation attacks by ensuring old session IDs
+     * cannot be reused after regeneration (e.g., during login).
      */
-    public bool $regenerateDestroy = false;
+    public bool $regenerateDestroy = true;
 
     /**
      * --------------------------------------------------------------------------

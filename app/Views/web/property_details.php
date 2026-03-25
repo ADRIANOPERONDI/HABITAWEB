@@ -189,7 +189,7 @@
 
             <h4 class="fw-bold mb-3">Descrição</h4>
             <div class="text-muted lh-lg mb-5">
-                <?= $property->descricao ?>
+                <?= esc($property->descricao) ?>
             </div>
 
             <h4 class="fw-bold mb-3">Outras Características</h4>
@@ -329,6 +329,7 @@
                     feedback.className = 'mt-3 text-center d-none'; // reset classes
                     
                     const formData = new FormData(this);
+                    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
                     
                     fetch('<?= site_url('leads') ?>', {
                         method: 'POST',

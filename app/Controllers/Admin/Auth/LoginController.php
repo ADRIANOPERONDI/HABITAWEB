@@ -54,6 +54,15 @@ class LoginController extends ShieldLoginController
     {
         log_message('debug', '[LoginController] Iniciando loginAction');
         
+        // FIXED: Rate limiting to prevent brute force
+        $ip = $this->request->getIPAddress();
+        $cacheKey = "login_attempt_{$ip}";
+        $attempts = cache($cacheKey) ?? 0;
+        if ($attempts >= 5) {
+            log_message('warning', "Brute force attempt from {$ip}");
+            return redirect()->back()->with('error', 'Muitas tentativas. Tente em 15 min.');
+        }
+        
         $rules = [
             'email'    => config('Auth')->emailValidationRules,
             'password' => [
@@ -66,6 +75,7 @@ class LoginController extends ShieldLoginController
         ];
 
         if (! $this->validateData($this->request->getPost(), $rules)) {
+            cache()->save($cacheKey, $attempts + 1, 900);
             log_message('error', '[LoginController] Falha na validação do formulário');
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }

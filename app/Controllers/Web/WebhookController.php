@@ -30,7 +30,7 @@ class WebhookController extends BaseController
          // Asaas payload structure:
          // { "event": "PAYMENT_CONFIRMED", "payment": { "id": "pay_...", "externalReference": "...", ... } }
 
-        log_message('info', "Asaas Webhook Received: $event | ID: {$payment['id']}");
+        log_message('info', "Asaas Webhook Received: $event | Payment: {$payment['id']}");
 
         $subscriptionModel = Factories::models(SubscriptionModel::class);
         $db = \Config\Database::connect();

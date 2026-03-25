@@ -68,12 +68,15 @@ class WebhookController extends BaseController
             return $this->response->setStatusCode(200)->setJSON(['success' => false, 'message' => 'Processed with no action']);
 
         } catch (\Exception $e) {
-            log_message('error', "WebhookController Error ($gatewayCode): " . $e->getMessage());
+            log_message('error', "WebhookController Error ($gatewayCode): " . $e->getMessage() . " | File: " . $e->getFile() . " | Line: " . $e->getLine());
             $this->webhookLogModel->markAsProcessed($logId, $e->getMessage());
             
-            // We usually return 200/201 to the gateway to stop retries if it's a logic error,
-            // but for infrastructure/unknown errors we might want to let them retry.
-            return $this->response->setStatusCode(500)->setJSON(['error' => $e->getMessage()]);
+            // SECURITY: Do not expose exception details to client
+            // Log full details server-side but return generic message to client
+            // exception messages may contain file paths, SQL queries, or internal system info
+            
+            // Return 200 to prevent gateway retries of logic errors, but signal to gateway it was processed
+            return $this->response->setStatusCode(200)->setJSON(['success' => false, 'message' => 'Webhook processed with error']);
         }
     }
 

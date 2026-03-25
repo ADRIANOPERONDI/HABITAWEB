@@ -63,9 +63,26 @@ class LeadsController extends BaseController
     {
         $status = $this->request->getPost('status');
         $service = service('leadService');
+        $user = auth()->user();
         
-        // Security: Verificação de conta...
-        // TODO: Adicionar check se o lead pertence à conta do usuário logado se não for admin.
+        // FIXED: Added authorization check
+        // Verify the lead belongs to the current user's account (unless admin)
+        $lead = $this->model->find($id);
+        if (!$lead) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Lead não encontrado.'
+            ], 404);
+        }
+        
+        // Check if user owns the lead or is admin
+        if ($user->id != $lead->user_id && !in_array($user->role, ['admin', 'super_admin'])) {
+            log_message('warning', "Unauthorized lead update attempt by user {$user->id} on lead {$id}");
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Você não tem permissão para alterar este lead.'
+            ], 403);
+        }
         
         if ($service->updateStatus($id, $status)) {
             return $this->response->setJSON(['success' => true, 'message' => 'Status atualizado.']);
@@ -77,7 +94,30 @@ class LeadsController extends BaseController
     /**
      * Atualiza dados básicos do lead via AJAX
      */
-    public function update($id)
+    public function update($id) 
+    {
+        // FIXED: Added authorization check (same as updateStatus)
+        $user = auth()->user();
+        $lead = $this->model->find($id);
+        
+        if (!$lead) {
+            return $this->response->setJSON([        'success' => false,
+                'message' => 'Lead não encontrado.'
+            ], 404);
+        }
+        
+        // Check permissions
+        if ($user->id != $lead->user_id && !in_array($user->role, ['admin', 'super_admin'])) {
+            log_message('warning', "Unauthorized lead update attempt by user {$user->id} on lead {$id}");
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Você não tem permissão para alterar este lead.'
+            ], 403);
+        }
+        
+        // Continue with normal update logic
+    
+    public function _originalUpdate($id)
     {
         $service = service('leadService');
         

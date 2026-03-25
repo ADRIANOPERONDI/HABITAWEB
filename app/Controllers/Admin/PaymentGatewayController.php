@@ -163,10 +163,13 @@ class PaymentGatewayController extends BaseController
      */
     public function sync()
     {
-        $db = \Config\Database::connect();
+        // FIXED: Use query builder instead of raw SQL to prevent SQL injection
+        // Before: $db->query("UPDATE payment_gateways SET is_primary = false");
+        // After: Using parameterized query builder
         
-        // Remove todos os primários
-        $db->query("UPDATE payment_gateways SET is_primary = false");
+        $this->db->table('payment_gateways')
+            ->set('is_primary', false)
+            ->update();
         
         // Define Asaas como primário se existir, senão o primeiro encontrado
         $asaas = $this->gatewayModel->where('code', 'asaas')->first();

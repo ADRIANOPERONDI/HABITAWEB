@@ -28,6 +28,16 @@ class Asaas extends BaseConfig
         $this->apiKey = env('ASAAS_API_KEY', '');
         $this->environment = env('ASAAS_ENV', 'sandbox');
         $this->webhookSecret = env('ASAAS_WEBHOOK_SECRET', '');
+        
+        // SECURITY: Warn if critical vars are missing in production
+        if (ENVIRONMENT === 'production') {
+            if (empty($this->apiKey)) {
+                log_message('critical', 'Asaas Config: ASAAS_API_KEY not set in production environment');
+            }
+            if (empty($this->webhookSecret)) {
+                log_message('critical', 'Asaas Config: ASAAS_WEBHOOK_SECRET not set in production environment');
+            }
+        }
     }
 
     public function getBaseUrl(): string
