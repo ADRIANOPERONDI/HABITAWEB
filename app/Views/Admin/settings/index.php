@@ -162,6 +162,9 @@
     </div>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
 <script src="https://cdn.ckeditor.com/ckeditor5/40.0.0/classic/ckeditor.js"></script>
 <script>
 $(document).ready(function() {
@@ -180,7 +183,7 @@ $(document).ready(function() {
     // Submissão via AJAX
     $('#settingsForm').on('submit', function(e) {
         e.preventDefault();
-        
+
         // Sincroniza instâncias do CKEditor com seus textareas antes de capturar FormData
         if (window.ckSettingsInstances) {
             Object.entries(window.ckSettingsInstances).forEach(function([id, editor]) {
@@ -188,16 +191,15 @@ $(document).ready(function() {
                 if (el) el.value = editor.getData();
             });
         }
-        
+
         let form = $(this);
         let btn = $('#btnSaveSettings');
         let originalHtml = btn.html();
-        
+
         btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-2"></i> Salvando...');
-        
-        // Usar FormData para suportar arquivos
+
         let formData = new FormData(this);
-        
+
         $.ajax({
             url: form.attr('action'),
             method: 'POST',
@@ -206,28 +208,14 @@ $(document).ready(function() {
             contentType: false,
             dataType: 'json',
             success: function(response) {
-                if(response.success) {
-                    Toast.fire({
-                        icon: 'success',
-                        title: response.message || 'Configurações gravadas!'
-                    });
-                    
-                    // Opcional: Recarregar suave se mudar cores/logos críticos
-                    // window.location.reload(); 
+                if (response.success) {
+                    Toast.fire({ icon: 'success', title: response.message || 'Configurações gravadas!' });
                 } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Erro ao salvar',
-                        text: response.message || 'Ocorreu um erro inesperado.'
-                    });
+                    Swal.fire({ icon: 'error', title: 'Erro ao salvar', text: response.message || 'Ocorreu um erro inesperado.' });
                 }
             },
             error: function(xhr) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Erro de Conexão',
-                    text: 'Não foi possível salvar as configurações. Tente novamente.'
-                });
+                Swal.fire({ icon: 'error', title: 'Erro de Conexão', text: 'Não foi possível salvar as configurações. Tente novamente.' });
                 console.error(xhr);
             },
             complete: function() {
@@ -235,22 +223,10 @@ $(document).ready(function() {
             }
         });
     });
-});
 
-function previewSettingImage(input, previewId) {
-    if (input.files && input.files[0]) {
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            $('#' + previewId).attr('src', e.target.result);
-        }
-        reader.readAsDataURL(input.files[0]);
-    }
-}
-// Inicializa CKEditor para campos richtext
-var richtextFields = document.querySelectorAll('.richtext-editor-settings');
-if (richtextFields.length > 0) {
+    // Inicializa CKEditor para campos richtext (executa aqui para garantir jQuery + CKEditor já carregados)
     window.ckSettingsInstances = {};
-    richtextFields.forEach(function(el) {
+    document.querySelectorAll('.richtext-editor-settings').forEach(function(el) {
         ClassicEditor.create(el, {
             toolbar: {
                 items: [
@@ -265,8 +241,16 @@ if (richtextFields.length > 0) {
         .then(function(editor) {
             window.ckSettingsInstances[el.id] = editor;
         })
-        .catch(function(error) { console.error(error); });
+        .catch(function(error) { console.error('CKEditor error:', error); });
     });
+});
+
+function previewSettingImage(input, previewId) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) { $('#' + previewId).attr('src', e.target.result); };
+        reader.readAsDataURL(input.files[0]);
+    }
 }
 
 function testSmtp() {
@@ -282,27 +266,17 @@ function testSmtp() {
         preConfirm: (email) => {
             return $.post('<?= site_url('admin/settings/test-email') ?>', { email: email })
                 .then(response => {
-                    if (!response.success) {
-                        throw new Error(response.message || 'Falha no envio.');
-                    }
+                    if (!response.success) throw new Error(response.message || 'Falha no envio.');
                     return response;
                 })
-                .catch(error => {
-                    Swal.showValidationMessage(`Erro: ${error.message}`);
-                });
+                .catch(error => { Swal.showValidationMessage(`Erro: ${error.message}`); });
         },
         allowOutsideClick: () => !Swal.isLoading()
     }).then((result) => {
         if (result.isConfirmed) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Sucesso!',
-                text: result.value.message
-            });
+            Swal.fire({ icon: 'success', title: 'Sucesso!', text: result.value.message });
         }
     });
 }
 </script>
-
-
 <?= $this->endSection() ?>
