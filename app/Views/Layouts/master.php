@@ -130,6 +130,15 @@
         .status-closed  { background-color: #7c3aed !important; color: #fff !important; }
         .status-default { background-color: #e2e8f0 !important; color: #475569 !important; }
 
+        /* Badges padrão com cores fixas — imunes às cores dinâmicas do tema */
+        .badge.bg-success   { background-color: #198754 !important; color: #fff !important; }
+        .badge.bg-secondary { background-color: #6c757d !important; color: #fff !important; }
+        .badge.bg-danger    { background-color: #dc3545 !important; color: #fff !important; }
+        .badge.bg-warning   { background-color: #ffc107 !important; color: #212529 !important; }
+        .badge.bg-info      { background-color: #0dcaf0 !important; color: #212529 !important; }
+        .badge.bg-dark      { background-color: #212529 !important; color: #fff !important; }
+        .badge.bg-primary   { background-color: var(--primary-color) !important; color: #fff !important; }
+
         /* Override basic BS classes to respect dynamic colors */
         .text-primary { color: var(--primary-color) !important; }
         .text-secondary { color: var(--secondary-color) !important; }

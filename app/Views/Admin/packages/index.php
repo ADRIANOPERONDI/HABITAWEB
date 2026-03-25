@@ -14,7 +14,7 @@
         </a>
     </div>
 
-    <?= view('App\Views\admin\partials\alerts') ?>
+    <?= view('Admin/partials/alerts') ?>
 
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">

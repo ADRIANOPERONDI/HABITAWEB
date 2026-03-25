@@ -23,7 +23,7 @@
         </div>
     </div>
 
-    <?= view('App\Views\admin\partials\alerts') ?>
+    <?= view('Admin/partials/alerts') ?>
 
      <div class="row mb-4">
          <div class="col-md-12">
