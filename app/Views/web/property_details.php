@@ -189,7 +189,7 @@
 
             <h4 class="fw-bold mb-3">Descrição</h4>
             <div class="text-muted lh-lg mb-5">
-                <?= esc($property->descricao) ?>
+                <?= $property->descricao ?>
             </div>
 
             <h4 class="fw-bold mb-3">Outras Características</h4>
