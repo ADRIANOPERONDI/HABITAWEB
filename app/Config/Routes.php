@@ -50,6 +50,10 @@ $routes->post('webhook/(:segment)', 'Webhook\WebhookController::receive/$1');
 $routes->get('parceiros', 'Web\PartnerController::index');
 $routes->get('parceiro/(:num)', 'Web\PartnerController::show/$1');
 
+// Páginas legais
+$routes->get('termos', 'Web\PageController::termos');
+$routes->get('privacidade', 'Web\PageController::privacidade');
+
 // Custom Partner Registration
 
 $routes->get('anuncie', 'Web\RegisterController::index');

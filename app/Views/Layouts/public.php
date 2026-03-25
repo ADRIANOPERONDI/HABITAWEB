@@ -352,8 +352,8 @@
                     <h6 class="fw-bold text-white mb-4">Institucional</h6>
                     <ul class="list-unstyled d-flex flex-column gap-2 opacity-75">
                         <li><a href="#" class="text-white text-decoration-none">Sobre Nós</a></li>
-                        <li><a href="#" class="text-white text-decoration-none">Política de Privacidade</a></li>
-                        <li><a href="#" class="text-white text-decoration-none">Termos de Uso</a></li>
+                        <li><a href="<?= site_url('privacidade') ?>" class="text-white text-decoration-none">Política de Privacidade</a></li>
+                        <li><a href="<?= site_url('termos') ?>" class="text-white text-decoration-none">Termos de Uso</a></li>
                     </ul>
                 </div>
 
