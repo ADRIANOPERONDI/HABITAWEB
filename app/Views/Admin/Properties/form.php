@@ -152,7 +152,7 @@
         color: rgba(255, 255, 255, 0.75);
     }
 </style>
-
+<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 <div class="row justify-content-center pb-5">
