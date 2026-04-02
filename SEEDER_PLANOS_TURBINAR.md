@@ -4,6 +4,12 @@
 
 As seeders foram criadas e testadas com sucesso. Todos os planos e pacotes de turbinar estão sendo corretamente inseridos no banco de dados.
 
+### Problemas Resolvidos
+
+- ✅ Erro de foreign key constraint com PostgreSQL (usando DELETE ao invés de TRUNCATE)
+- ✅ Campos não existentes na tabela (removidos das seeders)
+- ✅ Duração NULL em leads (usando 0 em vez de NULL)
+
 ## Alterações Realizadas
 
 ### 1. Planos de Assinatura (PlanSeeder.php)

@@ -11,8 +11,9 @@ class PlanSeeder extends Seeder
         $db = \Config\Database::connect();
         $builder = $db->table('plans');
 
-        // Limpar todos os planos antigos
-        $builder->truncate();
+        // Limpar todos os planos antigos (com suporte a constraints em PostgreSQL)
+        // Primeiro delete ao invés de truncate para evitar erro de foreign key
+        $db->table('plans')->delete();
 
         $plans = [
             [
