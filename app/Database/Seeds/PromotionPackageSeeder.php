@@ -11,8 +11,8 @@ class PromotionPackageSeeder extends Seeder
         $db = \Config\Database::connect();
         $builder = $db->table('promotion_packages');
 
-        // Limpar pacotes antigos (usando delete ao invés de truncate)
-        $db->table('promotion_packages')->delete();
+        // Limpar pacotes antigos usando query direta
+        $db->query('DELETE FROM promotion_packages');
 
         $data = [
             // Pacotes de Turbinar Imóvel
