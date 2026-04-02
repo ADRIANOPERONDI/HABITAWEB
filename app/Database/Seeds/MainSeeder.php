@@ -16,10 +16,13 @@ class MainSeeder extends Seeder
         // 1. Criar Planos
         $this->call('PlanSeeder');
 
-        // 2. Criar Contas de Teste e Usuários
-        $this->createTestAccount('Habitaweb Imobiliária', 'IMOBILIARIA', 'admin@habitaweb.com', 'IMOBILIARIA');
-        $this->createTestAccount('Corretor João', 'CORRETOR', 'joao@corretor.com', 'PRO');
-        $this->createTestAccount('Ana Maria', 'PF', 'ana@usuario.com', 'START');
+        // 2. Criar Pacotes de Turbinar
+        $this->call('PromotionPackageSeeder');
+
+        // 3. Criar Contas de Teste e Usuários (opcional, pode ser descomentado)
+        // $this->createTestAccount('Habitaweb Imobiliária', 'IMOBILIARIA', 'admin@habitaweb.com', 'DIAMANTE');
+        // $this->createTestAccount('Corretor João', 'CORRETOR', 'joao@corretor.com', 'OURO');
+        // $this->createTestAccount('Ana Maria', 'PF', 'ana@usuario.com', 'PRATA');
     }
 
     private function createTestAccount(string $nome, string $tipoConta, string $email, string $planKey)

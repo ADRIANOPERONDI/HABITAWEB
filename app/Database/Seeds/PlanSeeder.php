@@ -3,46 +3,49 @@
 namespace App\Database\Seeds;
 
 use CodeIgniter\Database\Seeder;
-use App\Models\PlanModel;
 
 class PlanSeeder extends Seeder
 {
     public function run()
     {
-        $planModel = new PlanModel();
+        $db = \Config\Database::connect();
+        $builder = $db->table('plans');
+
+        // Limpar todos os planos antigos
+        $builder->truncate();
 
         $plans = [
             [
-                'chave'                   => 'START',
-                'nome'                    => 'Plano Start',
-                'limite_imoveis_ativos'   => 20,
-                'limite_turbo_mensal'     => 0,
-                'limite_api_requests_dia' => 100,
-                'preco_mensal'            => 49.90, // Exemplo
-            ],
-            [
-                'chave'                   => 'PRO',
-                'nome'                    => 'Plano Pro',
-                'limite_imoveis_ativos'   => 80,
-                'limite_turbo_mensal'     => 5,
+                'chave'                   => 'PRATA',
+                'nome'                    => 'Plano Prata',
+                'limite_imoveis_ativos'   => 45,
+                'limite_turbo_mensal'     => 10,
                 'limite_api_requests_dia' => 1000,
-                'preco_mensal'            => 149.90, // Exemplo
+                'preco_mensal'            => 1850.00,
+                'preco_anual'             => 1599.90,
             ],
             [
-                'chave'                   => 'IMOBILIARIA',
-                'nome'                    => 'Plano Imobiliária',
-                'limite_imoveis_ativos'   => null, // Ilimitado
-                'limite_turbo_mensal'     => 20,
+                'chave'                   => 'OURO',
+                'nome'                    => 'Plano Ouro',
+                'limite_imoveis_ativos'   => 89,
+                'limite_turbo_mensal'     => 15,
                 'limite_api_requests_dia' => 5000,
-                'preco_mensal'            => 399.90, // Exemplo
+                'preco_mensal'            => 2850.00,
+                'preco_anual'             => 2599.90,
+            ],
+            [
+                'chave'                   => 'DIAMANTE',
+                'nome'                    => 'Plano Diamante',
+                'limite_imoveis_ativos'   => null, // Ilimitado
+                'limite_turbo_mensal'     => null, // Ilimitado
+                'limite_api_requests_dia' => 50000,
+                'preco_mensal'            => 4250.00,
+                'preco_anual'             => 3999.90,
             ],
         ];
 
         foreach ($plans as $plan) {
-            $existing = $planModel->where('chave', $plan['chave'])->first();
-            if (!$existing) {
-                $planModel->save($plan);
-            }
+            $builder->insert($plan);
         }
     }
 }

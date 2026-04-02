@@ -8,42 +8,44 @@ class PromotionPackageSeeder extends Seeder
 {
     public function run()
     {
+        $db = \Config\Database::connect();
+        $builder = $db->table('promotion_packages');
+
+        // Limpar pacotes antigos
+        $builder->truncate();
+
         $data = [
+            // Pacotes de Turbinar Imóvel
             [
-                'chave'         => 'DESTAQUE_SEMANAL',
-                'nome'          => 'Turbo Prata (7 dias)',
-                'tipo_promocao' => 'DESTAQUE',
+                'chave'         => 'TURBO_7_DIAS',
+                'nome'          => 'Turbinar Imóvel - 7 dias',
+                'tipo_promocao' => 'TURBO_IMOVEL',
                 'duracao_dias'  => 7,
-                'preco'         => 29.90,
+                'preco'         => 50.00,
                 'created_at'    => date('Y-m-d H:i:s'),
             ],
+            // Pacotes de Lead - Compra
             [
-                'chave'         => 'SUPER_MENSAL',
-                'nome'          => 'Turbo Ouro (30 dias)',
-                'tipo_promocao' => 'SUPER_DESTAQUE',
-                'duracao_dias'  => 30,
-                'preco'         => 79.90,
+                'chave'         => 'LEAD_COMPRA',
+                'nome'          => 'Lead - Compra',
+                'tipo_promocao' => 'LEAD',
+                'duracao_dias'  => 0, // Não tem duração, é por unidade
+                'preco'         => 80.00,
                 'created_at'    => date('Y-m-d H:i:s'),
             ],
+            // Pacotes de Lead - Aluguel
             [
-                'chave'         => 'VITRINE_GLOBAL',
-                'nome'          => 'Turbo Diamante (30 dias)',
-                'tipo_promocao' => 'VITRINE',
-                'duracao_dias'  => 30,
-                'preco'         => 149.90,
+                'chave'         => 'LEAD_ALUGUEL',
+                'nome'          => 'Lead - Aluguel',
+                'tipo_promocao' => 'LEAD',
+                'duracao_dias'  => 0, // Não tem duração, é por unidade
+                'preco'         => 40.00,
                 'created_at'    => date('Y-m-d H:i:s'),
             ],
         ];
 
-        // Using simple query to avoid model issues if table empty
-        $db = \Config\Database::connect();
-        $builder = $db->table('promotion_packages');
-
         foreach ($data as $row) {
-            // Upsert based on chave
-            if ($builder->where('chave', $row['chave'])->countAllResults() == 0) {
-                $builder->insert($row);
-            }
+            $builder->insert($row);
         }
     }
 }
