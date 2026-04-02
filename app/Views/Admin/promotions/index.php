@@ -59,7 +59,7 @@
                     </div>
                     <div class="card-body p-4 text-center">
                         <div class="mb-3">
-                            <span class="fs-1 fw-bold text-dark">R$ <?= number_format($pkg->preco, 2, ',', '.') ?></span>
+                            <span class="fs-1 fw-bold" style="color: #1e293b !important;">R$ <?= number_format($pkg->preco, 2, ',', '.') ?></span>
                             <small class="text-muted d-block">por <?= $pkg->duracao_dias ?> dias</small>
                         </div>
                         
