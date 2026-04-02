@@ -55,7 +55,7 @@
                                         <?php endif; ?>
                                     </td>
                                     <td><?= $pkg->duracao_dias ?> dias</td>
-                                    <td class="fw-bold text-success">R$ <?= number_format($pkg->preco, 2, ',', '.') ?></td>
+                                    <td class="fw-bold" style="color: #1e293b !important;">R$ <?= number_format($pkg->preco, 2, ',', '.') ?></td>
                                     <td class="text-end px-4">
                                         <a href="<?= site_url('admin/packages/edit/' . $pkg->id) ?>" class="btn btn-sm btn-outline-primary rounded-pill me-1">
                                             <i class="fa-solid fa-pen"></i>
