@@ -40,6 +40,7 @@ class AsaasService
                     }
                     if (!empty($configs['webhook_secret'])) {
                         $this->config->webhookSecret = $configs['webhook_secret'];
+                        $this->config->webhookToken = $configs['webhook_secret'];
                     }
                 }
             }
@@ -178,6 +179,6 @@ class AsaasService
 
     public function getWebhookSecret()
     {
-        return $this->config->webhookSecret;
+        return $this->config->webhookToken ?: $this->config->webhookSecret;
     }
 }

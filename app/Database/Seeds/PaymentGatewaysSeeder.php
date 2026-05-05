@@ -36,9 +36,12 @@ class PaymentGatewaysSeeder extends Seeder
         };
 
         // Valores do ambiente
-        $asaasApiKey = getenv('ASAAS_API_KEY') ?: $_ENV['ASAAS_API_KEY'] ?? null;
-        $asaasWebhookSecret = getenv('ASAAS_WEBHOOK_SECRET') ?: $_ENV['ASAAS_WEBHOOK_SECRET'] ?? null;
-        $asaasEnv = getenv('ASAAS_ENV') ?: $_ENV['ASAAS_ENV'] ?? 'sandbox';
+        $asaasApiKey = getenv('ASAAS_API_KEY') ?: ($_ENV['ASAAS_API_KEY'] ?? null);
+        $asaasWebhookSecret = getenv('ASAAS_WEBHOOK_TOKEN')
+            ?: getenv('ASAAS_WEBHOOK_SECRET')
+            ?: ($_ENV['ASAAS_WEBHOOK_TOKEN'] ?? null)
+            ?: ($_ENV['ASAAS_WEBHOOK_SECRET'] ?? null);
+        $asaasEnv = getenv('ASAAS_ENV') ?: ($_ENV['ASAAS_ENV'] ?? 'sandbox');
 
         // Gateway: Asaas (Primário e ativo por padrão)
         $this->db->table('payment_gateways')->insert([

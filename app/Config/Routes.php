@@ -43,7 +43,9 @@ $routes->group('checkout', function($routes) {
 });
 
 // Webhooks
-$routes->post('webhook/asaas', 'Webhook\WebhookController::asaas');
+$routes->post('asaas/saques/validar', 'Web\WebhookController::validateWithdrawal');
+$routes->post('asaas/webhook', 'Web\WebhookController::asaas');
+$routes->post('webhook/asaas', 'Web\WebhookController::asaas');
 $routes->post('webhook/(:segment)', 'Webhook\WebhookController::receive/$1');
 
 // Partner Routes (Public Marketplace)
@@ -296,4 +298,3 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
         $routes->get('delete/(:num)', 'PromotionPackageController::delete/$1');
     });
 });
-

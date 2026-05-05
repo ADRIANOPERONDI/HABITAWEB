@@ -14,8 +14,10 @@ class PaymentTransactionModel extends Model
     protected $protectFields    = true;
     protected $allowedFields    = [
         'subscription_id', 'account_id', 'gateway', 'gateway_transaction_id',
-        'amount', 'due_date', 'currency', 'status', 'payment_method', 'metadata',
-        'type', 'reference_id', 'description', 'pdf_url', 'invoice_url', 'paid_at'
+        'gateway_code', 'gateway_customer_id', 'gateway_subscription_id',
+        'external_id', 'method', 'amount', 'due_date', 'currency', 'status',
+        'payment_method', 'metadata', 'type', 'reference_id', 'description',
+        'pdf_url', 'invoice_url', 'paid_at'
     ];
 
     protected bool $allowEmptyInserts = false;

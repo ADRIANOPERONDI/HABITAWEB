@@ -135,7 +135,7 @@ class WebhookService
                 return $this->handlePaymentConfirmed($gateway, $referenceId, $data);
 
             case 'PAYMENT_OVERDUE':
-                return $this->handlePaymentOverdue($gateway, $referenceId);
+                return $this->handlePaymentOverdue($gateway, $referenceId, $data);
 
             case 'PAYMENT_FAILED':
             case 'PAYMENT_CANCELLED':
@@ -159,19 +159,13 @@ class WebhookService
      */
     protected function handlePaymentConfirmed(string $gateway, string $gatewayId, array $data)
     {
-        // 1. Try to find transaction by gateway_transaction_id
-        $transaction = $this->transactionModel->where([
-            'gateway' => $gateway,
-            'gateway_transaction_id' => $gatewayId
-        ])->first();
+        $transaction = $this->findTransactionByGatewayId($gateway, $gatewayId);
+        $gatewaySubscriptionId = $data['subscription'] ?? null;
 
         if (!$transaction) {
             // Check for subscription ID if it's a subscription-based payment
             // referenceId might be a subscription_id in some events
-            $transaction = $this->transactionModel->where([
-                'gateway' => $gateway,
-                'gateway_subscription_id' => $gatewayId
-            ])->orderBy('id', 'DESC')->first();
+            $transaction = $this->findTransactionBySubscriptionId($gateway, $gatewaySubscriptionId ?: $gatewayId);
         }
 
         if (!$transaction) {
@@ -179,11 +173,11 @@ class WebhookService
             return false;
         }
 
-        $accountId = $transaction['account_id'];
-        $subscriptionId = $transaction['subscription_id'];
+        $accountId = $transaction['account_id'] ?? null;
+        $subscriptionId = $transaction['subscription_id'] ?? null;
 
         // 2. Handle Tokenization (if applicable)
-        if ($transaction['type'] === 'TOKENIZATION_CHARGE') {
+        if (($transaction['type'] ?? null) === 'TOKENIZATION_CHARGE' && $accountId) {
             $this->processCardToken($gateway, $accountId, $data);
         }
 
@@ -210,10 +204,11 @@ class WebhookService
         // 6. Handle Promotions (Turbo) if tagged
         if (isset($transaction['metadata'])) {
             $meta = is_string($transaction['metadata']) ? json_decode($transaction['metadata'], true) : (array) $transaction['metadata'];
-            if (isset($meta['promo_key']) && isset($meta['property_id'])) {
+            $promoKey = $meta['promo_key'] ?? $meta['package_key'] ?? null;
+            if ($promoKey && isset($meta['property_id'])) {
                 $promotionService = service('promotionService'); // Assuming this service exists as per AsaasWebhook
                 if ($promotionService) {
-                    $promotionService->activatePaidPromotion($meta['property_id'], $meta['promo_key']);
+                    $promotionService->activatePaidPromotion($meta['property_id'], $promoKey);
                 }
             }
         }
@@ -261,18 +256,27 @@ class WebhookService
     /**
      * Handle payment overdue
      */
-    protected function handlePaymentOverdue(string $gateway, string $referenceId)
+    protected function handlePaymentOverdue(string $gateway, string $referenceId, array $data = [])
     {
-        // Try to identify subscription/account
-        $subscription = $this->subscriptionModel->where('asaas_subscription_id', $referenceId)->first();
+        $handled = false;
+
+        $transaction = $this->findTransactionByGatewayId($gateway, $referenceId);
+
+        if ($transaction) {
+            $this->transactionModel->update($transaction['id'], ['status' => 'OVERDUE']);
+            $handled = true;
+        }
+
+        $asaasSubscriptionId = $data['subscription'] ?? $referenceId;
+        $subscription = $this->subscriptionModel->where('asaas_subscription_id', $asaasSubscriptionId)->first();
         
         if ($subscription) {
             $this->subscriptionModel->update($subscription->id, ['status' => 'OVERDUE']);
             $this->accountModel->update($subscription->account_id, ['status' => 'SUSPENDED']);
-            return true;
+            $handled = true;
         }
 
-        return false;
+        return $handled;
     }
 
     /**
@@ -284,10 +288,7 @@ class WebhookService
     protected function handleCancellation(string $gateway, string $referenceId)
     {
         // 1. Try to find a specific TRANSACTION first (Payment Deleted)
-        $transaction = $this->transactionModel->where([
-            'gateway' => $gateway,
-            'gateway_transaction_id' => $referenceId
-        ])->first();
+        $transaction = $this->findTransactionByGatewayId($gateway, $referenceId);
 
         if ($transaction) {
             $this->transactionModel->update($transaction['id'], ['status' => 'CANCELLED']);
@@ -301,7 +302,7 @@ class WebhookService
         if ($subscription) {
             $this->subscriptionModel->update($subscription->id, ['status' => 'CANCELLED']);
             $this->accountModel->update($subscription->account_id, ['status' => 'INACTIVE']);
-            log_message('info', "WebhookService: Subscription {$subscription['id']} cancelled via webhook.");
+            log_message('info', "WebhookService: Subscription {$subscription->id} cancelled via webhook.");
             return true;
         }
 
@@ -342,10 +343,7 @@ class WebhookService
     protected function handlePaymentCreated(string $gateway, string $gatewayId, string $status, array $data)
     {
         // 1. Check if transaction already exists
-        $exists = $this->transactionModel->where([
-            "gateway" => $gateway,
-            "gateway_transaction_id" => $gatewayId
-        ])->first();
+        $exists = $this->findTransactionByGatewayId($gateway, $gatewayId);
 
         if ($exists) {
             return true; // Already processed
@@ -367,7 +365,7 @@ class WebhookService
         }
 
         // 4. Create Pending Transaction
-        $this->transactionModel->insert([
+        $this->transactionModel->insert($this->filterTransactionData([
             "account_id" => $subscription->account_id,
             "subscription_id" => $subscription->id,
             "gateway_transaction_id" => $gatewayId,
@@ -384,9 +382,84 @@ class WebhookService
                 "invoice_url" => $data["invoiceUrl"] ?? null,
                 "subscription_cycle" => true
             ])
-        ]);
+        ]));
 
         log_message("info", "WebhookService: New recurring charge created for Account {$subscription->account_id} (TRX: $gatewayId)");
         return true;
+    }
+
+    protected function findTransactionByGatewayId(string $gateway, string $gatewayId): ?array
+    {
+        foreach (['gateway_transaction_id', 'external_id'] as $idColumn) {
+            if (!$this->paymentTransactionFieldExists($idColumn)) {
+                continue;
+            }
+
+            $query = $this->transactionModel->where($idColumn, $gatewayId);
+            $this->applyGatewayScope($query, $gateway);
+            $transaction = $query->first();
+
+            if ($transaction) {
+                return $transaction;
+            }
+        }
+
+        return null;
+    }
+
+    protected function findTransactionBySubscriptionId(string $gateway, ?string $subscriptionId): ?array
+    {
+        if (!$subscriptionId || !$this->paymentTransactionFieldExists('gateway_subscription_id')) {
+            return null;
+        }
+
+        $query = $this->transactionModel
+            ->where('gateway_subscription_id', $subscriptionId)
+            ->orderBy('id', 'DESC');
+        $this->applyGatewayScope($query, $gateway);
+
+        return $query->first() ?: null;
+    }
+
+    protected function applyGatewayScope($query, string $gateway): void
+    {
+        $gatewayColumn = null;
+
+        if ($this->paymentTransactionFieldExists('gateway')) {
+            $gatewayColumn = 'gateway';
+        } elseif ($this->paymentTransactionFieldExists('gateway_code')) {
+            $gatewayColumn = 'gateway_code';
+        }
+
+        if (!$gatewayColumn) {
+            return;
+        }
+
+        $query->whereIn($gatewayColumn, array_values(array_unique([
+            $gateway,
+            strtoupper($gateway),
+            ucfirst(strtolower($gateway)),
+        ])));
+    }
+
+    protected function filterTransactionData(array $data): array
+    {
+        return array_filter(
+            $data,
+            fn ($value, string $field): bool => $this->paymentTransactionFieldExists($field),
+            ARRAY_FILTER_USE_BOTH
+        );
+    }
+
+    protected function paymentTransactionFieldExists(string $field): bool
+    {
+        static $fields = null;
+
+        if ($fields === null) {
+            $db = \Config\Database::connect();
+            $fields = $db->getFieldNames('payment_transactions');
+        }
+
+        return in_array($field, $fields, true);
     }
 }

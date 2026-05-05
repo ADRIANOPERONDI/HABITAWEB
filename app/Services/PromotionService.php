@@ -85,7 +85,7 @@ class PromotionService
             $transactionModel = new \App\Models\PaymentTransactionModel();
             $transactionModel->insert([
                 'account_id' => $account->id,
-                'gateway'    => 'ASAAS',
+                'gateway'    => 'asaas',
                 'gateway_transaction_id' => $payment['id'],
                 'amount'     => $package->preco,
                 'currency'   => 'BRL',
@@ -96,6 +96,7 @@ class PromotionService
                 'invoice_url'   => $payment['invoiceUrl'],
                 'metadata'   => [
                     'property_id'   => $propertyId,
+                    'promo_key'     => $packageKey,
                     'package_key'   => $packageKey,
                     'package_name'  => $package->nome,
                     'invoice_url'   => $payment['invoiceUrl']

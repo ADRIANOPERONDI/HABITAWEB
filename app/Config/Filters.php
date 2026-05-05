@@ -81,7 +81,7 @@ class Filters extends BaseFilters
         'before' => [
             'installation_check', // Redireciona para instalador se não instalado
             // 'honeypot',
-            'csrf' => ['except' => ['install/*', 'api/*', 'webhook/*', 'admin/properties/calculate-score']], // Desabilita CSRF no instalador, API, webhooks e cálculo de score admin
+            'csrf' => ['except' => ['install/*', 'api/*', 'webhook/*', 'asaas/*', 'admin/properties/calculate-score']], // Desabilita CSRF no instalador, API, webhooks e cálculo de score admin
             'invalidchars',
         ],
         'after' => [
