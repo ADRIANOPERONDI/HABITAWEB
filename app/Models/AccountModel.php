@@ -51,7 +51,7 @@ class AccountModel extends Model
 
     /**
      * Verifica se a conta tem todas as verificações KYC completas
-     * Requer: id_front, id_back, selfie, verification_status === 'VERIFIED', is_verified === true
+     * Requer: id_front, id_back, selfie, verification_status aprovado e is_verified === true
      * @return bool
      */
     public function isFullyVerified(): bool
@@ -59,8 +59,8 @@ class AccountModel extends Model
         return !empty($this->id_front) 
                && !empty($this->id_back) 
                && !empty($this->selfie) 
-               && $this->is_verified === true 
-               && $this->verification_status === 'VERIFIED';
+               && $this->is_verified === true
+               && in_array($this->verification_status, ['APPROVED', 'VERIFIED'], true);
     }
 
     /**
@@ -72,6 +72,7 @@ class AccountModel extends Model
         $labels = [
             'NONE' => 'Não iniciado',
             'PENDING' => 'Pendente de revisão',
+            'APPROVED' => 'Verificado',
             'VERIFIED' => 'Verificado',
             'REJECTED' => 'Rejeitado',
             'EXPIRED' => 'Expirado',

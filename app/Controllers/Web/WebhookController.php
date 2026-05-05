@@ -314,9 +314,26 @@ class WebhookController extends BaseController
             ];
         }
 
-        return [
-            'id' => (int) $this->webhookLogModel->logWebhook($eventType, $eventId, $payload),
-            'duplicate' => false,
-        ];
+        try {
+            return [
+                'id' => (int) $this->webhookLogModel->logWebhook($eventType, $eventId, $payload),
+                'duplicate' => false,
+            ];
+        } catch (\Throwable $e) {
+            $existing = $this->webhookLogModel
+                ->select('id, processed')
+                ->where('event_type', $eventType)
+                ->where('event_id', $eventId)
+                ->first();
+
+            if ($existing) {
+                return [
+                    'id' => (int) $existing['id'],
+                    'duplicate' => true,
+                ];
+            }
+
+            throw $e;
+        }
     }
 }

@@ -134,7 +134,7 @@
                             <div class="d-flex gap-2 mt-2">
                                 <span class="badge bg-success-soft text-success rounded-pill px-3 py-2">Conta Ativa</span>
                                 
-                                <?php if ($account->verification_status === 'APPROVED'): ?>
+                                <?php if (in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)): ?>
                                     <span class="badge bg-primary rounded-pill px-3 py-2"><i class="fas fa-check-circle"></i> Verificada</span>
                                 <?php elseif ($account->verification_status === 'PENDING'): ?>
                                     <span class="badge bg-warning text-dark rounded-pill px-3 py-2"><i class="fas fa-clock"></i> Verificação Pendente</span>
@@ -187,7 +187,7 @@
                     <div class="mt-5 pt-4 border-top">
                         <h5 class="fw-bold mb-4"><i class="fas fa-shield-alt text-primary me-2"></i> Verificação de Identidade (Anti-Fraude)</h5>
                         
-                            <?php if ($account->verification_status === 'APPROVED'): ?>
+                            <?php if (in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)): ?>
                                 <!-- APROVADA: Não mostra formulário, só badge de sucesso -->
                                 <div class="alert alert-success border-0 rounded-4 mb-4">
                                     <h6 class="fw-bold mb-1"><i class="fas fa-check-circle me-2"></i> Identidade Verificada</h6>

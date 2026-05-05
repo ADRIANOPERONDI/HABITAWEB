@@ -43,7 +43,7 @@ class VerificationFilter implements FilterInterface
             $account = $db->table('accounts')->select('verification_status')->where('id', $userRow->account_id)->get()->getRow();
             
             // Bloqueio inteligente: Só permite 'APPROVED' em rotas de criação/edição
-            if (!$account || $account->verification_status !== 'APPROVED') {
+            if (!$account || !in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)) {
                 
                 $currentPath = uri_string();
                 

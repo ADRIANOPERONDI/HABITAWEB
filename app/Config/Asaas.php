@@ -29,7 +29,7 @@ class Asaas extends BaseConfig
     /**
      * @var string
      */
-    public $subscriptionBillingType = 'UNDEFINED';
+    public $subscriptionBillingType = 'BOLETO';
 
     /**
      * @var string

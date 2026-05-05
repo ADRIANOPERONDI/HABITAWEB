@@ -33,19 +33,6 @@ class AdminAuth implements FilterInterface
             return;
         }
 
-        // --- PAYMENT LOCK BLOCK ---
-        $currentPath = uri_string();
-        log_message('debug', '[AdminAuth] Verificando Rota: ' . $currentPath);
-        
-        // Allowed paths for unpaid users or users needing verification
-        $allowed = ['checkout', 'admin/logout', 'admin/subscription', 'api-keys', 'ativacao/'];
-        foreach ($allowed as $path) {
-            if (str_starts_with($currentPath, $path)) {
-                log_message('debug', '[AdminAuth] Rota permitida: ' . $currentPath);
-                return;
-            }
-        }
-
         // Check if user is active (email verified)
         $user = auth()->user();
         if ($user && ! $user->active) {
@@ -57,6 +44,20 @@ class AdminAuth implements FilterInterface
 
             log_message('debug', '[AdminAuth] Redirecionando usuário INATIVO (' . $user->id . ') para ativação.');
             return redirect()->to(site_url('ativacao/codigo'));
+        }
+
+        // --- PAYMENT LOCK BLOCK ---
+        $currentPath = uri_string();
+        log_message('debug', '[AdminAuth] Verificando Rota: ' . $currentPath);
+
+        // Allowed paths for unpaid users or users needing verification.
+        // The profile route must stay open so the user can upload KYC documents.
+        $allowed = ['checkout', 'admin/logout', 'admin/profile', 'admin/subscription', 'api-keys', 'ativacao/'];
+        foreach ($allowed as $path) {
+            if (str_starts_with($currentPath, $path)) {
+                log_message('debug', '[AdminAuth] Rota permitida: ' . $currentPath);
+                return;
+            }
         }
 
         // Force Re-fetch to bypass Session Cache issues
@@ -71,7 +72,7 @@ class AdminAuth implements FilterInterface
 
                 // Regra de produção espelhada dos E2E: non-admin precisa KYC completo.
                 if (!$this->isKycVerified($accountId)) {
-                    return redirect()->to('admin/subscription')->with('error', 'Complete sua verificação de identidade (KYC) para acessar o painel.');
+                    return redirect()->to('admin/profile')->with('error', 'Complete sua verificação de identidade (KYC) para acessar o painel.');
                 }
 
                 // Regra de produção espelhada dos E2E: non-admin precisa assinatura ativa.
@@ -153,7 +154,7 @@ class AdminAuth implements FilterInterface
         }
 
         return (bool) $account->is_verified
-            && $account->verification_status === 'VERIFIED'
+            && in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)
             && !empty($account->id_front)
             && !empty($account->id_back)
             && !empty($account->selfie);

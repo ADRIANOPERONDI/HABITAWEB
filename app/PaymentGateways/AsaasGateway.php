@@ -13,7 +13,7 @@ class AsaasGateway implements GatewayInterface
     {
         $this->apiKey = $config['api_key'] ?? '';
         $this->environment = $config['environment'] ?? 'sandbox';
-        $this->webhookSecret = $config['webhook_secret'] ?? '';
+        $this->webhookSecret = $config['webhook_token'] ?? $config['webhook_secret'] ?? '';
         
         $this->baseUrl = $this->environment === 'production' 
             ? 'https://api.asaas.com/v3'
@@ -94,6 +94,10 @@ class AsaasGateway implements GatewayInterface
             $payload['creditCardToken'] = $data['creditCardToken'];
         }
 
+        if (!empty($data['remoteIp'])) {
+            $payload['remoteIp'] = $data['remoteIp'];
+        }
+
         $response = $this->request('POST', '/subscriptions', $payload);
 
         // Buscar a primeira cobrança da assinatura para obter o link de pagamento e detalhes (PIX/Boleto)
@@ -143,6 +147,10 @@ class AsaasGateway implements GatewayInterface
         }
         if (isset($data['creditCardToken'])) {
             $payload['creditCardToken'] = $data['creditCardToken'];
+        }
+
+        if (!empty($data['remoteIp'])) {
+            $payload['remoteIp'] = $data['remoteIp'];
         }
 
         $response = $this->request('POST', '/payments', $payload);
@@ -195,6 +203,12 @@ class AsaasGateway implements GatewayInterface
             $updateData = [];
             if (isset($data['amount'])) $updateData['value'] = $data['amount'];
             if (isset($data['description'])) $updateData['description'] = $data['description'];
+            if (isset($data['billing_type'])) $updateData['billingType'] = $data['billing_type'];
+            if (isset($data['cycle'])) $updateData['cycle'] = $data['cycle'];
+            if (isset($data['next_due_date'])) $updateData['nextDueDate'] = $data['next_due_date'];
+            if (array_key_exists('updatePendingPayments', $data)) {
+                $updateData['updatePendingPayments'] = (bool) $data['updatePendingPayments'];
+            }
             
             if (empty($updateData)) return true;
             
@@ -363,7 +377,8 @@ class AsaasGateway implements GatewayInterface
                         'dueDate' => $p['dueDate'],
                         'invoice_url' => $p['invoiceUrl'],
                         'description' => $p['description'] ?? '',
-                        'external_reference' => $p['externalReference'] ?? ''
+                        'external_reference' => $p['externalReference'] ?? '',
+                        'subscription' => $p['subscription'] ?? null
                     ];
                 }
             }

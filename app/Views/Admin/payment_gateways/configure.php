@@ -32,6 +32,7 @@
                                                         'public_key' => 'Chave Pública',
                                                         'access_token' => 'Token de Acesso',
                                                         'webhook_secret' => 'Segredo do Webhook',
+                                                        'webhook_token' => 'Token do Webhook',
                                                         'environment' => 'Ambiente',
                                                         'merchant_id' => 'ID do Comerciante',
                                                         'secret_key' => 'Chave Secreta',

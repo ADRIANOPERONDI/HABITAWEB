@@ -2,66 +2,58 @@
 
 namespace App\Commands;
 
+use App\Models\PaymentGatewayConfigModel;
+use App\Models\PaymentGatewayModel;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
-use App\Models\PaymentGatewayModel;
-use App\Models\PaymentGatewayConfigModel;
 
 class GatewayFixEncryption extends BaseCommand
 {
-    protected $group       = 'Gateway';
-    protected $name        = 'gateway:fix-encryption';
-    protected $description = 'Re-criptografa as chaves do gateway usando a chave atual do sistema (.env)';
+    protected $group = 'Gateway';
+    protected $name = 'gateway:fix-encryption';
+    protected $description = 'Re-encrypts gateway secrets using the current app encryption key.';
 
     public function run(array $params)
     {
-        CLI::write('🚀 Iniciando reparo de criptografia do Gateway...', 'cyan');
+        CLI::write('Re-encrypting Asaas gateway configuration...', 'cyan');
 
         $gatewayModel = new PaymentGatewayModel();
         $configModel = new PaymentGatewayConfigModel();
-
-        // 1. Localizar o gateway Asaas
         $asaas = $gatewayModel->where('code', 'asaas')->first();
 
         if (!$asaas) {
-            CLI::error('❌ Gateway Asaas não encontrado no banco de dados.');
+            CLI::error('Gateway Asaas not found.');
             return;
         }
 
-        CLI::write("✅ Gateway Asaas encontrado (ID: {$asaas->id}).", 'green');
+        $apiKey = env('ASAAS_API_KEY', '');
+        $environment = strtolower((string) env('ASAAS_ENV', 'sandbox'));
+        $webhookToken = env('ASAAS_WEBHOOK_TOKEN', env('ASAAS_WEBHOOK_SECRET', ''));
+        $webhookSecret = env('ASAAS_WEBHOOK_SECRET', $webhookToken);
 
-        // 2. Pegar chaves do .env
-        // Usamos getenv ou env() pois o CI já carregou o .env
-        $apiKey = getenv('ASAAS_API_KEY');
-        $webhookSecret = getenv('ASAAS_WEBHOOK_SECRET');
-
-        if (empty($apiKey)) {
-            CLI::error('❌ ASAAS_API_KEY não encontrada nas variáveis de ambiente (.env).');
+        if (!in_array($environment, ['sandbox', 'production'], true)) {
+            CLI::error('ASAAS_ENV must be sandbox or production.');
             return;
         }
 
-        CLI::write('📝 Sincronizando chaves...', 'yellow');
+        if (trim((string) $apiKey) === '') {
+            CLI::error('ASAAS_API_KEY not found in .env.');
+            return;
+        }
 
         try {
-            // 3. Salvar novamente para acionar o encryptValue do Model
-            $configModel->saveConfig($asaas->id, 'api_key', $apiKey, true);
-            CLI::write('✅ API Key sincronizada e re-criptografada.', 'green');
-            
-            if (!empty($webhookSecret)) {
-                $configModel->saveConfig($asaas->id, 'webhook_secret', $webhookSecret, true);
-                CLI::write('✅ Webhook Secret sincronizado e re-criptografado.', 'green');
-            }
+            $configModel->saveConfig($asaas->id, 'api_key', (string) $apiKey, true);
+            $configModel->saveConfig($asaas->id, 'environment', $environment, false);
+            $configModel->saveConfig($asaas->id, 'webhook_token', (string) $webhookToken, true);
+            $configModel->saveConfig($asaas->id, 'webhook_secret', (string) $webhookSecret, true);
 
-            // 4. Corrigir campo environment (não deve ser sensível)
-            $asaasEnv = getenv('ASAAS_ENV') ?: 'sandbox';
-            $configModel->saveConfig($asaas->id, 'environment', $asaasEnv, false);
-            CLI::write('✅ Campo "environment" corrigido (definido como não sensível).', 'green');
+            $gatewayModel->update($asaas->id, ['is_active' => true]);
+            $gatewayModel->setPrimary($asaas->id);
 
-            CLI::write("\n🎉 Reparo concluído com sucesso!", 'cyan');
-            CLI::write('O erro "Decrypting: authentication failed" deve desaparecer dos logs.', 'white');
-
-        } catch (\Exception $e) {
-            CLI::error('❌ Erro ao salvar configurações: ' . $e->getMessage());
+            CLI::write('Asaas secrets re-encrypted and gateway set as primary.', 'green');
+            CLI::write('Environment: ' . $environment, 'white');
+        } catch (\Throwable $e) {
+            CLI::error('Error saving gateway config: ' . $e->getMessage());
         }
     }
 }

@@ -80,9 +80,33 @@ class EnsureAsaasPaymentSchema extends Migration
         ];
 
         foreach ($fields as $field => $definition) {
-            if (!$this->db->fieldExists($field, 'payment_transactions')) {
-                $this->forge->addColumn('payment_transactions', [$field => $definition]);
+            if (!$this->columnExists('payment_transactions', $field)) {
+                try {
+                    $this->forge->addColumn('payment_transactions', [$field => $definition]);
+                } catch (\Throwable $e) {
+                    if (!$this->columnExists('payment_transactions', $field)) {
+                        throw $e;
+                    }
+                }
             }
+        }
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        $driver = strtolower((string) ($this->db->DBDriver ?? ''));
+
+        if (str_contains($driver, 'postgre')) {
+            return (bool) $this->db->query(
+                'SELECT 1 FROM information_schema.columns WHERE table_name = ? AND column_name = ? LIMIT 1',
+                [$table, $column]
+            )->getRowArray();
+        }
+
+        try {
+            return $this->db->fieldExists($column, $table);
+        } catch (\Throwable $e) {
+            return false;
         }
     }
 
@@ -143,10 +167,16 @@ class EnsureAsaasPaymentSchema extends Migration
                 'order' => 2,
             ],
             'webhook_secret' => [
-                'value' => env('ASAAS_WEBHOOK_TOKEN', env('ASAAS_WEBHOOK_SECRET', '')),
+                'value' => env('ASAAS_WEBHOOK_SECRET', env('ASAAS_WEBHOOK_TOKEN', '')),
                 'type' => 'string',
                 'sensitive' => true,
                 'order' => 3,
+            ],
+            'webhook_token' => [
+                'value' => env('ASAAS_WEBHOOK_TOKEN', env('ASAAS_WEBHOOK_SECRET', '')),
+                'type' => 'string',
+                'sensitive' => true,
+                'order' => 4,
             ],
         ];
 

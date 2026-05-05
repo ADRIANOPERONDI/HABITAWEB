@@ -41,6 +41,9 @@ class PaymentGatewaysSeeder extends Seeder
             ?: getenv('ASAAS_WEBHOOK_SECRET')
             ?: ($_ENV['ASAAS_WEBHOOK_TOKEN'] ?? null)
             ?: ($_ENV['ASAAS_WEBHOOK_SECRET'] ?? null);
+        $asaasWebhookToken = getenv('ASAAS_WEBHOOK_TOKEN')
+            ?: ($_ENV['ASAAS_WEBHOOK_TOKEN'] ?? null)
+            ?: $asaasWebhookSecret;
         $asaasEnv = getenv('ASAAS_ENV') ?: ($_ENV['ASAAS_ENV'] ?? 'sandbox');
 
         // Gateway: Asaas (Primário e ativo por padrão)
@@ -78,10 +81,18 @@ class PaymentGatewaysSeeder extends Seeder
             [
                 'gateway_id' => $asaasId,
                 'config_key' => 'webhook_secret',
-                'config_value' => $encrypt($asaasWebhookSecret),
+                'config_value' => $encrypt(getenv('ASAAS_WEBHOOK_SECRET') ?: ($_ENV['ASAAS_WEBHOOK_SECRET'] ?? $asaasWebhookSecret)),
                 'config_type' => 'string',
                 'is_sensitive' => true,
                 'display_order' => 3
+            ],
+            [
+                'gateway_id' => $asaasId,
+                'config_key' => 'webhook_token',
+                'config_value' => $encrypt($asaasWebhookToken),
+                'config_type' => 'string',
+                'is_sensitive' => true,
+                'display_order' => 4
             ]
         ];
         

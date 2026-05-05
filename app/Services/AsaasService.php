@@ -38,9 +38,10 @@ class AsaasService
                     if (!empty($configs['environment'])) {
                         $this->config->environment = $configs['environment'];
                     }
-                    if (!empty($configs['webhook_secret'])) {
-                        $this->config->webhookSecret = $configs['webhook_secret'];
-                        $this->config->webhookToken = $configs['webhook_secret'];
+                    $webhookToken = $configs['webhook_token'] ?? $configs['webhook_secret'] ?? null;
+                    if (!empty($webhookToken)) {
+                        $this->config->webhookToken = $webhookToken;
+                        $this->config->webhookSecret = $configs['webhook_secret'] ?? $webhookToken;
                     }
                 }
             }

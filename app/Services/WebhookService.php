@@ -176,9 +176,11 @@ class WebhookService
         $accountId = $transaction['account_id'] ?? null;
         $subscriptionId = $transaction['subscription_id'] ?? null;
 
+        $cardProfile = null;
+
         // 2. Handle Tokenization (if applicable)
         if (($transaction['type'] ?? null) === 'TOKENIZATION_CHARGE' && $accountId) {
-            $this->processCardToken($gateway, $accountId, $data);
+            $cardProfile = $this->processCardToken($gateway, $accountId, $data);
         }
 
         // 3. Update Transaction
@@ -189,11 +191,33 @@ class WebhookService
 
         // 4. Update Subscription
         if ($subscriptionId) {
+            $nextBillingDate = $this->calculateNextBillingDate((int) $subscriptionId, $data);
             $this->subscriptionModel->update($subscriptionId, [
                 'status' => 'ACTIVE',
                 'data_inicio' => date('Y-m-d'),
-                'next_billing_date' => date('Y-m-d', strtotime('+30 days'))
+                'data_fim' => $nextBillingDate,
+                'next_billing_date' => $nextBillingDate
             ]);
+        }
+
+        if (
+            $gateway === 'asaas'
+            && ($transaction['type'] ?? null) === 'TOKENIZATION_CHARGE'
+            && $subscriptionId
+            && !empty($cardProfile['token'])
+        ) {
+            try {
+                $paymentService = new PaymentService();
+                $paymentService->setGateway('asaas');
+                $paymentService->createNativeCreditCardSubscriptionFromTokenization(
+                    (int) $subscriptionId,
+                    (string) $cardProfile['token'],
+                    $data,
+                    $transaction
+                );
+            } catch (\Throwable $e) {
+                log_message('error', 'WebhookService: Falha ao criar recorrencia Asaas de cartao: ' . $e->getMessage());
+            }
         }
 
         // 5. Activate Account
@@ -219,7 +243,7 @@ class WebhookService
     /**
      * Handle credit card token storage
      */
-    protected function processCardToken(string $gateway, int $accountId, array $data)
+    protected function processCardToken(string $gateway, int $accountId, array $data): ?array
     {
         $token = null;
         $brand = 'UNKNOWN';
@@ -227,9 +251,12 @@ class WebhookService
 
         if ($gateway === 'asaas') {
             $card = $data['creditCard'] ?? [];
-            $token = $card['creditCardToken'] ?? null;
+            $token = $card['creditCardToken']
+                ?? $data['creditCardToken']
+                ?? $card['token']
+                ?? null;
             $brand = $card['creditCardBrand'] ?? 'UNKNOWN';
-            $lastDigits = $card['creditCardNumber'] ?? '0000';
+            $lastDigits = $this->normalizeCardLastDigits($card['creditCardNumber'] ?? $card['lastDigits'] ?? '0000');
         } elseif ($gateway === 'stripe') {
             // For Stripe, the token might be in the PaymentMethod or Subscription object
             // This depends on how it was normalized
@@ -250,6 +277,70 @@ class WebhookService
                 'brand' => $brand,
                 'status' => 'ACTIVE'
             ]);
+
+            return [
+                'token' => $token,
+                'brand' => $brand,
+                'last_digits' => $lastDigits,
+            ];
+        }
+
+        log_message('warning', "WebhookService: Token de cartao nao encontrado para gateway {$gateway} na conta {$accountId}.");
+        return null;
+    }
+
+    protected function normalizeCardLastDigits(string $cardNumber): string
+    {
+        $digits = preg_replace('/\D+/', '', $cardNumber) ?: '';
+
+        if ($digits === '') {
+            return '0000';
+        }
+
+        return substr($digits, -4);
+    }
+
+    protected function calculateNextBillingDate(int $subscriptionId, array $data): string
+    {
+        $subscription = $this->subscriptionModel->find($subscriptionId);
+        $cycle = strtoupper((string) ($subscription->billing_cycle ?? 'MONTHLY'));
+        $monthsToAdd = match ($cycle) {
+            'QUARTERLY' => 3,
+            'SEMIANNUALLY' => 6,
+            'YEARLY' => 12,
+            default => 1,
+        };
+
+        foreach ([
+            $data['nextDueDate'] ?? null,
+            $subscription->next_billing_date ?? null,
+            $subscription->data_fim ?? null,
+        ] as $candidate) {
+            $date = $this->parseDate($candidate);
+            if ($date && $date >= new \DateTimeImmutable('today')) {
+                return $date->format('Y-m-d');
+            }
+        }
+
+        $baseDate = $this->parseDate($data['clientPaymentDate'] ?? null)
+            ?? $this->parseDate($data['confirmedDate'] ?? null)
+            ?? $this->parseDate($data['paymentDate'] ?? null)
+            ?? $this->parseDate($data['dueDate'] ?? null)
+            ?? new \DateTimeImmutable('today');
+
+        return $baseDate->modify('+' . $monthsToAdd . ' months')->format('Y-m-d');
+    }
+
+    protected function parseDate($value): ?\DateTimeImmutable
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return new \DateTimeImmutable((string) $value);
+        } catch (\Exception $e) {
+            return null;
         }
     }
 

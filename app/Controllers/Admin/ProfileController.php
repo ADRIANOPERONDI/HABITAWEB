@@ -90,7 +90,7 @@ class ProfileController extends BaseController
         }
 
         // Se enviou novos documentos e não está APROVADO, muda para PENDING
-        if ($docUploaded && $account->verification_status !== 'APPROVED') {
+        if ($docUploaded && !in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)) {
             $data['verification_status'] = 'PENDING';
         }
 

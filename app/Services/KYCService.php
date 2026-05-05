@@ -248,7 +248,7 @@ class KYCService
                && !empty($account->id_back)
                && !empty($account->selfie)
                && $account->is_verified === true
-               && $account->verification_status === 'VERIFIED';
+               && in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true);
     }
 
     /**
@@ -267,6 +267,7 @@ class KYCService
         $statusLabels = [
             'NONE' => 'Não iniciado',
             'PENDING' => 'Pendente de revisão',
+            'APPROVED' => 'Verificado',
             'VERIFIED' => 'Verificado',
             'REJECTED' => 'Rejeitado',
             'EXPIRED' => 'Expirado - Re-verificação requerida',

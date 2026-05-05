@@ -277,26 +277,18 @@ class PaymentService
         }
 
         try {
-            // Check if user already has an active subscription in the gateway
-            log_message('debug', '[PaymentService] Verificando assinaturas ativas no gateway para cliente ' . $customerId);
+            $expectedRefMatch = 'plan_' . $planId . '_acc_' . $accountId;
+            log_message('debug', '[PaymentService] Verificando assinatura ativa equivalente no gateway para cliente ' . $customerId);
             $activeSub = $this->activeGateway->getActiveSubscription($customerId);
-            
-            // Se já tem assinatura ativa no gateway, vamos ADOTAR ela obrigatoriamente
-            // Isso garante que se o cliente já paga por um plano no CNPJ/CPF dele, o sistema se vincula a ele
-            if ($activeSub) {
-                $expectedRefMatch = 'plan_' . $planId . '_acc_' . $accountId;
-                $currentRef = $activeSub['external_reference'] ?? '';
-                
-                // Antes éramos rigorosos, agora somos integradores: Se existe ativa, ADOTAMOS.
-                // Apenas logamos se a referência for diferente para fins de auditoria.
-                if ($currentRef !== $expectedRefMatch) {
-                    log_message('notice', "[PaymentService] ADOTANDO assinatura existente no gateway com referência divergente. Atual: {$currentRef}, Esperada: {$expectedRefMatch}");
-                } else {
-                    log_message('notice', '[PaymentService] Cliente ' . $customerId . ' já possui uma assinatura ativa IDÊNTICA no gateway: ' . $activeSub['subscription_id']);
-                }
-                
+
+            if ($activeSub && (($activeSub['external_reference'] ?? '') === $expectedRefMatch)) {
+                log_message('notice', '[PaymentService] Reutilizando assinatura Asaas ativa equivalente: ' . $activeSub['subscription_id']);
                 $subscriptionData = $activeSub;
             } else {
+                if ($activeSub) {
+                    log_message('notice', '[PaymentService] Assinatura ativa existente no Asaas tem outra referencia. Criando nova contratacao local para evitar vinculo indevido.');
+                }
+
                 log_message('debug', '[PaymentService] Criando assinatura no gateway para cliente ' . $customerId);
                 $subscriptionData = $this->activeGateway->createSubscription($customerId, (string)$planId, $data);
                 log_message('debug', '[PaymentService] Assinatura criada com sucesso no gateway: ' . $subscriptionData['subscription_id']);
@@ -404,6 +396,187 @@ class PaymentService
     public function getActiveGatewayName()
     {
         return $this->activeGateway ? $this->activeGateway->getName() : 'Indisponível';
+    }
+
+    /**
+     * Cria a recorrencia nativa de cartao no Asaas depois da primeira fatura tokenizada.
+     */
+    public function createNativeCreditCardSubscriptionFromTokenization(
+        int $subscriptionId,
+        string $creditCardToken,
+        array $paymentPayload = [],
+        array $transaction = []
+    ): ?array {
+        if (trim($creditCardToken) === '') {
+            return null;
+        }
+
+        if (!$this->activeGateway || $this->activeGateway->getCode() !== 'asaas') {
+            $this->setGateway('asaas');
+        }
+
+        $subscription = $this->subscriptionModel->find($subscriptionId);
+
+        if (!$subscription) {
+            throw new \Exception("Assinatura local {$subscriptionId} nao encontrada para recorrencia Asaas.");
+        }
+
+        if (!empty($subscription->asaas_subscription_id)) {
+            return [
+                'subscription_id' => $subscription->asaas_subscription_id,
+                'already_exists' => true,
+            ];
+        }
+
+        $planModel = model('App\Models\PlanModel');
+        $plan = $planModel->find($subscription->plan_id);
+
+        if (!$plan) {
+            throw new \Exception("Plano {$subscription->plan_id} nao encontrado para recorrencia Asaas.");
+        }
+
+        $customerId = $subscription->asaas_customer_id ?: $this->getOrCreateCustomer((int) $subscription->account_id);
+        $billingCycle = $this->normalizeBillingCycle((string) ($subscription->billing_cycle ?? 'MONTHLY'));
+        $monthsToAdd = $this->getBillingCycleMonths($billingCycle);
+        $amount = (float) ($transaction['amount'] ?? 0);
+
+        if ($amount <= 0) {
+            $amount = $this->getPlanAmountForBillingCycle($plan, $billingCycle);
+        }
+
+        $nextDueDate = $this->resolveNextDueDateForPaidCycle($subscription, $paymentPayload, $monthsToAdd);
+
+        $subscriptionData = [
+            'billing_type' => 'CREDIT_CARD',
+            'amount' => $amount,
+            'description' => 'Assinatura Plano ' . $plan->nome . ' (Cartao recorrente)',
+            'external_reference' => 'plan_' . $subscription->plan_id . '_acc_' . $subscription->account_id . '_card_recurring',
+            'cycle' => $billingCycle,
+            'next_due_date' => $nextDueDate,
+            'creditCardToken' => $creditCardToken,
+        ];
+
+        $nativeSubscription = $this->activeGateway->createSubscription($customerId, (string) $subscription->plan_id, $subscriptionData);
+        $asaasSubscriptionId = $nativeSubscription['subscription_id'] ?? null;
+
+        if (!$asaasSubscriptionId) {
+            throw new \Exception('Asaas nao retornou ID da assinatura recorrente de cartao.');
+        }
+
+        $nextBillingDate = $nativeSubscription['next_billing_date'] ?? $nextDueDate;
+
+        $this->subscriptionModel->update($subscriptionId, [
+            'status' => 'ACTIVE',
+            'asaas_subscription_id' => $asaasSubscriptionId,
+            'asaas_customer_id' => $customerId,
+            'payment_method' => 'CREDIT_CARD',
+            'billing_cycle' => $billingCycle,
+            'data_fim' => $nextBillingDate,
+            'next_billing_date' => $nextBillingDate,
+        ]);
+
+        if (!empty($transaction['id'])) {
+            $metadata = $this->decodeTransactionMetadata($transaction['metadata'] ?? []);
+            $metadata['recurring_asaas_subscription_id'] = $asaasSubscriptionId;
+            $metadata['recurring_next_due_date'] = $nextBillingDate;
+            $metadata['card_token_profile_created'] = true;
+
+            $this->transactionModel->update((int) $transaction['id'], [
+                'gateway_subscription_id' => $asaasSubscriptionId,
+                'metadata' => $metadata,
+            ]);
+        }
+
+        log_message('notice', "[PaymentService] Assinatura Asaas CREDIT_CARD {$asaasSubscriptionId} criada para assinatura local {$subscriptionId}.");
+
+        return $nativeSubscription;
+    }
+
+    protected function normalizeBillingCycle(string $billingCycle): string
+    {
+        $billingCycle = strtoupper(trim($billingCycle));
+        $valid = ['MONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'];
+
+        return in_array($billingCycle, $valid, true) ? $billingCycle : 'MONTHLY';
+    }
+
+    protected function getBillingCycleMonths(string $billingCycle): int
+    {
+        return match ($this->normalizeBillingCycle($billingCycle)) {
+            'QUARTERLY' => 3,
+            'SEMIANNUALLY' => 6,
+            'YEARLY' => 12,
+            default => 1,
+        };
+    }
+
+    protected function getPlanAmountForBillingCycle($plan, string $billingCycle): float
+    {
+        $monthly = (float) ($plan->preco_mensal ?? 0);
+
+        return match ($this->normalizeBillingCycle($billingCycle)) {
+            'QUARTERLY' => (float) ($plan->preco_trimestral ?? ($monthly * 3)),
+            'SEMIANNUALLY' => (float) ($plan->preco_semestral ?? ($monthly * 6)),
+            'YEARLY' => (float) ($plan->preco_anual ?? ($monthly * 12)),
+            default => $monthly,
+        };
+    }
+
+    protected function resolveNextDueDateForPaidCycle($subscription, array $paymentPayload, int $monthsToAdd): string
+    {
+        $today = new \DateTimeImmutable('today');
+        $candidateDates = [
+            $subscription->next_billing_date ?? null,
+            $subscription->data_fim ?? null,
+        ];
+
+        foreach ($candidateDates as $candidate) {
+            $date = $this->parseDate($candidate);
+            if ($date && $date >= $today) {
+                return $date->format('Y-m-d');
+            }
+        }
+
+        $baseDate = $this->parseDate($paymentPayload['clientPaymentDate'] ?? null)
+            ?? $this->parseDate($paymentPayload['confirmedDate'] ?? null)
+            ?? $this->parseDate($paymentPayload['paymentDate'] ?? null)
+            ?? $this->parseDate($paymentPayload['dueDate'] ?? null)
+            ?? $today;
+
+        $nextDate = $baseDate->modify('+' . max(1, $monthsToAdd) . ' months');
+
+        if ($nextDate <= $today) {
+            $nextDate = $today->modify('+1 day');
+        }
+
+        return $nextDate->format('Y-m-d');
+    }
+
+    protected function parseDate($value): ?\DateTimeImmutable
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return new \DateTimeImmutable((string) $value);
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    protected function decodeTransactionMetadata($metadata): array
+    {
+        if (is_array($metadata)) {
+            return $metadata;
+        }
+
+        if (is_string($metadata) && $metadata !== '') {
+            $decoded = json_decode($metadata, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
     }
 
     /**
@@ -570,9 +743,12 @@ class PaymentService
 
             // 2. Atualizar valor da assinatura no Gateway para os próximos ciclos
             if ($subscription->asaas_subscription_id) {
+                $billingCycle = $this->normalizeBillingCycle((string) ($subscription->billing_cycle ?? 'MONTHLY'));
+                $newAmount = $this->getPlanAmountForBillingCycle($newPlan, $billingCycle);
                 $updateData = [
-                    'amount' => (float)$newPlan->preco_mensal,
-                    'description' => "Assinatura Plano " . $newPlan->nome
+                    'amount' => $newAmount,
+                    'description' => "Assinatura Plano " . $newPlan->nome,
+                    'updatePendingPayments' => true,
                 ];
                 $this->activeGateway->updateSubscription($subscription->asaas_subscription_id, $updateData);
             }
@@ -599,7 +775,7 @@ class PaymentService
     {
         // Se não tiver data de próximo pagamento, não temos como calcular pró-rata.
         // Assumimos 30 dias de ciclo.
-        $nextDate = $subscription->proximo_pagamento ?? date('Y-m-d', strtotime('+30 days'));
+        $nextDate = $subscription->next_billing_date ?? $subscription->proximo_pagamento ?? date('Y-m-d', strtotime('+30 days'));
         
         $today = new \DateTime();
         $target = new \DateTime($nextDate);
@@ -908,9 +1084,17 @@ class PaymentService
         $subscription = $this->subscriptionModel->where('asaas_subscription_id', $asaasSubId)->first();
         if (!$subscription) return false;
 
+        $billingCycle = $this->normalizeBillingCycle((string) ($subscription->billing_cycle ?? 'MONTHLY'));
+        $nextBillingDate = $this->resolveNextDueDateForPaidCycle(
+            $subscription,
+            [],
+            $this->getBillingCycleMonths($billingCycle)
+        );
+
         $this->subscriptionModel->update($subscription->id, [
             'status' => 'ACTIVE',
-            'next_billing_date' => date('Y-m-d', strtotime('+30 days'))
+            'data_fim' => $nextBillingDate,
+            'next_billing_date' => $nextBillingDate
         ]);
 
         if ($subscription->account_id) {
@@ -981,7 +1165,10 @@ class PaymentService
     {
         if (!$this->activeGateway) return;
 
-        $subscription = $this->subscriptionModel->where('account_id', $accountId)->first();
+        $subscription = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->orderBy('id', 'DESC')
+            ->first();
         
         // Tentar obter o customer ID (da assinatura ou pela conta)
         $customerId = null;
@@ -1034,7 +1221,7 @@ class PaymentService
                     ]);
 
                     // Se já estiver pago, ativa a assinatura imediatamente
-                    if (($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') && $subscription) {
+                    if (($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') && $subscription && $subscription->asaas_subscription_id) {
                         $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
                     }
                 } else {
@@ -1043,7 +1230,7 @@ class PaymentService
                         log_message('notice', "[PaymentService] Sync: Transação {$gatewayPaymentId} detectada como PAGA no gateway. Atualizando local...");
                         $this->transactionModel->update($localTransaction['id'], ['status' => 'SUCCESS']);
                         
-                        if ($subscription) {
+                        if ($subscription && $subscription->asaas_subscription_id) {
                             $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
                         }
                     }

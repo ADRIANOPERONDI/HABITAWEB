@@ -190,7 +190,8 @@ class SubscriptionModel extends Model
         $accountModel = model('App\Models\AccountModel');
         $account = $accountModel->find($accountId);
 
-        return $account && $account->is_verified && $account->verification_status === 'VERIFIED';
+        return $account
+            && $account->is_verified
+            && in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true);
     }
 }
-
