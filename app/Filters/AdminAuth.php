@@ -70,7 +70,8 @@ class AdminAuth implements FilterInterface
             if ($userRow && !empty($userRow->account_id)) {
                 $accountId = (int) $userRow->account_id;
 
-                // Regra de produção espelhada dos E2E: non-admin precisa KYC completo.
+                // Non-admin precisa KYC aprovado. O status aprovado e a fonte de verdade;
+                // flags/arquivos podem ficar inconsistentes em dados antigos.
                 if (!$this->isKycVerified($accountId)) {
                     return redirect()->to('admin/profile')->with('error', 'Complete sua verificação de identidade (KYC) para acessar o painel.');
                 }
@@ -144,7 +145,7 @@ class AdminAuth implements FilterInterface
     {
         $db = \Config\Database::connect();
         $account = $db->table('accounts')
-            ->select('is_verified, verification_status, id_front, id_back, selfie')
+            ->select('is_verified, verification_status')
             ->where('id', $accountId)
             ->get()
             ->getRow();
@@ -153,11 +154,7 @@ class AdminAuth implements FilterInterface
             return false;
         }
 
-        return (bool) $account->is_verified
-            && in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)
-            && !empty($account->id_front)
-            && !empty($account->id_back)
-            && !empty($account->selfie);
+        return in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true);
     }
 
     /**
