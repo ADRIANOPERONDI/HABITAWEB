@@ -102,6 +102,10 @@ class AccountSubscriptionController extends BaseController
         if (!$planId) {
             return $this->response->setJSON(['error' => 'Plano não selecionado.'])->setStatusCode(400);
         }
+        $billingType = strtoupper((string) ($this->request->getPost('billing_type') ?: 'PIX'));
+        if (!in_array($billingType, ['PIX', 'BOLETO', 'CREDIT_CARD'], true)) {
+            return $this->response->setJSON(['error' => 'Forma de pagamento inválida.'])->setStatusCode(400);
+        }
 
         $subscription = $this->subscriptionModel->where('account_id', $accountId)->orderBy('id', 'DESC')->first();
         if (!$subscription) {
@@ -109,7 +113,7 @@ class AccountSubscriptionController extends BaseController
         }
 
         try {
-            $this->paymentService->changeSubscriptionPlan($accountId, (int)$planId);
+            $this->paymentService->changeSubscriptionPlan($accountId, (int)$planId, $billingType);
             return $this->response->setJSON(['success' => 'Plano atualizado com sucesso no gateway.']);
         } catch (\Exception $e) {
             return $this->response->setJSON(['error' => $e->getMessage()])->setStatusCode(400);

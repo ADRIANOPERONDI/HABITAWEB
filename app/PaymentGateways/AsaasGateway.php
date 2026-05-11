@@ -158,7 +158,9 @@ class AsaasGateway implements GatewayInterface
         $result = [
             'payment_id' => $response['id'],
             'status' => $response['status'],
-            'payment_url' => $response['invoiceUrl']
+            'payment_url' => $response['invoiceUrl'] ?? null,
+            'invoice_url' => $response['invoiceUrl'] ?? null,
+            'bank_slip_url' => $response['bankSlipUrl'] ?? null
         ];
         
         // Se for PIX, buscar QR Code

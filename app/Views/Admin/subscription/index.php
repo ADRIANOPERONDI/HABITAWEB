@@ -24,11 +24,12 @@
                 </div>
 
                 <?php if(isset($pendingSubscription) && $pendingSubscription): ?>
+                <?php $openInvoiceStatus = isset($lastTransaction->status) ? $lastTransaction->status : $pendingSubscription->status; ?>
                 <div class="alert alert-warning border-0 shadow-sm mb-4">
-                    <div class="d-flex align-items-center">
-                        <i class="fa-solid fa-clock fa-2x me-3 opacity-50"></i>
+                    <div class="d-flex align-items-start">
+                        <i class="fa-solid fa-clock fa-2x me-3 opacity-50 mt-1"></i>
                         <div class="w-100">
-                            <h6 class="fw-bold mb-1">Fatura em Aberto (<?= lang('Payments.status_' . strtolower($pendingSubscription->status)) ?>)</h6>
+                            <h6 class="fw-bold mb-1">Fatura em Aberto (<?= lang('Payments.status_' . strtolower($openInvoiceStatus)) ?>)</h6>
                             <p class="small mb-3">
                                 <?php if(isset($pendingSubscription->custom_pending_msg) && $pendingSubscription->custom_pending_msg): ?>
                                     <?= $pendingSubscription->custom_pending_msg ?>
@@ -39,33 +40,95 @@
                             
                             <?php 
                                 $invoiceUrl = '#';
+                                $bankSlipUrl = null;
+                                $pixPayload = null;
+                                $pixImage = null;
+                                $paymentMethod = $lastTransaction->payment_method ?? $pendingSubscription->payment_method ?? null;
+                                $paymentMethodLabels = [
+                                    'PIX' => 'Pix',
+                                    'BOLETO' => 'Boleto',
+                                    'CREDIT_CARD' => 'Cartão de crédito',
+                                ];
+                                $paymentMethodIcons = [
+                                    'PIX' => 'fa-qrcode',
+                                    'BOLETO' => 'fa-barcode',
+                                    'CREDIT_CARD' => 'fa-credit-card',
+                                ];
                                 if(isset($lastTransaction)) {
                                     $invoiceUrl = $lastTransaction->invoice_url ?? '#';
                                     
                                     // Fallback para metadados se a coluna estiver vazia
-                                    if ($invoiceUrl === '#' && !empty($lastTransaction->metadata)) {
+                                    if (!empty($lastTransaction->metadata)) {
                                         $meta = is_string($lastTransaction->metadata) ? json_decode($lastTransaction->metadata, true) : (array)$lastTransaction->metadata;
-                                        $invoiceUrl = $meta['invoice_url'] ?? '#';
+                                        $invoiceUrl = ($invoiceUrl === '#') ? ($meta['invoice_url'] ?? '#') : $invoiceUrl;
+                                        $bankSlipUrl = $meta['bank_slip_url'] ?? null;
+                                        $pixPayload = $meta['qr_code'] ?? null;
+                                        $pixImage = $meta['qr_code_image'] ?? null;
                                     }
                                 }
+                                $paymentMethodKey = strtoupper((string) $paymentMethod);
+                                $paymentMethodLabel = $paymentMethodLabels[$paymentMethodKey] ?? 'Não definida';
+                                $paymentMethodIcon = $paymentMethodIcons[$paymentMethodKey] ?? 'fa-money-bill';
                             ?>
 
-                            <div class="d-flex gap-2">
-                                <a href="<?= $invoiceUrl ?>" target="_blank" class="btn btn-dark">
-                                    <i class="fas fa-external-link-alt me-2"></i> Pagar Fatura
+                            <?php if(isset($lastTransaction) && $lastTransaction): ?>
+                            <div class="bg-white rounded-3 p-3 mb-3 border">
+                                <div class="row g-3 align-items-center">
+                                    <div class="col-sm-4">
+                                        <div class="text-muted small">Forma de pagamento</div>
+                                        <div class="fw-bold"><i class="fas <?= esc($paymentMethodIcon) ?> me-1"></i> <?= esc($paymentMethodLabel) ?></div>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <div class="text-muted small">Valor</div>
+                                        <div class="fw-bold">R$ <?= number_format((float) ($lastTransaction->amount ?? 0), 2, ',', '.') ?></div>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <div class="text-muted small">Vencimento</div>
+                                        <div class="fw-bold"><?= !empty($lastTransaction->due_date) ? date('d/m/Y', strtotime($lastTransaction->due_date)) : '-' ?></div>
+                                    </div>
+                                </div>
+
+                                <?php if($paymentMethodKey === 'PIX' && $pixPayload): ?>
+                                    <div class="mt-3">
+                                        <?php if($pixImage): ?>
+                                            <img src="data:image/png;base64,<?= esc($pixImage) ?>" alt="QR Code Pix" class="rounded bg-white border p-1 mb-2" style="max-width: 150px;">
+                                        <?php endif; ?>
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" class="form-control" value="<?= esc($pixPayload) ?>" id="pendingPixCopy" readonly>
+                                            <button class="btn btn-outline-primary" type="button" id="btn-copy-pending-pix">
+                                                <i class="fas fa-copy"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                <?php elseif($paymentMethodKey === 'BOLETO' && $bankSlipUrl): ?>
+                                    <div class="mt-3">
+                                        <a href="<?= esc($bankSlipUrl) ?>" target="_blank" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-file-pdf me-1"></i> Abrir boleto
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="d-flex flex-wrap gap-2">
+                                <a href="<?= esc($invoiceUrl) ?>" target="_blank" class="btn btn-dark <?= $invoiceUrl === '#' ? 'disabled' : '' ?>">
+                                    <i class="fas fa-external-link-alt me-2"></i> Pagar agora
                                 </a>
+
+                                <?php if(isset($lastTransaction) && $lastTransaction): ?>
+                                    <button type="button"
+                                            class="btn btn-outline-primary btn-change-payment-method"
+                                            data-action="<?= site_url('admin/subscription/payment-method/' . $lastTransaction->id) ?>"
+                                            data-current="<?= esc($paymentMethodKey) ?>">
+                                        <i class="fas fa-repeat me-2"></i> Alterar forma de pagamento
+                                    </button>
+                                <?php endif; ?>
                                 
                                 <form action="<?= site_url('admin/subscription/cancel/' . $pendingSubscription->id) ?>" method="POST" id="form-cancel-subscription">
                                     <?= csrf_field() ?>
                                      <button type="button" class="btn btn-outline-danger btn-cancel-subscription"><?= lang('Payments.confirm_cancel_btn') ?></button>
                                 </form>
                             </div>
-                            
-                            <?php if(isset($lastTransaction->payment_method) && $lastTransaction->payment_method == 'PIX'): ?>
-                                <small class="d-block mt-2 text-muted"><i class="fas fa-qrcode"></i> Pagamento via Pix disponível no link acima</small>
-                            <?php elseif(isset($lastTransaction->payment_method) && $lastTransaction->payment_method == 'BOLETO'): ?>
-                                <small class="d-block mt-2 text-muted"><i class="fas fa-barcode"></i> Boleto disponível no link acima</small>
-                            <?php endif; ?>
 
                         </div>
                     </div>
@@ -240,13 +303,37 @@
 
                 Swal.fire(config).then((result) => {
                     if (result.isConfirmed) {
-                        window.location.href = upgradeUrl;
+                        openPaymentMethodModal({
+                            title: 'Como deseja pagar?',
+                            text: 'Escolha a forma de pagamento para concluir a troca de plano.',
+                            action: upgradeUrl,
+                            current: 'PIX'
+                        });
                     }
                 });
             }).fail(function(xhr) {
                 console.error('Preview error:', xhr);
                 Swal.fire('Erro!', 'Não foi possível calcular a troca de plano.', 'error');
             });
+        });
+
+        $(document).on('click', '.btn-change-payment-method', function() {
+            openPaymentMethodModal({
+                title: 'Alterar forma de pagamento',
+                text: 'Vamos cancelar a cobrança pendente atual e gerar uma nova no método escolhido.',
+                action: $(this).data('action'),
+                current: $(this).data('current') || 'PIX'
+            });
+        });
+
+        $('#btn-copy-pending-pix').click(function() {
+            const input = document.getElementById('pendingPixCopy');
+            if (!input) return;
+
+            input.select();
+            input.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(input.value);
+            Swal.fire('Copiado!', 'Código Pix copiado para a área de transferência.', 'success');
         });
 
         $('.btn-cancel-subscription').click(function(e) {
@@ -266,6 +353,57 @@
                 }
             });
         });
+
+        function openPaymentMethodModal(options) {
+            const current = String(options.current || 'PIX').toUpperCase();
+            const checked = (method) => current === method ? 'checked' : '';
+
+            Swal.fire({
+                title: options.title,
+                html: `
+                    <p class="text-muted small mb-3">${options.text}</p>
+                    <div class="text-start d-grid gap-2">
+                        <label class="border rounded-3 p-3 d-flex align-items-center gap-3 cursor-pointer">
+                            <input type="radio" name="swal_billing_type" value="PIX" ${checked('PIX')}>
+                            <span><i class="fas fa-qrcode me-2 text-primary"></i><strong>Pix</strong><br><small class="text-muted">Aprovação rápida com QR Code ou copia e cola.</small></span>
+                        </label>
+                        <label class="border rounded-3 p-3 d-flex align-items-center gap-3 cursor-pointer">
+                            <input type="radio" name="swal_billing_type" value="BOLETO" ${checked('BOLETO')}>
+                            <span><i class="fas fa-barcode me-2 text-secondary"></i><strong>Boleto</strong><br><small class="text-muted">Pagamento por boleto bancário.</small></span>
+                        </label>
+                        <label class="border rounded-3 p-3 d-flex align-items-center gap-3 cursor-pointer">
+                            <input type="radio" name="swal_billing_type" value="CREDIT_CARD" ${checked('CREDIT_CARD')}>
+                            <span><i class="fas fa-credit-card me-2 text-warning"></i><strong>Cartão de crédito</strong><br><small class="text-muted">Você será levado para a página segura do Asaas.</small></span>
+                        </label>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Continuar',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#344767',
+                preConfirm: () => {
+                    const selected = document.querySelector('input[name="swal_billing_type"]:checked');
+                    return selected ? selected.value : null;
+                }
+            }).then((result) => {
+                if (result.isConfirmed && result.value) {
+                    submitBillingForm(options.action, result.value);
+                }
+            });
+        }
+
+        function submitBillingForm(action, billingType) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = action;
+            form.innerHTML = `
+                <?= csrf_field() ?>
+                <input type="hidden" name="billing_type" value="${billingType}">
+            `;
+            document.body.appendChild(form);
+            form.submit();
+        }
     });
 </script>
 <?= $this->endSection() ?>

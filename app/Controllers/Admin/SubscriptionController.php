@@ -184,6 +184,11 @@ class SubscriptionController extends BaseController
             return redirect()->back()->with('error', 'Conta inválida.');
         }
         $accountId = $user->account_id ?? 1;
+        $billingType = strtoupper((string) $this->request->getPost('billing_type'));
+
+        if (!in_array($billingType, ['PIX', 'BOLETO', 'CREDIT_CARD'], true)) {
+            return redirect()->back()->with('error', 'Selecione uma forma de pagamento válida.');
+        }
 
         // 1. Carregar Plano Alvo
         $planModel = model('App\Models\PlanModel');
@@ -261,7 +266,12 @@ class SubscriptionController extends BaseController
 
             try {
                 $paymentService = new \App\Services\PaymentService();
-                $paymentService->changeSubscriptionPlan($accountId, (int)$planId);
+                $result = $paymentService->changeSubscriptionPlan($accountId, (int)$planId, $billingType);
+
+                if ($billingType === 'CREDIT_CARD' && !empty($result['payment_url'])) {
+                    return redirect()->to($result['payment_url']);
+                }
+
                 return redirect()->to('admin/subscription')->with('message', "Plano alterado para {$targetPlan->nome} com sucesso!");
             } catch (\Exception $e) {
                 return redirect()->back()->with('error', "Erro ao alterar plano: " . $e->getMessage());
@@ -271,6 +281,37 @@ class SubscriptionController extends BaseController
         // 5. Se não tem assinatura ativa, manda pro Checkout normal
         return redirect()->to("checkout/plan/{$planId}");
     }
+
+    public function changePaymentMethod($transactionId)
+    {
+        $user = auth()->user();
+        $isAdmin = $user->inGroup('superadmin', 'admin');
+
+        if (!$isAdmin && !$user->account_id) {
+            return redirect()->back()->with('error', 'Conta inválida.');
+        }
+
+        $accountId = $user->account_id ?? 1;
+        $billingType = strtoupper((string) $this->request->getPost('billing_type'));
+
+        if (!in_array($billingType, ['PIX', 'BOLETO', 'CREDIT_CARD'], true)) {
+            return redirect()->back()->with('error', 'Selecione uma forma de pagamento válida.');
+        }
+
+        try {
+            $paymentService = new \App\Services\PaymentService();
+            $result = $paymentService->regeneratePendingPayment($accountId, (int) $transactionId, $billingType);
+
+            if ($billingType === 'CREDIT_CARD' && !empty($result['payment_url'])) {
+                return redirect()->to($result['payment_url']);
+            }
+
+            return redirect()->to('admin/subscription')->with('message', 'Forma de pagamento atualizada. A nova fatura já está disponível.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Erro ao alterar forma de pagamento: ' . $e->getMessage());
+        }
+    }
+
     public function invoices()
     {
         $user = auth()->user();

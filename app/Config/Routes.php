@@ -197,7 +197,8 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     // Subscription Routes
     $routes->get('subscription', 'SubscriptionController::index');
     $routes->get('subscription/invoices', 'SubscriptionController::invoices');
-    $routes->get('subscription/upgrade/(:num)', 'SubscriptionController::upgrade/$1');
+    $routes->post('subscription/upgrade/(:num)', 'SubscriptionController::upgrade/$1');
+    $routes->post('subscription/payment-method/(:num)', 'SubscriptionController::changePaymentMethod/$1');
     $routes->get('subscription/preview-upgrade/(:num)', 'SubscriptionController::previewUpgrade/$1');
     $routes->get('subscription/invoice/(:num)', 'SubscriptionController::downloadInvoice/$1');
     $routes->post('subscription/cancel/(:num)', 'SubscriptionController::cancel/$1');

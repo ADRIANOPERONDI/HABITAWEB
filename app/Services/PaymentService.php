@@ -679,8 +679,9 @@ class PaymentService
     /**
      * Trocar plano de uma assinatura (Upgrade/Downgrade) com lógica de pró-rata
      */
-    public function changeSubscriptionPlan(int $accountId, int $newPlanId)
+    public function changeSubscriptionPlan(int $accountId, int $newPlanId, string $billingType)
     {
+        $billingType = $this->normalizeBillingType($billingType);
         $subscription = $this->subscriptionModel->where('account_id', $accountId)
                                                ->where('status', 'ACTIVE')
                                                ->first();
@@ -697,6 +698,7 @@ class PaymentService
 
         $oldPlan = $planModel->find($subscription->plan_id);
         $isUpgrade = $newPlan->preco_mensal > $oldPlan->preco_mensal;
+        $createdPaymentData = null;
 
         try {
             if ($isUpgrade && $subscription->asaas_subscription_id) {
@@ -707,37 +709,39 @@ class PaymentService
                     log_message('debug', "[PaymentService] Gerando cobrança de pró-rata: R$ " . $proRata['value']);
                     
                     $data = [
-                        'billing_type' => $subscription->payment_method ?? 'PIX',
+                        'billing_type' => $billingType,
                         'description' => "Pro-rata Upgrade: " . $oldPlan->nome . " -> " . $newPlan->nome,
-                        'external_reference' => "prorata_acc_{$accountId}_sub_{$subscription->id}"
+                        'external_reference' => "prorata_acc_{$accountId}_sub_{$subscription->id}",
+                        'due_date' => date('Y-m-d', strtotime('+3 days')),
+                        'tokenizeCreditCard' => ($billingType === 'CREDIT_CARD')
                     ];
-                    // Criar pagamento avulso
-                    try {
-                        $paymentData = $this->activeGateway->createPayment($subscription->asaas_customer_id, $proRata['value'], $data);
-                        
-                        // 2. Registrar transação no banco
-                        $this->transactionModel->insert([
-                            'account_id'      => $accountId,
-                            'subscription_id' => $subscription->id,
-                            'gateway'         => $this->activeGateway->getCode(),
-                            'gateway_transaction_id' => $paymentData['payment_id'],
-                            'gateway_customer_id'    => $subscription->asaas_customer_id,
-                            'amount'          => $proRata['value'],
-                            'status'          => 'PENDING',
-                            'type'            => 'UPGRADE_PRORATA',
-                            'payment_method'  => $subscription->payment_method ?? 'PIX',
-                            'invoice_url'     => $paymentData['payment_url'],
-                            'metadata'        => json_encode([
-                                'description'  => $data['description'],
-                                'invoice_url'  => $paymentData['payment_url'],
-                                'old_plan_id'  => $oldPlan->id,
-                                'old_price'    => $oldPlan->preco_mensal
-                            ])
-                        ]);
 
-                    } catch (\Exception $e) {
-                        log_message('error', '[PaymentService] Erro ao gerar cobrança de pró-rata: ' . $e->getMessage());
-                    }
+                    $paymentData = $this->activeGateway->createPayment($subscription->asaas_customer_id, $proRata['value'], $data);
+                    $createdPaymentData = $paymentData;
+                    $metadata = $this->buildPaymentMetadata($paymentData, [
+                        'description'  => $data['description'],
+                        'old_plan_id'  => $oldPlan->id,
+                        'old_price'    => $oldPlan->preco_mensal,
+                        'new_plan_id'  => $newPlan->id,
+                        'new_price'    => $newPlan->preco_mensal,
+                    ]);
+
+                    // 2. Registrar transação no banco
+                    $this->transactionModel->insert([
+                        'account_id'      => $accountId,
+                        'subscription_id' => $subscription->id,
+                        'gateway'         => $this->activeGateway->getCode(),
+                        'gateway_transaction_id' => $paymentData['payment_id'],
+                        'gateway_customer_id'    => $subscription->asaas_customer_id,
+                        'amount'          => $proRata['value'],
+                        'due_date'        => $data['due_date'],
+                        'status'          => 'PENDING',
+                        'type'            => 'UPGRADE_PRORATA',
+                        'payment_method'  => $billingType,
+                        'invoice_url'     => $paymentData['payment_url'] ?? null,
+                        'description'     => $data['description'],
+                        'metadata'        => json_encode($metadata)
+                    ]);
                 }
             }
 
@@ -748,6 +752,7 @@ class PaymentService
                 $updateData = [
                     'amount' => $newAmount,
                     'description' => "Assinatura Plano " . $newPlan->nome,
+                    'billing_type' => $billingType,
                     'updatePendingPayments' => true,
                 ];
                 $this->activeGateway->updateSubscription($subscription->asaas_subscription_id, $updateData);
@@ -756,12 +761,17 @@ class PaymentService
             // 3. Atualizar assinatura local
             $this->subscriptionModel->update($subscription->id, [
                 'plan_id' => $newPlanId,
-                'status' => 'ACTIVE' // Garantir ativa
+                'status' => 'ACTIVE', // Garantir ativa
+                'payment_method' => $billingType
             ]);
 
             log_message('notice', "[PaymentService] Plano da conta {$accountId} alterado para {$newPlan->nome}. Upgrade: " . ($isUpgrade ? 'Sim' : 'Não'));
 
-            return true;
+            return [
+                'success' => true,
+                'payment_method' => $billingType,
+                'payment_url' => $createdPaymentData['payment_url'] ?? null,
+            ];
         } catch (\Exception $e) {
             log_message('error', '[PaymentService] Erro ao trocar plano: ' . $e->getMessage());
             throw new \Exception("Erro na troca de plano: " . $e->getMessage());
@@ -792,6 +802,146 @@ class PaymentService
             'value' => max(0, $proRataValue),
             'days_remaining' => $daysRemaining
         ];
+    }
+
+    public function regeneratePendingPayment(int $accountId, int $transactionId, string $billingType): array
+    {
+        if (!$this->activeGateway) {
+            throw new \Exception("Serviço de pagamento indisponível.");
+        }
+
+        $billingType = $this->normalizeBillingType($billingType);
+        $transaction = $this->transactionModel
+            ->where('account_id', $accountId)
+            ->where('id', $transactionId)
+            ->first();
+
+        if (!$transaction || !in_array(strtoupper($transaction['status'] ?? ''), ['PENDING', 'AWAITING_PAYMENT'], true)) {
+            throw new \Exception('Fatura pendente não encontrada.');
+        }
+
+        $subscription = null;
+        if (!empty($transaction['subscription_id'])) {
+            $subscription = $this->subscriptionModel
+                ->where('account_id', $accountId)
+                ->where('id', (int) $transaction['subscription_id'])
+                ->first();
+        }
+
+        if (!$subscription) {
+            throw new \Exception('Assinatura vinculada à fatura não encontrada.');
+        }
+
+        $customerId = $subscription->asaas_customer_id ?: ($transaction['gateway_customer_id'] ?? null);
+        if (!$customerId) {
+            $customerId = $this->getOrCreateCustomer($accountId);
+        }
+
+        if (!empty($transaction['gateway_transaction_id'])) {
+            $this->activeGateway->cancelPayment((string) $transaction['gateway_transaction_id']);
+        }
+
+        $this->transactionModel->update($transaction['id'], ['status' => 'CANCELLED']);
+
+        if (!empty($subscription->asaas_subscription_id)) {
+            $this->activeGateway->updateSubscription($subscription->asaas_subscription_id, [
+                'billing_type' => $billingType,
+                'updatePendingPayments' => true,
+            ]);
+        }
+
+        $description = ($transaction['description'] ?? '') ?: $this->resolvePaymentDescription($transaction, $subscription);
+        $dueDate = $transaction['due_date'] ?: date('Y-m-d', strtotime('+3 days'));
+        $amount = (float) ($transaction['amount'] ?? 0);
+
+        if ($amount <= 0) {
+            throw new \Exception('Valor da cobrança pendente inválido.');
+        }
+
+        $paymentData = $this->activeGateway->createPayment($customerId, $amount, [
+            'billing_type' => $billingType,
+            'description' => $description,
+            'external_reference' => "regen_acc_{$accountId}_tx_{$transactionId}_" . time(),
+            'due_date' => $dueDate,
+            'tokenizeCreditCard' => ($billingType === 'CREDIT_CARD'),
+        ]);
+
+        $metadata = $this->buildPaymentMetadata($paymentData, [
+            'description' => $description,
+            'regenerated_from_transaction_id' => $transactionId,
+            'previous_payment_method' => $transaction['payment_method'] ?? null,
+        ]);
+
+        $newTransactionId = $this->transactionModel->insert([
+            'account_id' => $accountId,
+            'subscription_id' => $subscription->id,
+            'gateway' => $this->activeGateway->getCode(),
+            'gateway_transaction_id' => $paymentData['payment_id'] ?? null,
+            'gateway_customer_id' => $customerId,
+            'gateway_subscription_id' => $subscription->asaas_subscription_id ?: null,
+            'payment_method' => $billingType,
+            'amount' => $amount,
+            'due_date' => $dueDate,
+            'status' => 'PENDING',
+            'type' => $transaction['type'] ?? 'SUBSCRIPTION',
+            'description' => $description,
+            'invoice_url' => $paymentData['payment_url'] ?? null,
+            'metadata' => json_encode($metadata),
+        ]);
+
+        $this->subscriptionModel->update($subscription->id, [
+            'payment_method' => $billingType,
+            'status' => in_array(strtoupper($subscription->status), ['PENDING', 'AWAITING_PAYMENT'], true)
+                ? strtoupper($subscription->status)
+                : $subscription->status,
+        ]);
+
+        return [
+            'transaction_id' => $newTransactionId,
+            'payment_method' => $billingType,
+            'payment_url' => $paymentData['payment_url'] ?? null,
+            'metadata' => $metadata,
+        ];
+    }
+
+    protected function normalizeBillingType(string $billingType): string
+    {
+        $billingType = strtoupper(trim($billingType));
+        $valid = ['PIX', 'BOLETO', 'CREDIT_CARD'];
+
+        if (!in_array($billingType, $valid, true)) {
+            throw new \InvalidArgumentException('Forma de pagamento inválida.');
+        }
+
+        return $billingType;
+    }
+
+    protected function buildPaymentMetadata(array $paymentData, array $extra = []): array
+    {
+        return array_filter(array_merge($extra, [
+            'invoice_url' => $paymentData['payment_url'] ?? $paymentData['invoice_url'] ?? null,
+            'bank_slip_url' => $paymentData['bank_slip_url'] ?? null,
+            'qr_code' => $paymentData['qr_code'] ?? null,
+            'qr_code_image' => $paymentData['qr_code_image'] ?? null,
+        ]), static fn ($value) => $value !== null && $value !== '');
+    }
+
+    protected function resolvePaymentDescription(array $transaction, $subscription): string
+    {
+        if (!empty($transaction['description'])) {
+            return $transaction['description'];
+        }
+
+        if (($transaction['type'] ?? '') === 'UPGRADE_PRORATA') {
+            return 'Pro-rata Upgrade';
+        }
+
+        $plan = null;
+        if ($subscription && !empty($subscription->plan_id)) {
+            $plan = model('App\Models\PlanModel')->find($subscription->plan_id);
+        }
+
+        return 'Assinatura Plano ' . ($plan->nome ?? 'Contratado');
     }
 
     /**
