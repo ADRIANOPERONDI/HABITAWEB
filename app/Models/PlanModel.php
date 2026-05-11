@@ -32,10 +32,18 @@ class PlanModel extends Model
     protected $deletedField  = 'deleted_at';
 
     // Validation
-    protected $validationRules      = [];
-    protected $validationMessages   = [];
-    protected $skipValidation       = false;
-    protected $cleanValidationRules = true;
+    protected $validationRules      = [
+        'nome' => 'required|is_unique[plans.nome,id,{id}]',
+        'chave' => 'required|is_unique[plans.chave,id,{id}]'
+    ];
+    protected $validationMessages   = [
+        'nome' => [
+            'is_unique' => 'Já existe um plano com este nome.'
+        ],
+        'chave' => [
+            'is_unique' => 'Já existe um plano com esta chave/slug gerada. Tente um nome diferente.'
+        ]
+    ];
 
     // Callbacks
     protected $allowCallbacks = true;

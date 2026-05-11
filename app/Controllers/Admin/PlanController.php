@@ -52,7 +52,7 @@ class PlanController extends BaseController
             return redirect()->to('admin/plans')->with('message', 'Plano criado com sucesso.');
         }
 
-        return redirect()->back()->withInput()->with('error', 'Erro ao criar plano.');
+        return redirect()->back()->withInput()->with('errors', $this->planModel->errors())->with('error', 'Erro ao criar plano. Verifique os dados fornecidos.');
     }
 
     public function edit($id)
@@ -84,7 +84,7 @@ class PlanController extends BaseController
             return redirect()->to('admin/plans')->with('message', 'Plano atualizado com sucesso.');
         }
         
-        return redirect()->back()->withInput()->with('error', 'Erro ao atualizar plano.');
+        return redirect()->back()->withInput()->with('errors', $this->planModel->errors())->with('error', 'Erro ao atualizar plano. Verifique os dados fornecidos.');
     }
 
     public function delete($id)

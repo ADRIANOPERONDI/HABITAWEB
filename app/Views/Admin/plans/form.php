@@ -17,6 +17,16 @@
                         <input type="hidden" name="_method" value="PUT">
                     <?php endif; ?>
 
+                    <?php if (session()->has('errors')): ?>
+                        <div class="alert alert-danger">
+                            <ul class="mb-0">
+                                <?php foreach (session('errors') as $error): ?>
+                                    <li><?= $error ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="mb-3">
                         <label class="form-label">Nome do Plano</label>
                         <input type="text" name="nome" class="form-control" value="<?= old('nome', $plan->nome ?? '') ?>" required>
