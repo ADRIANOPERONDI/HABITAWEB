@@ -94,13 +94,13 @@ class PromotionService
                 'type'       => 'TURBO',
                 'description'   => "Turbinar Imóvel: " . $property->titulo . " (" . $package->nome . ")",
                 'invoice_url'   => $payment['invoiceUrl'],
-                'metadata'   => [
+                'metadata'   => json_encode([
                     'property_id'   => $propertyId,
                     'promo_key'     => $packageKey,
                     'package_key'   => $packageKey,
                     'package_name'  => $package->nome,
                     'invoice_url'   => $payment['invoiceUrl']
-                ]
+                ])
             ]);
 
             return [

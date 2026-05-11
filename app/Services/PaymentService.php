@@ -355,12 +355,12 @@ class PaymentService
             'status' => 'PENDING',
             'type' => 'SUBSCRIPTION',
             'subscription_id' => $localSubId,
-            'metadata' => [
+            'metadata' => json_encode([
                 'gateway' => $this->activeGateway->getName(),
                 'coupon' => $coupon ? $coupon->code : null,
                 'original_amount' => $plan->preco_mensal,
                 'invoice_url' => $subscriptionData['payment_url'] ?? null
-            ]
+            ])
         ]);
         
         // Register Coupon Usage
@@ -483,7 +483,7 @@ class PaymentService
 
             $this->transactionModel->update((int) $transaction['id'], [
                 'gateway_subscription_id' => $asaasSubscriptionId,
-                'metadata' => $metadata,
+                'metadata' => json_encode($metadata),
             ]);
         }
 
@@ -727,12 +727,12 @@ class PaymentService
                             'type'            => 'UPGRADE_PRORATA',
                             'payment_method'  => $subscription->payment_method ?? 'PIX',
                             'invoice_url'     => $paymentData['payment_url'],
-                            'metadata'        => [
+                            'metadata'        => json_encode([
                                 'description'  => $data['description'],
                                 'invoice_url'  => $paymentData['payment_url'],
                                 'old_plan_id'  => $oldPlan->id,
                                 'old_price'    => $oldPlan->preco_mensal
-                            ]
+                            ])
                         ]);
 
                     } catch (\Exception $e) {
@@ -949,11 +949,11 @@ class PaymentService
             'status' => 'PENDING',
             'type' => 'TOKENIZATION_CHARGE', // Marker for webhook
             'subscription_id' => $localSubId,
-            'metadata' => [
+            'metadata' => json_encode([
                 'gateway' => $this->activeGateway->getName(),
                 'coupon' => $coupon ? $coupon->code : null,
                 'invoice_url' => $paymentData['payment_url']
-            ]
+            ])
         ]);
 
         return [

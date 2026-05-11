@@ -25,7 +25,6 @@ class PaymentTransactionModel extends Model
 
     protected array $casts = [
         'amount'   => 'float',
-        'metadata' => 'json'
     ];
     protected array $castHandlers = [];
 
