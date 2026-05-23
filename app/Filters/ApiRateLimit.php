@@ -14,6 +14,12 @@ class ApiRateLimit implements FilterInterface
 {
     public function before(RequestInterface $request, $arguments = null)
     {
+        // Ignorar rate limit para a rota de mapa pública
+        $path = ltrim($request->getPath(), '/');
+        if (strpos($path, 'api/imoveis/mapa') !== false) {
+            return null;
+        }
+
         // Determina o identificador para rate limit
         $identifier = $this->getIdentifier($request);
         

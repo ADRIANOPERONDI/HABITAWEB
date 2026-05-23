@@ -6,6 +6,14 @@ use App\Controllers\BaseController;
 
 class LeadController extends BaseController
 {
+    private function jsonPayload(array $payload): array
+    {
+        $payload['csrf_token'] = csrf_token();
+        $payload['csrf_hash'] = csrf_hash();
+
+        return $payload;
+    }
+
     public function store()
     {
         $rules = [
@@ -18,8 +26,11 @@ class LeadController extends BaseController
         if (!$this->validate($rules)) {
             return $this->response->setJSON([
                 'success' => false,
-                'errors'  => $this->validator->getErrors()
-            ])->setStatusCode(400);
+                'message' => 'Revise os dados do formulário.',
+                'errors'  => $this->validator->getErrors(),
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash(),
+            ])->setStatusCode(422);
         }
 
         $service = service('leadService');
@@ -37,12 +48,18 @@ class LeadController extends BaseController
         $result = $service->trySaveLead($data);
 
         if ($result['success']) {
-            return $this->response->setJSON([
+            return $this->response->setJSON($this->jsonPayload([
                 'success' => true,
-                'message' => 'Recebemos seu contato! Logo retornaremos.'
-            ]);
+                'message' => 'Recebemos seu contato! Logo retornaremos.',
+                'lead_id' => $result['data']->id ?? null,
+            ]));
         }
-        return $this->response->setJSON($result)->setStatusCode(500);
+
+        return $this->response->setJSON($this->jsonPayload([
+            'success' => false,
+            'message' => $result['message'] ?? 'Erro ao registrar lead.',
+            'errors'  => $result['errors'] ?? [],
+        ]))->setStatusCode(422);
     }
 
     public function registerEvent()
@@ -57,7 +74,10 @@ class LeadController extends BaseController
         $telefone   = $this->request->getPost('telefone_visitante');
 
         if (!$propertyId) {
-            return $this->response->setJSON(['success' => false, 'message' => 'Property ID missing'])->setStatusCode(400);
+            return $this->response->setJSON($this->jsonPayload([
+                'success' => false,
+                'message' => 'Imóvel não informado.',
+            ]))->setStatusCode(400);
         }
 
         $service = service('leadService');
@@ -77,14 +97,19 @@ class LeadController extends BaseController
 
         if ($result['success']) {
             $lead = $result['data'];
-            $service->registerEvent($lead->id, $evento, json_decode($payload, true));
+            $eventPayload = json_decode((string) $payload, true);
+            $service->registerEvent((int) $lead->id, $evento, is_array($eventPayload) ? $eventPayload : null);
             
-            return $this->response->setJSON([
+            return $this->response->setJSON($this->jsonPayload([
                 'success' => true, 
                 'lead_id' => $lead->id
-            ]);
+            ]));
         }
 
-        return $this->response->setJSON($result)->setStatusCode(500);
+        return $this->response->setJSON($this->jsonPayload([
+            'success' => false,
+            'message' => $result['message'] ?? 'Erro ao registrar evento do lead.',
+            'errors'  => $result['errors'] ?? [],
+        ]))->setStatusCode(422);
     }
 }

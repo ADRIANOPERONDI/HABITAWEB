@@ -17,6 +17,122 @@
     </div>
 </div>
 
+<?php
+    $stats = $stats ?? ['total' => 0, 'today' => 0, 'new' => 0, 'in_progress' => 0, 'closed' => 0, 'lost' => 0, 'answer_rate' => 0];
+    $filters = $filters ?? [];
+    $statusLabels = [
+        'NOVO' => 'Novo',
+        'EM_ATENDIMENTO' => 'Em atendimento',
+        'CONCLUIDO' => 'Concluído',
+        'PERDIDO' => 'Perdido',
+    ];
+?>
+
+<div class="row g-3 mb-4 animate-fade-in" style="animation-delay: 0.05s">
+    <div class="col-6 col-xl-3">
+        <div class="card card-premium border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small fw-bold text-uppercase">Leads hoje</div>
+                <div class="h3 fw-bold mb-0"><?= (int) $stats['today'] ?></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="card card-premium border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small fw-bold text-uppercase">Novos</div>
+                <div class="h3 fw-bold mb-0"><?= (int) $stats['new'] ?></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="card card-premium border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small fw-bold text-uppercase">Em atendimento</div>
+                <div class="h3 fw-bold mb-0"><?= (int) $stats['in_progress'] ?></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="card card-premium border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small fw-bold text-uppercase">Taxa de resposta</div>
+                <div class="h3 fw-bold mb-0"><?= (int) $stats['answer_rate'] ?>%</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-premium border-0 mb-4 animate-fade-in" style="animation-delay: 0.08s">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-6 col-lg-3">
+                <div class="small text-muted fw-bold mb-1">Novo</div>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar bg-primary" style="width: <?= $stats['total'] > 0 ? max(4, (int) round($stats['new'] / $stats['total'] * 100)) : 0 ?>%"></div>
+                </div>
+                <div class="fw-bold mt-1"><?= (int) $stats['new'] ?></div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="small text-muted fw-bold mb-1">Em atendimento</div>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar bg-info" style="width: <?= $stats['total'] > 0 ? max(4, (int) round($stats['in_progress'] / $stats['total'] * 100)) : 0 ?>%"></div>
+                </div>
+                <div class="fw-bold mt-1"><?= (int) $stats['in_progress'] ?></div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="small text-muted fw-bold mb-1">Concluído</div>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar bg-success" style="width: <?= $stats['total'] > 0 ? max(4, (int) round($stats['closed'] / $stats['total'] * 100)) : 0 ?>%"></div>
+                </div>
+                <div class="fw-bold mt-1"><?= (int) $stats['closed'] ?></div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="small text-muted fw-bold mb-1">Perdido</div>
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar bg-secondary" style="width: <?= $stats['total'] > 0 ? max(4, (int) round($stats['lost'] / $stats['total'] * 100)) : 0 ?>%"></div>
+                </div>
+                <div class="fw-bold mt-1"><?= (int) $stats['lost'] ?></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="get" class="card card-premium border-0 mb-4 animate-fade-in" style="animation-delay: 0.1s">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="small text-muted fw-bold mb-1">Status</label>
+                <select name="status" class="form-select rounded-pill">
+                    <option value="">Todos</option>
+                    <?php foreach($statusLabels as $value => $label): ?>
+                        <option value="<?= $value ?>" <?= ($filters['status'] ?? '') === $value ? 'selected' : '' ?>><?= $label ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="small text-muted fw-bold mb-1">Origem</label>
+                <select name="origem" class="form-select rounded-pill">
+                    <option value="">Todas</option>
+                    <option value="SITE" <?= ($filters['origem'] ?? '') === 'SITE' ? 'selected' : '' ?>>Site</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="small text-muted fw-bold mb-1">Cidade</label>
+                <input type="text" name="cidade" class="form-control rounded-pill" value="<?= esc($filters['cidade'] ?? '') ?>" placeholder="Cidade">
+            </div>
+            <div class="col-md-3">
+                <label class="small text-muted fw-bold mb-1">Busca</label>
+                <input type="search" name="q" class="form-control rounded-pill" value="<?= esc($filters['q'] ?? '') ?>" placeholder="Nome, e-mail, telefone ou imóvel">
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-primary rounded-pill flex-grow-1" type="submit"><i class="fa-solid fa-filter me-1"></i> Filtrar</button>
+                <a href="<?= site_url('admin/leads') ?>" class="btn btn-light rounded-circle border" title="Limpar"><i class="fa-solid fa-rotate-left"></i></a>
+            </div>
+        </div>
+    </div>
+</form>
+
 <div class="card card-premium overflow-hidden border-0 animate-fade-in" style="animation-delay: 0.1s">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -37,7 +153,7 @@
                 <tbody>
                     <?php if(empty($leads)): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-5">
+                            <td colspan="<?= $isAdmin ? 7 : 6 ?>" class="text-center py-5">
                                 <i class="fa-regular fa-comment-dots fa-3x text-muted mb-3 d-block"></i>
                                 <p class="text-muted">Nenhum lead recebido ainda.</p>
                             </td>
@@ -69,14 +185,22 @@
                             </td>
                             <?php endif; ?>
                             <td>
-                                <a href="https://wa.me/55<?= preg_replace('/\D/', '', $lead->telefone_visitante ?? '') ?>" target="_blank" class="btn btn-sm btn-light rounded-pill px-3 border">
-                                    <i class="fa-brands fa-whatsapp text-tertiary me-1"></i> WhatsApp
-                                </a>
+                                <?php $phoneDigits = preg_replace('/\D/', '', $lead->telefone_visitante ?? ''); ?>
+                                <?php if($phoneDigits): ?>
+                                    <a href="https://wa.me/55<?= $phoneDigits ?>" target="_blank" class="btn btn-sm btn-light rounded-pill px-3 border">
+                                        <i class="fa-brands fa-whatsapp text-tertiary me-1"></i> WhatsApp
+                                    </a>
+                                <?php else: ?>
+                                    <span class="badge bg-light text-muted border">Sem telefone</span>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <a href="javascript:void(0)" class="text-decoration-none view-property-preview" data-id="<?= $lead->id ?>">
                                     <span class="badge bg-light text-primary border border-primary-soft">ID #<?= $lead->property_id ?></span>
                                 </a>
+                                <?php if(!empty($lead->property_title)): ?>
+                                    <div class="small text-muted mt-1"><?= esc($lead->property_title) ?></div>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <select class="form-select form-select-sm rounded-pill status-select" data-id="<?= $lead->id ?>" style="width: auto;">
@@ -204,6 +328,21 @@
 <script>
 $(document).ready(function() {
     console.log('Admin Leads JS Loaded');
+    const adminLeadsBasePath = new URL('<?= site_url('admin/leads') ?>', window.location.origin).pathname;
+    const csrfFieldName = '<?= csrf_token() ?>';
+    let csrfHash = '<?= csrf_hash() ?>';
+
+    function csrfPayload() {
+        const payload = {};
+        payload[csrfFieldName] = csrfHash;
+        return payload;
+    }
+
+    function refreshCsrf(res) {
+        if (res && res.csrf_hash) {
+            csrfHash = res.csrf_hash;
+        }
+    }
 
     // Delegação de evento para garantir que funcione se a tabela for atualizada
     $(document).on('change', '.status-select', function() {
@@ -213,15 +352,20 @@ $(document).ready(function() {
         
         select.prop('disabled', true);
         
-        $.post(`<?= site_url('admin/leads') ?>/${leadId}/update-status`, {
+        $.post(`${adminLeadsBasePath}/${leadId}/update-status`, {
             status: newStatus,
-            '<?= csrf_token() ?>': '<?= csrf_hash() ?>'
+            ...csrfPayload()
         }, function(res) {
+            refreshCsrf(res);
             if (res.success) {
                 Toast.fire({ icon: 'success', title: res.message });
             } else {
                 Swal.fire('Erro', res.message, 'error');
             }
+        }).fail(function(xhr) {
+            const res = xhr.responseJSON || {};
+            refreshCsrf(res);
+            Swal.fire('Erro', res.message || 'Falha ao atualizar status.', 'error');
         }).always(function() {
             select.prop('disabled', false);
         });
@@ -244,7 +388,8 @@ $(document).ready(function() {
         $('#leadContent').hide();
         modal.show();
 
-        $.get(`<?= site_url('admin/leads') ?>/${id}`, function(res) {
+        $.get(`${adminLeadsBasePath}/${id}`, function(res) {
+            refreshCsrf(res);
             if (res.success) {
                 const lead = res.lead;
                 const events = res.events;
@@ -371,16 +516,18 @@ $(document).ready(function() {
     $('#leadEditForm').on('submit', function(e) {
         e.preventDefault();
         const id = $('#editLeadId').val();
-        const formData = $(this).serialize();
+        const formData = $(this).serializeArray();
+        formData.push({ name: csrfFieldName, value: csrfHash });
         const btn = $(this).find('button[type="submit"]');
 
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
 
         $.ajax({
-            url: `<?= site_url('admin/leads') ?>/${id}/update`,
+            url: `${adminLeadsBasePath}/${id}/update`,
             method: 'POST',
-            data: formData + '&<?= csrf_token() ?>=<?= csrf_hash() ?>',
+            data: $.param(formData),
             success: function(res) {
+                refreshCsrf(res);
                 if (res.success) {
                     Toast.fire({ icon: 'success', title: res.message });
                     // Atualiza os textos na visualização
@@ -397,8 +544,10 @@ $(document).ready(function() {
                     Swal.fire('Erro', res.message, 'error');
                 }
             },
-            error: function() {
-                Swal.fire('Erro', 'Falha na comunicação com o servidor.', 'error');
+            error: function(xhr) {
+                const res = xhr.responseJSON || {};
+                refreshCsrf(res);
+                Swal.fire('Erro', res.message || 'Falha na comunicação com o servidor.', 'error');
             },
             complete: function() {
                 btn.prop('disabled', false).text('Salvar Alterações');

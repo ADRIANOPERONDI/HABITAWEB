@@ -8,7 +8,7 @@ class AddStripeAndMercadoPago extends Migration
 {
     public function up()
     {
-        $this->db->table('payment_gateways')->insertBatch([
+        $data = [
             [
                 'code' => 'stripe',
                 'name' => 'Stripe',
@@ -31,7 +31,14 @@ class AddStripeAndMercadoPago extends Migration
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s')
             ]
-        ]);
+        ];
+
+        foreach ($data as $row) {
+            $existing = $this->db->table('payment_gateways')->where('code', $row['code'])->get()->getRow();
+            if (!$existing) {
+                $this->db->table('payment_gateways')->insert($row);
+            }
+        }
     }
 
     public function down()

@@ -6,6 +6,7 @@
 <?= $this->section('meta_description') ?><?= esc($property->getMetaDescription()) ?><?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
+<div class="public-shell">
 <div class="container py-5">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb mb-4">
@@ -18,7 +19,7 @@
     <div class="row g-5">
         <!-- Gallery & Main Info -->
         <div class="col-lg-8">
-            <div class="card border-0 shadow-sm overflow-hidden mb-4 rounded-4">
+            <div class="card border-0 overflow-hidden mb-4" style="border-radius: 12px; box-shadow: var(--premium-shadow-sm);">
                 <div id="propertyCarousel" class="carousel slide" data-bs-ride="carousel">
                     <div class="carousel-inner" style="aspect-ratio: 16 / 9; background: #f8f9fa;">
                         <?php if(empty($medias)): ?>
@@ -52,7 +53,7 @@
 
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <div class="d-flex align-items-center gap-3">
-                    <h2 class="fw-bold mb-0"><?= esc($property->titulo) ?></h2>
+                    <h2 class="premium-title mb-0"><?= esc($property->titulo) ?></h2>
                     <?php if($property->is_verified): ?>
                         <span class="badge bg-info text-white rounded-pill px-3 py-2 fw-bold" style="background-color: #0d6efd !important;" title="Este imóvel passou por conferência documental e de autenticidade.">
                             <i class="fa-solid fa-check-double me-1"></i> Verificado
@@ -69,14 +70,14 @@
 
             <div class="row g-4 mb-5">
                 <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-light rounded-3">
+                    <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-ruler-combined fa-2x text-primary mb-2"></i>
                         <h5 class="fw-bold mb-0"><?= $property->area_total ?> m²</h5>
                         <small class="text-muted">Área</small>
                     </div>
                 </div>
                 <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-light rounded-3">
+                    <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-bed fa-2x text-primary mb-2"></i>
                         <h5 class="fw-bold mb-0"><?= $property->quartos ?></h5>
                         <small class="text-muted">Quartos</small>
@@ -84,7 +85,7 @@
                 </div>
                 <?php if($property->suites): ?>
                 <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-light rounded-3">
+                    <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-person-shelter fa-2x text-primary mb-2"></i>
                         <h5 class="fw-bold mb-0"><?= $property->suites ?></h5>
                         <small class="text-muted">Suítes</small>
@@ -92,14 +93,14 @@
                 </div>
                 <?php endif; ?>
                 <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-light rounded-3">
+                    <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-bath fa-2x text-primary mb-2"></i>
                         <h5 class="fw-bold mb-0"><?= $property->banheiros ?></h5>
                         <small class="text-muted">Banh.</small>
                     </div>
                 </div>
                  <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-light rounded-3">
+                    <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-car fa-2x text-primary mb-2"></i>
                         <h5 class="fw-bold mb-0"><?= $property->vagas ?></h5>
                         <small class="text-muted">Vagas</small>
@@ -211,7 +212,7 @@
 
             <?php if($property->latitude && $property->longitude): ?>
             <h4 class="fw-bold mb-3 mt-5">Localização</h4>
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-5">
+            <div class="card border-0 shadow-sm overflow-hidden mb-5" style="border-radius: 12px;">
                 <iframe 
                     width="100%" 
                     height="400" 
@@ -223,7 +224,7 @@
             </div>
             <?php elseif($property->rua && $property->cidade): ?>
             <h4 class="fw-bold mb-3 mt-5">Localização</h4>
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-5">
+            <div class="card border-0 shadow-sm overflow-hidden mb-5" style="border-radius: 12px;">
                 <iframe 
                     width="100%" 
                     height="400" 
@@ -238,8 +239,9 @@
 
         <!-- Sidebar Contact -->
         <div class="col-lg-4">
-            <div class="card border-0 shadow p-4 sticky-top" style="top: 100px;">
-                <h3 class="fw-bold text-primary mb-1">R$ <?= number_format($property->preco, 2, ',', '.') ?></h3>
+            <div class="card border-0 p-4 sticky-top" style="top: 100px; border-radius: 12px; box-shadow: var(--premium-shadow);">
+                <div class="premium-eyebrow"><?= $property->tipo_negocio === 'VENDA' ? 'Compra' : 'Aluguel' ?></div>
+                <h3 class="fw-bold text-dark mb-1">R$ <?= number_format($property->preco, 2, ',', '.') ?></h3>
                 <?php if($property->tipo_negocio === 'ALUGUEL'): ?>
                     <p class="text-muted">/mês</p>
                 <?php endif; ?>
@@ -291,6 +293,45 @@
                     </div>
                 </div>
 
+                <?php
+                    $hasPhotos = !empty($medias);
+                    $hasLocation = !empty($property->latitude) && !empty($property->longitude);
+                    $hasDescription = !empty(trim((string) ($property->descricao ?? '')));
+                    $isComplete = $hasPhotos && $hasLocation && $hasDescription;
+                ?>
+                <div class="border rounded-4 p-3 mb-4 bg-white">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary text-white" style="width: 32px; height: 32px;">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </span>
+                        <div>
+                            <div class="fw-bold text-dark">Por que confiar neste anúncio?</div>
+                            <div class="x-small text-muted">Sinais verificados pelo portal antes do contato.</div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <?php if($property->is_verified): ?>
+                            <span class="badge rounded-pill text-bg-primary"><i class="fa-solid fa-check-double me-1"></i> Imóvel verificado</span>
+                        <?php endif; ?>
+                        <?php if($property->account_verified): ?>
+                            <span class="badge rounded-pill text-bg-success"><i class="fa-solid fa-circle-check me-1"></i> Anunciante verificado</span>
+                        <?php endif; ?>
+                        <?php if($isComplete): ?>
+                            <span class="badge rounded-pill text-bg-light border text-dark"><i class="fa-solid fa-list-check me-1"></i> Anúncio completo</span>
+                        <?php endif; ?>
+                        <span class="badge rounded-pill text-bg-light border text-dark"><i class="fa-solid fa-headset me-1"></i> Atendimento rastreado</span>
+                    </div>
+                    <?php if(!$hasPhotos || !$hasLocation || !$hasDescription): ?>
+                        <div class="alert alert-warning py-2 px-3 mb-3 x-small">
+                            <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                            Este anúncio ainda tem informações pendentes. Confirme fotos, localização e detalhes com o anunciante.
+                        </div>
+                    <?php endif; ?>
+                    <div class="x-small text-muted">
+                        Nunca faça pagamento antecipado sem visitar o imóvel, validar o responsável e conferir documentos básicos.
+                    </div>
+                </div>
+
                 <form id="leadForm">
                     <input type="hidden" name="<?= csrf_token() ?>" value="<?= csrf_hash() ?>">
                     <input type="hidden" name="property_id" value="<?= $property->id ?>">
@@ -310,12 +351,24 @@
                         <i class="fa-brands fa-whatsapp me-2"></i> Falar no WhatsApp
                     </button>
                     <button type="submit" id="btnLead" class="btn btn-outline-primary w-100 btn-md fw-bold rounded-pill">
-                        <i class="fa-solid fa-envelope me-2"></i> Enviar E-mail
+                        <i class="fa-solid fa-envelope me-2"></i> Quero receber contato
                     </button>
                     <div id="leadFeedback" class="mt-3 text-center d-none"></div>
                 </form>
 
                 <script>
+                const leadEndpoint = new URL('<?= site_url('leads') ?>', window.location.origin).pathname;
+                const csrfFieldName = '<?= csrf_token() ?>';
+
+                function updateLeadCsrf(data) {
+                    if (!data || !data.csrf_hash) return;
+                    const csrfInput = document.querySelector(`#leadForm input[name="${csrfFieldName}"]`);
+                    if (csrfInput) {
+                        csrfInput.value = data.csrf_hash;
+                        csrfInput.setAttribute('value', data.csrf_hash);
+                    }
+                }
+
                 document.getElementById('leadForm').addEventListener('submit', function(e) {
                     e.preventDefault();
                     
@@ -329,9 +382,8 @@
                     feedback.className = 'mt-3 text-center d-none'; // reset classes
                     
                     const formData = new FormData(this);
-                    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
                     
-                    fetch('<?= site_url('leads') ?>', {
+                    fetch(leadEndpoint, {
                         method: 'POST',
                         body: formData,
                         headers: {
@@ -345,6 +397,7 @@
                             feedback.classList.add('text-success', 'fw-bold');
                             feedback.innerHTML = '<i class="fa-solid fa-check-circle"></i> ' + data.message;
                             this.reset();
+                            updateLeadCsrf(data);
                         } else {
                             feedback.classList.add('text-danger');
                             let msg = data.message || 'Erro ao enviar.';
@@ -353,6 +406,7 @@
                             }
                             feedback.innerHTML = msg;
                         }
+                        updateLeadCsrf(data);
                     })
                     .catch(error => {
                         feedback.classList.remove('d-none');
@@ -369,6 +423,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <!-- Modal WhatsApp Hub (Linktree Style) -->
@@ -403,6 +458,7 @@
 
 <script>
 const whatsappConfig = <?= json_encode($property->whatsapp_hub_config ?? []) ?>;
+const leadEventEndpoint = new URL('<?= site_url('leads/register-event') ?>', window.location.origin).pathname;
 const propertyInfo = {
     id: "<?= $property->id ?>",
     titulo: "<?= esc($property->titulo) ?>",
@@ -475,16 +531,25 @@ function handleWhatsAppClick(number, channelName) {
 
     // 3. Registra o lead em background (Fire and forget)
     const formData = new FormData();
-    formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    const csrfInput = document.querySelector(`#leadForm input[name="${csrfFieldName}"]`);
+    if (csrfInput) {
+        formData.append(csrfFieldName, csrfInput.value);
+    }
     formData.append('property_id', propertyInfo.id);
     formData.append('evento', 'whatsapp_click');
-    formData.append('payload', JSON.stringify({ channel: channelName, number: number }));
+    formData.append('nome_visitante', document.querySelector('#leadForm [name="nome_visitante"]')?.value || '');
+    formData.append('email_visitante', document.querySelector('#leadForm [name="email_visitante"]')?.value || '');
+    formData.append('telefone_visitante', document.querySelector('#leadForm [name="telefone_visitante"]')?.value || '');
+    formData.append('payload', JSON.stringify({ channel: channelName, number: number, source: 'property_details' }));
 
-    fetch('<?= site_url('leads/register-event') ?>', {
+    fetch(leadEventEndpoint, {
         method: 'POST',
         body: formData,
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    });
+    })
+    .then(response => response.json())
+    .then(updateLeadCsrf)
+    .catch(error => console.warn('Lead WhatsApp tracking failed', error));
 }
 </script>
 <?= $this->endSection() ?>

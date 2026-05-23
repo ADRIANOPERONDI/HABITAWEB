@@ -3,28 +3,45 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Models\LeadModel;
+use CodeIgniter\HTTP\ResponseInterface;
 
 class LeadsController extends BaseController
 {
+    protected LeadModel $model;
+
+    public function __construct()
+    {
+        $this->model = model(LeadModel::class);
+    }
+
     public function index()
     {
         $service = service('leadService');
         $user = auth()->user();
-        $filters = [];
-        
-        // Check admin once
-        $isAdmin = $user->inGroup('superadmin', 'admin');
-        
-        // Se NÃO for superadmin, filtra pela conta
-        if (!$isAdmin) { 
-            // FIXME 'admin' group usually is the "imobiliaria admin", superadmin is "master"
-            // Assuming 'superadmin' is the master key.
-            if ($user->account_id) {
-                $filters['account_id_anunciante'] = $user->account_id;
-            } else {
-                 // Usuario sem conta e sem ser superadmin -> nao vê nada
-                 return view('Admin/leads/index', ['leads' => [], 'pager' => \Config\Services::pager(), 'isAdmin' => false]);
+        $isAdmin = $this->isGlobalAdmin($user);
+        $filters = $this->leadFiltersFromRequest();
+
+        if (!$isAdmin) {
+            if (empty($user->account_id)) {
+                return view('Admin/leads/index', [
+                    'leads' => [],
+                    'pager' => \Config\Services::pager(),
+                    'isAdmin' => false,
+                    'filters' => $filters,
+                    'stats' => [
+                        'total' => 0,
+                        'today' => 0,
+                        'new' => 0,
+                        'in_progress' => 0,
+                        'closed' => 0,
+                        'lost' => 0,
+                        'answer_rate' => 0,
+                    ],
+                ]);
             }
+
+            $filters['account_id_anunciante'] = (int) $user->account_id;
         }
 
         $data = $service->listLeads($filters, 20);
@@ -32,109 +49,140 @@ class LeadsController extends BaseController
         return view('Admin/leads/index', [
             'leads' => $data['leads'],
             'pager' => $data['pager'],
-            'isAdmin' => $isAdmin
+            'isAdmin' => $isAdmin,
+            'filters' => $filters,
+            'stats' => $service->getLeadStats($filters),
         ]);
     }
 
-    /**
-     * Retorna detalhes do lead via AJAX para o modal
-     */
     public function show($id)
     {
         $service = service('leadService');
-        $data = $service->getLeadWithEvents((int)$id);
+        $data = $service->getLeadWithEvents((int) $id);
 
         if (empty($data)) {
-            return $this->response->setJSON(['success' => false, 'message' => 'Lead não encontrado.'])->setStatusCode(404);
+            return $this->jsonError('Lead não encontrado.', ResponseInterface::HTTP_NOT_FOUND);
+        }
+
+        if (!$this->canAccessLead(auth()->user(), $data['lead'])) {
+            return $this->jsonError('Você não tem permissão para acessar este lead.', ResponseInterface::HTTP_FORBIDDEN);
         }
 
         return $this->response->setJSON([
-            'success'  => true,
-            'lead'     => $data['lead'],
-            'events'   => $data['events'],
-            'property' => $data['property']
+            'success' => true,
+            'lead' => $data['lead'],
+            'events' => $data['events'],
+            'property' => $data['property'],
+            'csrf_token' => csrf_token(),
+            'csrf_hash' => csrf_hash(),
         ]);
     }
 
-    /**
-     * Atualiza status do lead via AJAX
-     */
     public function updateStatus($id)
     {
-        $status = $this->request->getPost('status');
-        $service = service('leadService');
-        $user = auth()->user();
-        
-        // FIXED: Added authorization check
-        // Verify the lead belongs to the current user's account (unless admin)
-        $lead = $this->model->find($id);
+        $status = (string) $this->request->getPost('status');
+        $validStatuses = [
+            LeadModel::STATUS_NOVO,
+            LeadModel::STATUS_ATENDIMENTO,
+            LeadModel::STATUS_CONCLUIDO,
+            LeadModel::STATUS_PERDIDO,
+        ];
+
+        if (!in_array($status, $validStatuses, true)) {
+            return $this->jsonError('Status inválido.', ResponseInterface::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $lead = $this->model->find((int) $id);
         if (!$lead) {
+            return $this->jsonError('Lead não encontrado.', ResponseInterface::HTTP_NOT_FOUND);
+        }
+
+        if (!$this->canAccessLead(auth()->user(), $lead)) {
+            return $this->jsonError('Você não tem permissão para alterar este lead.', ResponseInterface::HTTP_FORBIDDEN);
+        }
+
+        if (service('leadService')->updateStatus((int) $id, $status)) {
             return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Lead não encontrado.'
-            ], 404);
+                'success' => true,
+                'message' => 'Status atualizado.',
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash(),
+            ]);
         }
-        
-        // Check if user owns the lead or is admin
-        if ($user->id != $lead->user_id && !in_array($user->role, ['admin', 'super_admin'])) {
-            log_message('warning', "Unauthorized lead update attempt by user {$user->id} on lead {$id}");
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Você não tem permissão para alterar este lead.'
-            ], 403);
-        }
-        
-        if ($service->updateStatus($id, $status)) {
-            return $this->response->setJSON(['success' => true, 'message' => 'Status atualizado.']);
-        }
-        
-        return $this->response->setJSON(['success' => false, 'message' => 'Erro ao atualizar status.']);
+
+        return $this->jsonError('Erro ao atualizar status.', ResponseInterface::HTTP_BAD_REQUEST);
     }
 
-    /**
-     * Atualiza dados básicos do lead via AJAX
-     */
-    public function update($id) 
+    public function update($id)
     {
-        // FIXED: Added authorization check (same as updateStatus)
-        $user = auth()->user();
-        $lead = $this->model->find($id);
-        
+        $lead = $this->model->find((int) $id);
         if (!$lead) {
-            return $this->response->setJSON([        'success' => false,
-                'message' => 'Lead não encontrado.'
-            ], 404);
+            return $this->jsonError('Lead não encontrado.', ResponseInterface::HTTP_NOT_FOUND);
         }
-        
-        // Check permissions
-        if ($user->id != $lead->user_id && !in_array($user->role, ['admin', 'super_admin'])) {
-            log_message('warning', "Unauthorized lead update attempt by user {$user->id} on lead {$id}");
-            return $this->response->setJSON([
-                'success' => false,
-                'message' => 'Você não tem permissão para alterar este lead.'
-            ], 403);
+
+        if (!$this->canAccessLead(auth()->user(), $lead)) {
+            return $this->jsonError('Você não tem permissão para alterar este lead.', ResponseInterface::HTTP_FORBIDDEN);
         }
-        
-        // Continue with normal update logic
-    
-    public function _originalUpdate($id)
-    {
-        $service = service('leadService');
-        
-        // Security: Verificação de conta TODO
-        
+
         $fields = ['nome_visitante', 'email_visitante', 'telefone_visitante'];
         $updateData = [];
         foreach ($fields as $field) {
             if ($this->request->getPost($field) !== null) {
-                $updateData[$field] = $this->request->getPost($field);
+                $updateData[$field] = trim((string) $this->request->getPost($field));
             }
         }
 
-        if ($service->updateLead((int)$id, $updateData)) {
-            return $this->response->setJSON(['success' => true, 'message' => 'Lead atualizado com sucesso.']);
+        if (empty($updateData)) {
+            return $this->jsonError('Nenhum dado enviado para atualização.', ResponseInterface::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        return $this->response->setJSON(['success' => false, 'message' => 'Erro ao atualizar lead.'])->setStatusCode(400);
+        if (service('leadService')->updateLead((int) $id, $updateData)) {
+            return $this->response->setJSON([
+                'success' => true,
+                'message' => 'Lead atualizado com sucesso.',
+                'csrf_token' => csrf_token(),
+                'csrf_hash' => csrf_hash(),
+            ]);
+        }
+
+        return $this->jsonError('Erro ao atualizar lead.', ResponseInterface::HTTP_BAD_REQUEST);
+    }
+
+    private function leadFiltersFromRequest(): array
+    {
+        $filters = [];
+        foreach (['status', 'origem', 'cidade', 'q', 'property_id'] as $field) {
+            $value = trim((string) $this->request->getGet($field));
+            if ($value !== '') {
+                $filters[$field] = $field === 'property_id' ? (int) $value : $value;
+            }
+        }
+
+        return $filters;
+    }
+
+    private function isGlobalAdmin($user): bool
+    {
+        return $user && method_exists($user, 'inGroup') && $user->inGroup('superadmin', 'admin');
+    }
+
+    private function canAccessLead($user, $lead): bool
+    {
+        if ($this->isGlobalAdmin($user)) {
+            return true;
+        }
+
+        return !empty($user->account_id)
+            && (int) $lead->account_id_anunciante === (int) $user->account_id;
+    }
+
+    private function jsonError(string $message, int $status)
+    {
+        return $this->response->setJSON([
+            'success' => false,
+            'message' => $message,
+            'csrf_token' => csrf_token(),
+            'csrf_hash' => csrf_hash(),
+        ])->setStatusCode($status);
     }
 }

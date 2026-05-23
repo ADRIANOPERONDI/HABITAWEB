@@ -401,12 +401,14 @@ class PropertyService
                 ->groupBy('accounts.is_verified')
                 ->groupBy('plans.preco_mensal');
 
-        // Esconder propriedades de contas com faturas atrasadas há mais de 3 dias
-        $txModel = model('App\Models\PaymentTransactionModel');
-        $blockedAccountIds = $txModel->getOverdueAccountIds(3);
-        
-        if (!empty($blockedAccountIds)) {
-            $builder->whereNotIn('properties.account_id', $blockedAccountIds);
+        // Esconder propriedades de contas com faturas atrasadas há mais de 3 dias (apenas em produção para evitar que dados sumam localmente)
+        if (defined('ENVIRONMENT') && ENVIRONMENT === 'production') {
+            $txModel = model('App\Models\PaymentTransactionModel');
+            $blockedAccountIds = $txModel->getOverdueAccountIds(3);
+            
+            if (!empty($blockedAccountIds)) {
+                $builder->whereNotIn('properties.account_id', $blockedAccountIds);
+            }
         }
 
         // Padrão: ACTIVE, a menos que especificado (ou se for 'ALL' para admin)
@@ -435,6 +437,30 @@ class PropertyService
             $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
         }
         
+        if (!empty($filters['tipo_negocio'])) {
+            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
+        }
+
+        if (!empty($filters['quartos'])) {
+            $builder->where('properties.quartos >=', $filters['quartos']);
+        }
+
+        if (!empty($filters['banheiros'])) {
+            $builder->where('properties.banheiros >=', $filters['banheiros']);
+        }
+
+        if (!empty($filters['vagas'])) {
+            $builder->where('properties.vagas >=', $filters['vagas']);
+        }
+        
+        if (!empty($filters['property_ids'])) {
+            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
+            $ids = array_map('intval', $ids);
+            if (!empty($ids)) {
+                $builder->whereIn('properties.id', $ids);
+            }
+        }
+        
         if (!empty($filters['cidade'])) {
             $builder->like('properties.cidade', $filters['cidade'], 'both'); 
         }
@@ -458,6 +484,48 @@ class PropertyService
                      ->groupEnd();
         }
 
+        // --- Spatial Filters ---
+        if (!empty($filters['bounds'])) {
+            // bounds format: "southWestLng,southWestLat,northEastLng,northEastLat"
+            $coords = explode(',', $filters['bounds']);
+            if (count($coords) === 4) {
+                $swLng = (float)$coords[0];
+                $swLat = (float)$coords[1];
+                $neLng = (float)$coords[2];
+                $neLat = (float)$coords[3];
+                
+                // Calcular mínimo e máximo para garantir a ordem correta independente do hemisfério e direção do arrasto
+                $minLng = min($swLng, $neLng);
+                $maxLng = max($swLng, $neLng);
+                $minLat = min($swLat, $neLat);
+                $maxLat = max($swLat, $neLat);
+                
+                $builder->where('properties.longitude >=', $minLng)
+                        ->where('properties.longitude <=', $maxLng)
+                        ->where('properties.latitude >=', $minLat)
+                        ->where('properties.latitude <=', $maxLat);
+            }
+        }
+
+        if (!empty($filters['polygon'])) {
+            // polygon format: JSON string of array of coordinates [[lng, lat], [lng, lat], ...] or GeoJSON
+            $polyData = json_decode($filters['polygon'], true);
+            if (is_array($polyData)) {
+                $points = [];
+                // Handle basic array of [lng, lat]
+                foreach ($polyData as $pt) {
+                    if (is_array($pt) && count($pt) >= 2) {
+                        $points[] = sprintf('(%F,%F)', (float)$pt[0], (float)$pt[1]);
+                    }
+                }
+                if (count($points) >= 3) {
+                    $polyString = '(' . implode(',', $points) . ')';
+                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '{$polyString}'", null, false);
+                }
+            }
+        }
+        // -----------------------
+
         // Ordenação Ponderada
         // Formula: (PlanPrice + (TurboLevel * 100)) * (Score / 100)
         // 1. COALESCE(plans.preco_mensal, 0): Valor do plano base (0 se Free)
@@ -477,6 +545,179 @@ class PropertyService
             'properties' => $results,
             'pager'      => $pager,
         ];
+    }
+
+    /**
+     * Retorna pins leves para o mapa público, sem HTML e sem carregar galerias.
+     */
+    public function searchMapPins(array $filters = [], int $limit = 900): array
+    {
+        $cacheKey = 'public_map_pins_' . md5(json_encode($this->normalizeMapFilters($filters)) . '|' . $limit);
+        $cached = cache()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $builder = $this->buildPublicMapSearchQuery($filters, false);
+        $builder->select('properties.id, properties.latitude, properties.longitude, properties.preco, properties.tipo_negocio, properties.is_destaque, properties.highlight_level');
+
+        $pins = $builder->limit($limit)->get()->getResult();
+
+        cache()->save($cacheKey, $pins, 30);
+
+        return $pins;
+    }
+
+    /**
+     * Retorna a lista paginada do mapa com apenas a capa principal e contagem de fotos.
+     */
+    public function searchMapList(array $filters = [], int $perPage = 18, int $page = 1): array
+    {
+        $builder = $this->buildPublicMapSearchQuery($filters, true);
+        $properties = $builder->paginate($perPage, 'default', $page);
+        $pager = $this->propertyModel->pager;
+
+        $total = $pager->getTotal();
+        $currentPage = max(1, $page);
+
+        return [
+            'properties' => $properties,
+            'pager'      => $pager,
+            'total'      => $total,
+            'page'       => $currentPage,
+            'per_page'   => $perPage,
+            'has_more'   => ($currentPage * $perPage) < $total,
+            'next_page'  => ($currentPage * $perPage) < $total ? $currentPage + 1 : null,
+        ];
+    }
+
+    private function buildPublicMapSearchQuery(array $filters = [], bool $withCover = false)
+    {
+        $builder = $this->propertyModel
+            ->join('accounts', 'accounts.id = properties.account_id', 'left')
+            ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
+            ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
+            ->groupBy('properties.id')
+            ->groupBy('accounts.tipo_conta')
+            ->groupBy('accounts.nome')
+            ->groupBy('accounts.logo')
+            ->groupBy('accounts.is_verified')
+            ->groupBy('plans.preco_mensal');
+
+        if ($withCover) {
+            $builder
+                ->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
+                ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
+                ->select('(SELECT COUNT(*) FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL) as media_count');
+        }
+
+        if (defined('ENVIRONMENT') && ENVIRONMENT === 'production') {
+            $txModel = model('App\Models\PaymentTransactionModel');
+            $blockedAccountIds = $txModel->getOverdueAccountIds(3);
+
+            if (!empty($blockedAccountIds)) {
+                $builder->whereNotIn('properties.account_id', $blockedAccountIds);
+            }
+        }
+
+        $builder->where('properties.status', $filters['status'] ?? 'ACTIVE');
+
+        if (!empty($filters['tipo_imovel'])) {
+            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
+        }
+
+        if (!empty($filters['tipo_negocio'])) {
+            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
+        }
+
+        if (!empty($filters['quartos'])) {
+            $builder->where('properties.quartos >=', (int) $filters['quartos']);
+        }
+
+        if (!empty($filters['banheiros'])) {
+            $builder->where('properties.banheiros >=', (int) $filters['banheiros']);
+        }
+
+        if (!empty($filters['vagas'])) {
+            $builder->where('properties.vagas >=', (int) $filters['vagas']);
+        }
+
+        if (!empty($filters['property_ids'])) {
+            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
+            $ids = array_values(array_filter(array_map('intval', $ids)));
+            if (!empty($ids)) {
+                $builder->whereIn('properties.id', $ids);
+            }
+        }
+
+        if (!empty($filters['cidade'])) {
+            $builder->like('properties.cidade', $filters['cidade'], 'both');
+        }
+
+        if (!empty($filters['bairro'])) {
+            $builder->like('properties.bairro', $filters['bairro'], 'both');
+        }
+
+        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
+            $builder->where('properties.preco >=', (float) $filters['min_price']);
+        }
+
+        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
+            $builder->where('properties.preco <=', (float) $filters['max_price']);
+        }
+
+        if (!empty($filters['bounds'])) {
+            $coords = explode(',', $filters['bounds']);
+            if (count($coords) === 4) {
+                $swLng = (float) $coords[0];
+                $swLat = (float) $coords[1];
+                $neLng = (float) $coords[2];
+                $neLat = (float) $coords[3];
+
+                $builder->where('properties.longitude >=', min($swLng, $neLng))
+                    ->where('properties.longitude <=', max($swLng, $neLng))
+                    ->where('properties.latitude >=', min($swLat, $neLat))
+                    ->where('properties.latitude <=', max($swLat, $neLat));
+            }
+        }
+
+        if (!empty($filters['polygon'])) {
+            $polyData = json_decode($filters['polygon'], true);
+            if (is_array($polyData)) {
+                $points = [];
+                foreach ($polyData as $pt) {
+                    if (is_array($pt) && count($pt) >= 2) {
+                        $points[] = sprintf('(%F,%F)', (float) $pt[0], (float) $pt[1]);
+                    }
+                }
+                if (count($points) >= 3) {
+                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '(" . implode(',', $points) . ")'", null, false);
+                }
+            }
+        }
+
+        $sort = $filters['sort'] ?? 'relevance';
+        if ($sort === 'price_asc') {
+            $builder->orderBy('properties.preco', 'ASC');
+        } elseif ($sort === 'price_desc') {
+            $builder->orderBy('properties.preco', 'DESC');
+        } elseif ($sort === 'recent') {
+            $builder->orderBy('properties.created_at', 'DESC');
+        } else {
+            $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (COALESCE(properties.highlight_level, 0) * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
+            $builder->orderBy($sqlSort, 'DESC', false)
+                ->orderBy('properties.created_at', 'DESC');
+        }
+
+        return $builder;
+    }
+
+    private function normalizeMapFilters(array $filters): array
+    {
+        ksort($filters);
+        return array_filter($filters, static function ($value) {
+            return !is_null($value) && $value !== '';
+        });
     }
 
     /**

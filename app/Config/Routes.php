@@ -24,6 +24,8 @@ $routes->group('install', ['namespace' => 'App\Controllers\Install'], function($
 // ========== ROTAS PÚBLICAS ==========
 $routes->get('/', 'Home::index');
 // Rotas de Busca (SEO Friendly)
+$routes->get('imoveis/mapa', 'Web\SearchController::mapa');
+$routes->get('api/imoveis/mapa', 'Api\MapSearchController::getMapData');
 $routes->get('imoveis', 'Web\SearchController::index');
 $routes->get('imoveis/(:segment)', 'Web\SearchController::searchOne/$1'); // ex: venda
 $routes->get('imoveis/(:segment)/(:segment)', 'Web\SearchController::searchTwo/$1/$2'); // ex: venda/sao-paulo

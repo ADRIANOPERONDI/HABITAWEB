@@ -119,7 +119,7 @@ class Filters extends BaseFilters
         'api_rate_limit' => [
             'before' => [
                 'api/*', // Rate limit em TODAS rotas de API
-            ]
+            ],
         ],
         'verification' => [
             'before' => [

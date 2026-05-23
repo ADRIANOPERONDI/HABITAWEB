@@ -98,6 +98,42 @@ Acesse: http://localhost:8080
 - Rate limiting em rotas sensíveis
 - Validação server-side em todos os formulários
 
+## 🤖 Confiança + IA Híbrida
+
+O roadmap do Habitaweb prevê uma camada premium de confiança e inteligência artificial para diferenciar o portal como um marketplace imobiliário mais seguro, claro e produtivo.
+
+A IA será **opcional**. O sistema deverá continuar funcionando normalmente sem chave externa, usando regras locais, scores, templates e dados já existentes. Quando uma chave de IA estiver configurada, os textos e recomendações poderão ser enriquecidos automaticamente. Se a IA falhar, demorar ou estiver desativada, o fallback local será obrigatório.
+
+### Configurações futuras no `.env`
+
+```env
+AI_ENABLED=false
+AI_PROVIDER=openai
+AI_MODEL=
+AI_API_KEY=
+AI_TIMEOUT_SECONDS=8
+AI_CACHE_TTL=86400
+```
+
+> Não inclua chaves reais no repositório. A variável `AI_API_KEY` deve ser configurada apenas no ambiente de execução.
+
+### O que a IA poderá fazer
+
+- Gerar um resumo inteligente do imóvel, destacando pontos fortes, perfil ideal de comprador/inquilino e atenções antes da visita.
+- Criar um dossiê público de confiança com sinais como imóvel verificado, anunciante verificado, anúncio completo, preço coerente, localização preenchida e atendimento rastreado.
+- Sugerir respostas comerciais para leads, especialmente mensagens rápidas para WhatsApp com contexto do imóvel e do interesse do visitante.
+- Classificar leads por prioridade, como quente, morno, incompleto, WhatsApp sem dados ou precisa resposta rápida.
+- Sugerir melhorias em título, descrição, fotos e campos faltantes dos anúncios.
+- Preparar uma busca inteligente futura, permitindo consultas mais naturais, como "apartamento perto do metrô para casal com cachorro".
+
+### Arquitetura planejada
+
+- `AIService`: camada opcional de comunicação com o provider externo de IA.
+- `PropertyInsightService`: geração de insights e resumo inteligente do imóvel.
+- `TrustService`: cálculo dos sinais públicos de confiança sem expor score técnico bruto.
+- `LeadInsightService`: classificação de leads e sugestões de resposta para o anunciante.
+- Fallback local obrigatório: templates e regras internas devem cobrir todos os fluxos quando a IA estiver desligada ou indisponível.
+
 ## � Reset para Nova Instalação
 
 Se você deseja "zerar" o sistema para realizar uma nova instalação limpa em outro servidor ou ambiente:

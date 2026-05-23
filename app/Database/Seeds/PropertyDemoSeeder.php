@@ -22,8 +22,39 @@ class PropertyDemoSeeder extends Seeder
         $propertyModel = Factories::models(\App\Models\PropertyModel::class);
         $faker = \Faker\Factory::create('pt_BR');
 
-        $bairros = ['Centro', 'Jardim Paulista', 'Copacabana', 'Moinhos de Vento', 'Savassi', 'Barra da Tijuca', 'Vila Madalena', 'Itaim Bibi'];
-        $cidades = ['São Paulo', 'Rio de Janeiro', 'Porto Alegre', 'Belo Horizonte', 'Curitiba'];
+        $geoData = [
+            'São Paulo' => [
+                'lat' => -23.5505,
+                'lng' => -46.6333,
+                'bairros' => ['Centro', 'Bela Vista', 'Pinheiros', 'Vila Madalena', 'Itaim Bibi', 'Mooca', 'Tatuapé', 'Jardins']
+            ],
+            'Rio de Janeiro' => [
+                'lat' => -22.9068,
+                'lng' => -43.1729,
+                'bairros' => ['Centro', 'Copacabana', 'Ipanema', 'Leblon', 'Barra da Tijuca', 'Botafogo', 'Flamengo', 'Tijuca']
+            ],
+            'Porto Alegre' => [
+                'lat' => -30.0346,
+                'lng' => -51.2177,
+                'bairros' => ['Centro Histórico', 'Moinhos de Vento', 'Petrópolis', 'Menino Deus', 'Auxiliadora', 'Bela Vista', 'Tristeza']
+            ],
+            'Belo Horizonte' => [
+                'lat' => -19.9191,
+                'lng' => -43.9378,
+                'bairros' => ['Centro', 'Savassi', 'Lourdes', 'Anchieta', 'Funcionários', 'Pampulha', 'Sion', 'Belvedere']
+            ],
+            'Curitiba' => [
+                'lat' => -25.4290,
+                'lng' => -49.2671,
+                'bairros' => ['Centro', 'Batel', 'Bigorrilho', 'Água Verde', 'Portão', 'Cabral', 'Cristo Rei', 'Santa Felicidade']
+            ],
+            'São Miguel do Oeste' => [
+                'lat' => -26.7323,
+                'lng' => -53.5186,
+                'bairros' => ['Centro', 'Agostini', 'Industrial', 'São Jorge', 'Estrela', 'Salete', 'Andreatta']
+            ]
+        ];
+
         $tipos   = ['APARTAMENTO', 'CASA', 'LOJA', 'SALA_COMERCIAL', 'TERRENO'];
         $negocios = ['VENDA', 'ALUGUEL'];
 
@@ -41,8 +72,15 @@ class PropertyDemoSeeder extends Seeder
             for ($i = 0; $i < 5; $i++) {
                 $tipo = $faker->randomElement($tipos);
                 $negocio = $faker->randomElement($negocios);
-                $cidade = $faker->randomElement($cidades);
-                $bairro = $faker->randomElement($bairros);
+                $cidade = $faker->randomElement(array_keys($geoData));
+                $cidadeInfo = $geoData[$cidade];
+                $bairro = $faker->randomElement($cidadeInfo['bairros']);
+                
+                // Calcula coordenadas com dispersão (ruído de até ±0.015 graus)
+                $latOffset = (mt_rand(-15000, 15000) / 1000000);
+                $lngOffset = (mt_rand(-15000, 15000) / 1000000);
+                $lat = $cidadeInfo['lat'] + $latOffset;
+                $lng = $cidadeInfo['lng'] + $lngOffset;
                 
                 $preco = ($negocio == 'VENDA') ? $faker->numberBetween(250000, 3000000) : $faker->numberBetween(1200, 12000);
                 
@@ -64,6 +102,8 @@ class PropertyDemoSeeder extends Seeder
                     'bairro'          => $bairro,
                     'rua'             => $faker->streetName,
                     'numero'          => $faker->buildingNumber,
+                    'latitude'        => $lat,
+                    'longitude'       => $lng,
                     'status'          => 'ACTIVE',
                     'score_qualidade' => $faker->numberBetween(70, 100),
                     'publicado_em'    => date('Y-m-d H:i:s'),

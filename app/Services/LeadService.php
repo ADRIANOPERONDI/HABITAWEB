@@ -30,6 +30,25 @@ class LeadService
      */
     public function trySaveLead(array $data): array
     {
+        if (empty($data['property_id'])) {
+            return [
+                'success' => false,
+                'data'    => null,
+                'errors'  => ['property_id' => 'Imóvel não informado.'],
+                'message' => 'Não foi possível identificar o imóvel do lead.',
+            ];
+        }
+
+        $property = $this->propertyModel->find($data['property_id']);
+        if (!$property) {
+            return [
+                'success' => false,
+                'data'    => null,
+                'errors'  => ['property_id' => 'Imóvel não encontrado.'],
+                'message' => 'Imóvel não encontrado para registrar o lead.',
+            ];
+        }
+
         // Verifica se já existe lead desse visitante para este imóvel recentemente (opcional, para evitar spam)
         // Por simplificação, vamos criar sempre ou buscar pelo email/telefone para o mesmo imóvel
         
@@ -52,16 +71,13 @@ class LeadService
         }
 
         $lead = $existingLead ?? new Lead();
+        $data['origem'] = $data['origem'] ?? 'SITE';
+        $data['tipo_lead'] = $data['tipo_lead'] ?? 'MSG';
+        $data['status'] = $data['status'] ?? LeadModel::STATUS_NOVO;
         $lead->fill($data);
 
-        // Se for novo, tenta preencher account_id_anunciante e user_id_responsavel via property
-        if (!$lead->id && !empty($data['property_id'])) {
-            $property = $this->propertyModel->find($data['property_id']);
-            if ($property) {
-                $lead->account_id_anunciante = $property->account_id;
-                $lead->user_id_responsavel   = $property->user_id_responsavel;
-            }
-        }
+        $lead->account_id_anunciante = $property->account_id;
+        $lead->user_id_responsavel   = $property->user_id_responsavel;
         
         if (empty($lead->status)) {
             $lead->status = 'NOVO';
@@ -87,6 +103,11 @@ class LeadService
             // Incrementa contador de leads no imóvel
             if (!$existingLead) {
                 $this->incrementPropertyLeadCount($savedLead->property_id);
+                $this->registerEvent((int) $leadId, 'lead.created', [
+                    'origin'    => $savedLead->origem,
+                    'type'      => $savedLead->tipo_lead,
+                    'timestamp' => date('Y-m-d H:i:s'),
+                ]);
                 
                 // --- NOTIFICAÇÃO ---
                 try {
@@ -115,7 +136,11 @@ class LeadService
                 // -------------------
 
                 // Dispara Webhook
-                service('webhookService')->dispatch('lead.created', $savedLead->toArray(), $savedLead->account_id_anunciante);
+                try {
+                    service('webhookService')->dispatch('lead.created', $savedLead->toArray(), $savedLead->account_id_anunciante);
+                } catch (\Throwable $e) {
+                    log_message('error', 'Erro ao disparar webhook de lead: ' . $e->getMessage());
+                }
             }
 
             return [
@@ -192,20 +217,92 @@ class LeadService
     public function listLeads(array $filters = [], int $perPage = 20): array
     {
         $builder = $this->leadModel->select('leads.*, accounts.nome as advertiser_name, accounts.tipo_conta as advertiser_type')
+                                   ->select('properties.titulo as property_title, properties.cidade as property_city')
                                    ->join('accounts', 'accounts.id = leads.account_id_anunciante', 'left')
+                                   ->join('properties', 'properties.id = leads.property_id', 'left')
                                    ->orderBy('leads.created_at', 'DESC');
 
         if (isset($filters['account_id_anunciante'])) {
-            $builder->where('account_id_anunciante', $filters['account_id_anunciante']);
+            $builder->where('leads.account_id_anunciante', $filters['account_id_anunciante']);
         }
 
         if (!empty($filters['status'])) {
-            $builder->where('status', $filters['status']);
+            $builder->where('leads.status', $filters['status']);
+        }
+
+        if (!empty($filters['origem'])) {
+            $builder->where('leads.origem', $filters['origem']);
+        }
+
+        if (!empty($filters['cidade'])) {
+            $builder->where('properties.cidade', $filters['cidade']);
+        }
+
+        if (!empty($filters['property_id'])) {
+            $builder->where('leads.property_id', (int) $filters['property_id']);
+        }
+
+        if (!empty($filters['q'])) {
+            $term = trim($filters['q']);
+            $builder->groupStart()
+                ->like('leads.nome_visitante', $term)
+                ->orLike('leads.email_visitante', $term)
+                ->orLike('leads.telefone_visitante', $term)
+                ->orLike('properties.titulo', $term)
+                ->groupEnd();
         }
 
         return [
             'leads' => $builder->paginate($perPage),
             'pager' => $this->leadModel->pager,
+        ];
+    }
+
+    public function getLeadStats(array $filters = []): array
+    {
+        $base = static function () use ($filters) {
+            $model = new LeadModel();
+            $builder = $model->builder();
+            $builder->join('properties', 'properties.id = leads.property_id', 'left');
+
+            if (isset($filters['account_id_anunciante'])) {
+                $builder->where('leads.account_id_anunciante', $filters['account_id_anunciante']);
+            }
+            if (!empty($filters['origem'])) {
+                $builder->where('leads.origem', $filters['origem']);
+            }
+            if (!empty($filters['cidade'])) {
+                $builder->where('properties.cidade', $filters['cidade']);
+            }
+            if (!empty($filters['property_id'])) {
+                $builder->where('leads.property_id', (int) $filters['property_id']);
+            }
+            if (!empty($filters['q'])) {
+                $term = trim($filters['q']);
+                $builder->groupStart()
+                    ->like('leads.nome_visitante', $term)
+                    ->orLike('leads.email_visitante', $term)
+                    ->orLike('leads.telefone_visitante', $term)
+                    ->orLike('properties.titulo', $term)
+                    ->groupEnd();
+            }
+
+            return $builder;
+        };
+
+        $countStatus = static fn (string $status): int => (int) $base()->where('leads.status', $status)->countAllResults();
+        $total = (int) $base()->countAllResults();
+        $today = (int) $base()->where('leads.created_at >=', date('Y-m-d 00:00:00'))->countAllResults();
+        $answered = $countStatus(LeadModel::STATUS_ATENDIMENTO) + $countStatus(LeadModel::STATUS_CONCLUIDO);
+
+        return [
+            'total'       => $total,
+            'today'       => $today,
+            'new'         => $countStatus(LeadModel::STATUS_NOVO),
+            'in_progress' => $countStatus(LeadModel::STATUS_ATENDIMENTO),
+            'closed'      => $countStatus(LeadModel::STATUS_CONCLUIDO),
+            'lost'        => $countStatus(LeadModel::STATUS_PERDIDO),
+            'answer_rate' => $total > 0 ? round(($answered / $total) * 100) : 0,
         ];
     }
 
@@ -217,6 +314,10 @@ class LeadService
         $lead = $this->leadModel->find($leadId);
         if (!$lead) {
             return false;
+        }
+
+        if ($lead->status === $newStatus) {
+            return true;
         }
 
         $lead->status = $newStatus;

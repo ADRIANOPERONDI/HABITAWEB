@@ -94,7 +94,12 @@
             </div>
             <?php endif; ?>
 
-            <h4 class="fw-bold mb-4">Encontrados <?= count($properties) ?> imóveis</h4>
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold mb-0">Encontrados <?= count($properties) ?> imóveis</h4>
+                <a href="<?= site_url('imoveis/mapa') . '?' . http_build_query($filters) ?>" class="btn btn-outline-primary fw-bold">
+                    <i class="fa-solid fa-map-location-dot me-2"></i> Ver no Mapa
+                </a>
+            </div>
             
             <?php if(empty($properties)): ?>
                 <div class="text-center py-5">

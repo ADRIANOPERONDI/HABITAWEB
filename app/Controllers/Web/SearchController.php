@@ -12,6 +12,13 @@ class SearchController extends BaseController
         return $this->executeSearch($filters);
     }
 
+    public function mapa()
+    {
+        // Mantendo a rota /imoveis/mapa por compatibilidade, mas direcionando para a mesma lógica
+        $filters = $this->getFiltersFromRequest();
+        return $this->executeSearch($filters);
+    }
+
     public function searchOne($segment1)
     {
         // Ex: /imoveis/venda
@@ -54,25 +61,6 @@ class SearchController extends BaseController
         // Força apenas ativos
         $filters['status'] = 'ACTIVE';
 
-        // 1. Busca Resultados da Pesquisa Principal
-        $data = $propertyService->listProperties($filters, 12);
-        
-        // 2. Busca Destaques/Turbo (Promoted Carousel) - Respeitando filtros
-        $promotedFilters = $filters; // Copy existing search filters
-        $promotedFilters['promoted_only'] = true; // Add promoted constraint
-        $promotedData = $propertyService->listProperties($promotedFilters, 10); // Limit 10 for carousel
-        $promotedProperties = $promotedData['properties'];
-
-        // Carrega capas (Main List)
-        if (!empty($data['properties'])) {
-             $this->loadCovers($data['properties']);
-        }
-        
-        // Carrega capas (Promoted Carousel)
-        if (!empty($promotedProperties)) {
-            $this->loadCovers($promotedProperties);
-        }
-
         // Busca Opções de Filtro (Cidades, Bairros, Tipos) - Cache de 1 hora
         $filterOptions = cache()->get('search_filter_options');
         if ($filterOptions === null) {
@@ -80,12 +68,11 @@ class SearchController extends BaseController
             cache()->save('search_filter_options', $filterOptions, 3600);
         }
 
-        return view('web/search', [
-            'properties'         => $data['properties'],
-            'promotedProperties' => $promotedProperties,
-            'pager'              => $data['pager'],
+        return view('web/search_map', [
             'filters'            => $filters,
-            'tipos'              => $filterOptions['tipos']
+            'tipos'              => $filterOptions['tipos'] ?? [],
+            'cidades'            => $filterOptions['cidades'] ?? [],
+            'bairros'            => $filterOptions['bairros'] ?? []
         ]);
     }
 
