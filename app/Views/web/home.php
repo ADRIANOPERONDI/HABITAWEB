@@ -92,7 +92,7 @@
                              </div>
                             
                             <?php if($property->cover_image): ?>
-                                <img src="<?= base_url($property->cover_image) ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>">
+                                <img src="<?= (strpos($property->cover_image, 'http') === 0 ? $property->cover_image : base_url($property->cover_image)) ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
                             <?php else: ?>
                                 <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto">
                             <?php endif; ?>
@@ -172,7 +172,7 @@
                                      </div>
                                     
                                     <?php if($property->cover_image): ?>
-                                        <img src="<?= base_url($property->cover_image) ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>">
+                                        <img src="<?= (strpos($property->cover_image, 'http') === 0 ? $property->cover_image : base_url($property->cover_image)) ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
                                     <?php else: ?>
                                         <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto">
                                     <?php endif; ?>
