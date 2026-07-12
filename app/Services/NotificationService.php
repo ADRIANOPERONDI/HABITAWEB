@@ -14,13 +14,21 @@ class NotificationService
 
     /**
      * Envia um e-mail carregando as configurações do banco de dados (system_settings)
-     * 
+     *
+     * Por padrão ENFILEIRA em Redis (worker: spark email:work) — o handshake
+     * SMTP sai da thread da requisição. Com Redis indisponível, envia
+     * síncrono como antes (fail-open). Retorno true = enviado OU aceito na
+     * fila (entrega quase em tempo real pelo worker).
+     *
      * @param string $to Destinatário
      * @param string $subject Assunto
      * @param string $message Mensagem (HTML ou Texto)
+     * @param bool   $immediate true = envia AGORA, sem fila (usado pelo
+     *                          worker e pelo teste de SMTP do admin, que
+     *                          precisa do resultado real da conexão).
      * @return bool
      */
-    public function sendEmail(string $to, string $subject, string $message): bool
+    public function sendEmail(string $to, string $subject, string $message, bool $immediate = false): bool
     {
         $email = \Config\Services::email();
 
@@ -35,13 +43,18 @@ class NotificationService
         $config['charset']      = 'utf-8';
         $config['protocol']     = 'smtp';
         $config['newline']      = "\r\n";
-        
+
         $email->initialize($config);
 
         // Verifica se o SMTP parece configurado (evita tentar conectar em smtp.example.com ou localhost sem servidor rodando)
+        // ANTES da fila: enfileirar e-mail que nunca poderá sair só esconderia o problema.
         if (in_array($config['SMTPHost'], ['localhost', 'smtp.example.com', '']) || empty($config['SMTPUser'])) {
             log_message('warning', 'SMTP não configurado. Pulei o envio de e-mail para ' . $to);
             return false;
+        }
+
+        if (! $immediate && (new \App\Libraries\Queue\RedisEmailQueue())->push($to, $subject, $message)) {
+            return true; // aceito na fila; worker entrega
         }
 
         $fromEmail = app_setting('mail.from_email', 'noreply@portal.com');

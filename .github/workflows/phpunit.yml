@@ -17,6 +17,25 @@ jobs:
 
     if: (! contains(github.event.head_commit.message, '[ci skip]'))
 
+    # A app usa advisory locks e UPDATE...WHERE atômico específicos do Postgres
+    # (PropertyService, PaymentService, CouponModel) — sem um Postgres real aqui,
+    # esses caminhos de concorrência não são exercidos. Credenciais/porta abaixo
+    # espelham exatamente o grupo database.tests.* de phpunit.xml.dist.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: habitaweb_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -26,7 +45,7 @@ jobs:
         with:
           php-version: ${{ matrix.php-versions }}
           tools: composer, pecl, phpunit
-          extensions: intl, json, mbstring, mysqlnd, xdebug, xml, sqlite3
+          extensions: intl, json, mbstring, mysqlnd, pgsql, pdo_pgsql, xdebug, xml, sqlite3
           coverage: xdebug
 
       - name: Get composer cache directory
@@ -47,5 +66,8 @@ jobs:
           # https://getcomposer.org/doc/articles/troubleshooting.md#api-rate-limit-and-oauth-tokens
           # COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
 
+      # asaas-sandbox fica de fora do CI padrão: depende de credenciais externas
+      # (Asaas sandbox) que não existem neste ambiente. Roda-se manualmente via
+      # ./run_tests.sh sandbox com um .env.testing local.
       - name: Test with phpunit
-        run: vendor/bin/phpunit --coverage-text
+        run: vendor/bin/phpunit --testsuite unit,feature,e2e --exclude-group asaas-sandbox --coverage-text

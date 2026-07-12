@@ -331,16 +331,14 @@ class KYCService
             // Não falha o upload se EXIF falhar
         }
 
-        // 5. Salvar arquivo
-        $uploadPath = WRITEPATH . 'uploads/kyc/' . $accountId;
-        if (!is_dir($uploadPath)) {
-            mkdir($uploadPath, 0755, true);
-        }
-
+        // 5. Salvar arquivo — disco PRIVADO (base WRITEPATH, fora do webroot,
+        // sem URL pública por contrato). Backend trocável em Config\Services.
         $newName = $fieldName . '_' . time() . '.' . $file->getExtension();
         try {
-            $file->move($uploadPath, $newName);
-            $relativePath = 'uploads/kyc/' . $accountId . '/' . $newName;
+            $relativePath = service('privateStorage')->put(
+                'uploads/kyc/' . $accountId . '/' . $newName,
+                $file->getTempName()
+            );
 
             $this->logger->info("[KYC] Imagem {$fieldName} upload para account_id={$accountId}");
 

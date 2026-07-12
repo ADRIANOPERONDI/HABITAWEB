@@ -119,6 +119,10 @@ class Filters extends BaseFilters
         'api_rate_limit' => [
             'before' => [
                 'api/*', // Rate limit em TODAS rotas de API
+                // Obs.: os endpoints públicos sujeitos a abuso (leads, alertas/criar,
+                // checkout/validate-coupon, register/check-email) já aplicam este mesmo
+                // filtro inline na definição da rota (app/Config/Routes.php), com escopo
+                // preciso por método — não repetir aqui para evitar contagem em dobro.
             ],
         ],
         'verification' => [

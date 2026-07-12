@@ -115,14 +115,6 @@
 
     <section class="map-pane-premium" aria-label="Mapa de imóveis">
         <div id="map"></div>
-        <div class="map-floating-actions">
-            <button type="button" class="map-floating-btn" id="btnStartDraw">
-                <i class="fa-solid fa-draw-polygon"></i> Desenhar área
-            </button>
-            <button type="button" class="map-floating-btn text-danger d-none" id="btnClearDraw">
-                <i class="fa-solid fa-xmark"></i> Apagar área
-            </button>
-        </div>
     </section>
 
     <button type="button" class="btn btn-premium btn-premium-primary map-mobile-toggle" id="btnMobileToggle">
@@ -244,6 +236,31 @@ document.addEventListener('DOMContentLoaded', function() {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
     requestAnimationFrame(() => map.invalidateSize());
+
+    // Draw buttons as native Leaflet controls (prevents z-index issues)
+    const DrawControl = L.Control.extend({
+        options: { position: 'bottomleft' },
+        onAdd: function() {
+            const container = L.DomUtil.create('div', 'map-floating-actions leaflet-bar');
+            container.style.cssText = 'border:none;background:none;box-shadow:none;display:flex;gap:10px;';
+
+            const btnStart = L.DomUtil.create('button', 'map-floating-btn', container);
+            btnStart.type = 'button';
+            btnStart.id = 'btnStartDraw';
+            btnStart.innerHTML = '<i class="fa-solid fa-draw-polygon"></i> Desenhar área';
+
+            const btnClear = L.DomUtil.create('button', 'map-floating-btn text-danger', container);
+            btnClear.type = 'button';
+            btnClear.id = 'btnClearDraw';
+            btnClear.innerHTML = '<i class="fa-solid fa-xmark"></i> Apagar área';
+            btnClear.style.display = 'none';
+
+            L.DomEvent.disableClickPropagation(container);
+            L.DomEvent.disableScrollPropagation(container);
+            return container;
+        }
+    });
+    new DrawControl().addTo(map);
 
     const markers = L.markerClusterGroup({
         showCoverageOnHover: false,
@@ -487,8 +504,8 @@ document.addEventListener('DOMContentLoaded', function() {
         inputPropertyIds.value = '';
         const coords = event.layer.getLatLngs()[0].map(point => [point.lng, point.lat]);
         inputPolygon.value = JSON.stringify(coords);
-        document.getElementById('btnStartDraw').classList.add('d-none');
-        document.getElementById('btnClearDraw').classList.remove('d-none');
+        document.getElementById('btnStartDraw').style.display = 'none';
+        document.getElementById('btnClearDraw').style.display = '';
         fetchMapData();
     });
 
@@ -512,8 +529,8 @@ document.addEventListener('DOMContentLoaded', function() {
         currentPolygon = null;
         inputPolygon.value = '';
         inputPropertyIds.value = '';
-        document.getElementById('btnClearDraw').classList.add('d-none');
-        document.getElementById('btnStartDraw').classList.remove('d-none');
+        document.getElementById('btnClearDraw').style.display = 'none';
+        document.getElementById('btnStartDraw').style.display = '';
         fetchMapData();
     });
 
@@ -568,8 +585,8 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.js-business-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.value === ''));
         drawnItems.clearLayers();
         currentPolygon = null;
-        document.getElementById('btnClearDraw').classList.add('d-none');
-        document.getElementById('btnStartDraw').classList.remove('d-none');
+        document.getElementById('btnClearDraw').style.display = 'none';
+        document.getElementById('btnStartDraw').style.display = '';
         fetchMapData();
     });
 

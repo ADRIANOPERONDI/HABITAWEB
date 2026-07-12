@@ -110,13 +110,19 @@ interface GatewayInterface
     public function reactivateSubscription(string $subscriptionId): bool;
     
     /**
-     * Processar webhook do gateway
-     * 
-     * @param array $payload Payload raw do webhook
+     * Processar webhook do gateway.
+     *
+     * A implementação DEVE validar a autenticidade da requisição (assinatura HMAC,
+     * token de acesso ou re-consulta na API do gateway) usando $headers e $rawBody
+     * ANTES de confiar no payload. Deve lançar exceção se a validação falhar.
+     *
+     * @param array  $payload Payload já decodificado
+     * @param array  $headers Cabeçalhos da requisição (chaves em minúsculas)
+     * @param string $rawBody Corpo bruto exatamente como recebido (necessário para HMAC)
      * @return array ['event_type' => string, 'reference_id' => string, 'status' => string, 'data' => array]
-     * @throws \Exception Se payload inválido
+     * @throws \Exception Se a assinatura/origem for inválida ou o payload for inválido
      */
-    public function handleWebhook(array $payload): array;
+    public function handleWebhook(array $payload, array $headers = [], string $rawBody = ''): array;
     
     /**
      * Obter métodos de pagamento suportados pelo gateway

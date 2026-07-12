@@ -45,6 +45,14 @@ class WebhookController extends BaseController
             return $this->response->setStatusCode(400)->setJSON(['error' => 'Invalid payload']);
         }
 
+        // Cabeçalhos normalizados (minúsculas) para validação de assinatura no gateway.
+        $headers = [];
+        foreach ($this->request->headers() as $name => $header) {
+            $headers[strtolower($name)] = is_array($header)
+                ? $header[0]->getValueLine()
+                : $header->getValueLine();
+        }
+
         // 3. Log Webhook
         $logId = $this->webhookLogModel->logWebhook(
             $payload['event'] ?? $payload['type'] ?? 'UNKNOWN',
@@ -57,7 +65,7 @@ class WebhookController extends BaseController
         try {
             // Some gateways might need headers for validation (signatures)
             // We pass the raw body if needed, but here we pass the decoded array for consistency
-            $normalized = $this->paymentService->getActiveGateway()->handleWebhook($payload);
+            $normalized = $this->paymentService->getActiveGateway()->handleWebhook($payload, $headers, $rawPayload);
             
             // 5. Process business logic via WebhookService
             if ($this->webhookService->processEvent($gatewayCode, $normalized)) {

@@ -23,8 +23,8 @@
                         <div class="col-md-6 text-center">
                             <label class="d-block mb-3 small fw-bold text-muted">RG/CNH (Frente)</label>
                             <?php if ($account->id_front): ?>
-                                <a href="<?= base_url($account->id_front) ?>" target="_blank">
-                                    <img src="<?= base_url($account->id_front) ?>" class="img-fluid rounded-4 shadow-sm border" style="max-height: 250px;">
+                                <a href="<?= site_url('admin/kyc-file/' . $account->id . '/id_front') ?>" target="_blank">
+                                    <img src="<?= site_url('admin/kyc-file/' . $account->id . '/id_front') ?>" class="img-fluid rounded-4 shadow-sm border" style="max-height: 250px;">
                                 </a>
                             <?php else: ?>
                                 <div class="bg-light p-5 rounded-4 text-center">
@@ -36,8 +36,8 @@
                         <div class="col-md-6 text-center">
                             <label class="d-block mb-3 small fw-bold text-muted">RG/CNH (Verso)</label>
                             <?php if ($account->id_back): ?>
-                                <a href="<?= base_url($account->id_back) ?>" target="_blank">
-                                    <img src="<?= base_url($account->id_back) ?>" class="img-fluid rounded-4 shadow-sm border" style="max-height: 250px;">
+                                <a href="<?= site_url('admin/kyc-file/' . $account->id . '/id_back') ?>" target="_blank">
+                                    <img src="<?= site_url('admin/kyc-file/' . $account->id . '/id_back') ?>" class="img-fluid rounded-4 shadow-sm border" style="max-height: 250px;">
                                 </a>
                             <?php else: ?>
                                 <div class="bg-light p-5 rounded-4 text-center">
@@ -49,8 +49,8 @@
                         <div class="col-lg-12 text-center mt-5">
                             <label class="d-block mb-3 small fw-bold text-muted">Selfie com Documento</label>
                             <?php if ($account->selfie): ?>
-                                <a href="<?= base_url($account->selfie) ?>" target="_blank">
-                                    <img src="<?= base_url($account->selfie) ?>" class="img-fluid rounded-4 shadow-sm border" style="max-height: 400px;">
+                                <a href="<?= site_url('admin/kyc-file/' . $account->id . '/selfie') ?>" target="_blank">
+                                    <img src="<?= site_url('admin/kyc-file/' . $account->id . '/selfie') ?>" class="img-fluid rounded-4 shadow-sm border" style="max-height: 400px;">
                                 </a>
                             <?php else: ?>
                                 <div class="bg-light p-5 rounded-4 text-center">
@@ -130,7 +130,10 @@
                                         <div class="position-absolute bottom-0 start-0 w-100 bg-dark bg-opacity-50 text-white text-center py-1 xsmall">
                                             <?= $labels[$index] ?? "Frame $index" ?>
                                         </div>
-                                        <img src="<?= base_url($path) ?>" class="img-fluid w-100" style="height: 120px; object-fit: cover; cursor: pointer;" onclick="window.open(this.src)">
+                                        <?php // Frames ficam no disco PRIVADO — servir pelo proxy
+                                              // autenticado (base_url direto quebrava e, se um dia
+                                              // funcionasse, exporia biometria publicamente). ?>
+                                        <img src="<?= site_url('admin/kyc-file/' . $account->id . '/liveness_' . $index) ?>" class="img-fluid w-100" style="height: 120px; object-fit: cover; cursor: pointer;" onclick="window.open(this.src)">
                                     </div>
                                 </div>
                             <?php endforeach; ?>

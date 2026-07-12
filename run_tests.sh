@@ -3,13 +3,11 @@
 # SCRIPT PARA EXECUTAR TESTES DO HABITAWEB
 # Usage: ./run_tests.sh [opção]
 # Opções:
-#   all          - Executar todos os testes
-#   security     - Apenas testes de segurança (60+)
-#   crud         - Apenas testes CRUD E2E (25+)
-#   api          - Apenas testes de API (40+)
-#   image        - Apenas testes de imagem (35+)
-#   payment      - Apenas testes de pagamento (45+)
-#   business     - Apenas testes de lógica de negócio (50+)
+#   all          - unit + feature + e2e (exclui @group asaas-sandbox)
+#   unit         - Só tests/unit (smoke tests que não precisam de HTTP simulado)
+#   feature      - Só tests/Feature (API/IDOR, AdminAuth, cupom, upload, webhook...)
+#   e2e          - Só tests/E2E (cenários completos de assinatura)
+#   sandbox      - Testes @group asaas-sandbox (bate no Asaas sandbox real)
 #   coverage     - Todos os testes com relatório de cobertura
 #   report       - Gera relatório HTML
 #   clean        - Limpa relatórios antigos
@@ -70,76 +68,91 @@ check_env() {
 
 create_test_db() {
     print_header "CRIANDO BANCO DE DADOS DE TESTE"
-    
-    # Pegar credenciais do .env.testing
-    DB_HOST=$(grep "database.default.hostname" "$ENV_FILE" | cut -d= -f2 | xargs)
-    DB_NAME=$(grep "database.default.database" "$ENV_FILE" | cut -d= -f2 | xargs)
-    DB_USER=$(grep "database.default.username" "$ENV_FILE" | cut -d= -f2 | xargs)
-    DB_PASS=$(grep "database.default.password" "$ENV_FILE" | cut -d= -f2 | xargs)
-    
+
+    # IMPORTANTE: .env.testing NÃO é lido pelo PHPUnit. O bootstrap do CI4
+    # (vendor/codeigniter4/framework/system/Test/bootstrap.php) força
+    # ENVIRONMENT=testing incondicionalmente, o que faz Config\Database usar o
+    # grupo 'tests' — cujos valores vêm das tags <env name="database.tests.*">
+    # em phpunit.xml.dist, não de .env.testing. Lemos daqui para garantir que o
+    # banco criado é exatamente o que os testes vão usar de verdade.
+    # -m1: o arquivo tem um bloco de exemplo COMENTADO mais abaixo com as mesmas
+    # chaves (database.tests.* apontando MySQLi/tests_user) — sem -m1 o grep pega
+    # as duas ocorrências. A config ativa vem sempre primeiro no arquivo.
+    PHPUNIT_CONFIG="$PROJECT_DIR/phpunit.xml.dist"
+    DB_HOST=$(grep -m1 'name="database.tests.hostname"' "$PHPUNIT_CONFIG" | sed -E 's/.*value="([^"]*)".*/\1/')
+    DB_NAME=$(grep -m1 'name="database.tests.database"' "$PHPUNIT_CONFIG" | sed -E 's/.*value="([^"]*)".*/\1/')
+    DB_USER=$(grep -m1 'name="database.tests.username"' "$PHPUNIT_CONFIG" | sed -E 's/.*value="([^"]*)".*/\1/')
+    DB_PASS=$(grep -m1 'name="database.tests.password"' "$PHPUNIT_CONFIG" | sed -E 's/.*value="([^"]*)".*/\1/')
+
     echo "Host: $DB_HOST"
     echo "Database: $DB_NAME"
     echo "User: $DB_USER"
-    
+
     # Criar BD (ignorar se já existir)
     PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1 || \
         PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -U "$DB_USER" -c "CREATE DATABASE $DB_NAME"
-    
+
     print_success "Banco de dados: $DB_NAME"
 }
 
 run_tests() {
-    local filter=$1
-    local test_count=$2
-    
-    print_header "EXECUTANDO TESTES${filter:+ - $filter} ($test_count testes)"
-    
-    if [ -z "$filter" ]; then
-        # Todos os testes
-        "$PHPUNIT" \
-            --configuration phpunit.xml.dist \
-            --testdox \
-            --colors=auto \
-            tests/unit/
-    else
-        # Testes específicos
-        "$PHPUNIT" \
-            --configuration phpunit.xml.dist \
-            --filter "$filter" \
-            --testdox \
-            --colors=auto \
-            tests/unit/
-    fi
+    local suites=${1:-unit,feature,e2e}
+
+    print_header "EXECUTANDO TESTES (--testsuite ${suites})"
+
+    # exclui @group asaas-sandbox (rede/credenciais externas — roda só via
+    # './run_tests.sh sandbox' explicitamente).
+    "$PHPUNIT" \
+        --configuration phpunit.xml.dist \
+        --testsuite "$suites" \
+        --exclude-group asaas-sandbox \
+        --testdox \
+        --colors=auto
 }
 
 run_tests_with_coverage() {
     print_header "EXECUTANDO TESTES COM COBERTURA"
-    
+
     "$PHPUNIT" \
         --configuration phpunit.xml.dist \
+        --testsuite unit,feature,e2e \
+        --exclude-group asaas-sandbox \
         --coverage-html="$BUILD_DIR/html" \
         --coverage-text \
         --testdox \
-        --colors=auto \
-        tests/unit/
-    
+        --colors=auto
+
     print_success "Cobertura salva em: $BUILD_DIR/html/index.html"
+}
+
+run_sandbox_tests() {
+    print_header "EXECUTANDO TESTES @group asaas-sandbox (Asaas sandbox real)"
+    print_warning "Requer credenciais de sandbox em .env.testing (ASAAS_ENV=sandbox, ASAAS_API_KEY...)."
+
+    "$PHPUNIT" \
+        --configuration phpunit.xml.dist \
+        --testsuite feature,e2e \
+        --group asaas-sandbox \
+        --testdox \
+        --colors=auto
 }
 
 generate_report() {
     print_header "GERANDO RELATÓRIO"
-    
+
     if [ ! -d "$BUILD_DIR" ]; then
         mkdir -p "$BUILD_DIR"
     fi
-    
+
     # TestDox em HTML e Texto
     "$PHPUNIT" \
         --configuration phpunit.xml.dist \
+        --testsuite unit,feature,e2e \
+        --exclude-group asaas-sandbox \
         --testdox-html="$BUILD_DIR/testdox.html" \
         --testdox-text="$BUILD_DIR/testdox.txt" \
-        tests/unit/ > /dev/null 2>&1 || true
-    
+        > /dev/null 2>&1 || true
+
     print_success "Relatórios gerados:"
     echo "  - HTML: $BUILD_DIR/testdox.html"
     echo "  - Texto: $BUILD_DIR/testdox.txt"
@@ -165,29 +178,24 @@ ${YELLOW}Uso:${NC}
   ./run_tests.sh [opção]
 
 ${YELLOW}Opções:${NC}
-  all          Executar todos os testes (295+)
-  security     Testes OWASP (60+)
-  crud         Testes E2E CRUD (25+)
-  api          Testes REST API (40+)
-  image        Testes de Upload de Imagem (35+)
-  payment      Testes de Pagamento (45+)
-  business     Testes de Lógica de Negócio (50+)
-  coverage     Todos com cobertura de código
+  all          unit + feature + e2e (exclui @group asaas-sandbox)
+  unit         Só tests/unit (smoke tests)
+  feature      Só tests/Feature (API/IDOR, AdminAuth, cupom, upload, webhook...)
+  e2e          Só tests/E2E (cenários completos de assinatura)
+  sandbox      Testes @group asaas-sandbox (bate no Asaas sandbox real; precisa
+               de credenciais em .env.testing — não roda no CI padrão)
+  coverage     unit + feature + e2e com cobertura de código
   report       Gera relatório HTML
   clean        Limpa relatórios
-  setup        Setup da BD de teste
+  setup        Cria o banco de teste (lendo phpunit.xml.dist, fonte real de verdade)
   help         Mostra esta ajuda
 
 ${YELLOW}Exemplos:${NC}
-  ./run_tests.sh all              # Rodar todos os 295+ testes
-  ./run_tests.sh security         # Rodar apenas SecurityTest (60 testes)
-  ./run_tests.sh coverage         # Rodar com cobertura
-  ./run_tests.sh setup            # Setup DB de teste
-
-${YELLOW}Resultado esperado:${NC}
-  - ~295 testes
-  - Taxa de sucesso: 92% (até corrigir críticos)
-  - Tempo: ~45 minutos
+  ./run_tests.sh setup            # Cria o BD de teste antes da primeira execução
+  ./run_tests.sh all              # Roda a suíte padrão (sem sandbox)
+  ./run_tests.sh feature          # Só as suítes novas de feature
+  ./run_tests.sh sandbox          # Só os testes que dependem do Asaas sandbox
+  ./run_tests.sh coverage         # Com cobertura
 
 EOF
 }
@@ -197,37 +205,27 @@ case "${1:-help}" in
     all)
         check_phpunit
         check_env
-        run_tests "" "295+"
+        run_tests "unit,feature,e2e"
         ;;
-    security)
+    unit)
         check_phpunit
         check_env
-        run_tests "SecurityTest" "60"
+        run_tests "unit"
         ;;
-    crud)
+    feature)
         check_phpunit
         check_env
-        run_tests "CRUDFlowTest" "25"
+        run_tests "feature"
         ;;
-    api)
+    e2e)
         check_phpunit
         check_env
-        run_tests "APITest" "40"
+        run_tests "e2e"
         ;;
-    image)
+    sandbox)
         check_phpunit
         check_env
-        run_tests "ImageHandlingTest" "35"
-        ;;
-    payment)
-        check_phpunit
-        check_env
-        run_tests "PaymentGatewayTest" "45"
-        ;;
-    business)
-        check_phpunit
-        check_env
-        run_tests "BusinessLogicTest" "50"
+        run_sandbox_tests
         ;;
     coverage)
         check_phpunit

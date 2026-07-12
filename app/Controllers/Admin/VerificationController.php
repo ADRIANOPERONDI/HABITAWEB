@@ -78,9 +78,14 @@ class VerificationController extends BaseController
         }
 
         if ($this->accountModel->update($id, $data)) {
-            
-            // Log de auditoria (opcional, mas bom ter)
+
             log_message('notice', "[Verification] Admin " . auth()->user()->username . " alterou status da conta #{$id} para {$data['verification_status']}");
+            audit_log('kyc.verification_reviewed', [
+                'account_id'  => (int) $id,
+                'entity_type' => 'account',
+                'entity_id'   => $id,
+                'metadata'    => ['status' => $data['verification_status']],
+            ]);
 
             return redirect()->to('admin/verification')->with('message', $message);
         }

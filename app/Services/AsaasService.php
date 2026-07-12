@@ -64,7 +64,7 @@ class AsaasService
                 'User-Agent'   => 'PortalImoveis/1.0'
             ],
             'http_errors' => false, // Handle errors manually
-            'verify'      => false  // Disable SSL verify for sandbox/dev if needed, or generally true for prod (CI4 handles this)
+            'verify'      => true    // Validar sempre o certificado TLS do Asaas (evita MITM da API key em trânsito)
         ];
 
         if (!empty($data)) {

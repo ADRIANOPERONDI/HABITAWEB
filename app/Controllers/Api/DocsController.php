@@ -22,41 +22,20 @@ class DocsController extends BaseController
         return $this->response->setJSON(['error' => 'OpenAPI file not found']);
     }
 
+    /**
+     * REMOVIDO POR SEGURANÇA.
+     *
+     * Este método era exposto publicamente em GET /api/test-suite, sem autenticação, e:
+     *  - rodava migrações do banco sob demanda a cada requisição;
+     *  - gerava e retornava em texto plano uma API key válida e permanente para a
+     *    primeira conta do sistema, permitindo a qualquer visitante anônimo obter
+     *    acesso total à API.
+     *
+     * A rota foi removida em app/Config/Routes.php e o corpo foi neutralizado para
+     * não deixar código perigoso acessível caso a rota seja acidentalmente reintroduzida.
+     */
     public function testSuite()
     {
-        // 1. Rodar Migrações (Desta vez via código, mas sem chamadas recursivas)
-        $migrations = \Config\Services::migrations();
-        $results = [];
-        try {
-            if ($migrations->latest()) {
-                $results['migrations'] = 'Migrações executadas ou já atualizadas.';
-            } else {
-                $results['migrations'] = 'Nenhuma migração nova para rodar.';
-            }
-        } catch (\Exception $e) {
-            $results['migrations'] = 'Erro: ' . $e->getMessage();
-        }
-
-        // 2. Verificar Tabelas Críticas
-        $db = \Config\Database::connect();
-        $results['table_check'] = [
-            'api_keys' => $db->tableExists('api_keys') ? 'OK' : 'FALTA',
-            'system_settings' => $db->tableExists('system_settings') ? 'OK' : 'FALTA',
-        ];
-
-        // 3. Gerar Chave de Teste para uso externo
-        $apiKeyModel = model('App\Models\ApiKeyModel');
-        $account = model('App\Models\AccountModel')->first();
-        $user = model('CodeIgniter\Shield\Models\UserModel')->first();
-        
-        if ($account && $user) {
-            $keyResult = $apiKeyModel->generateKey($account->id, 'Chave de Teste Externo', $user->id);
-            $results['test_key'] = $keyResult['plain_key'];
-        }
-
-        return $this->response->setJSON([
-            'status' => 'success',
-            'results' => $results
-        ]);
+        return $this->response->setStatusCode(404)->setJSON(['error' => 'Not found']);
     }
 }

@@ -25,7 +25,11 @@
     <div class="container">
         <?php if(empty($partners)): ?>
             <div class="text-center py-5">
-                <img src="<?= base_url('assets/images/empty.svg') ?>" alt="Nenhum parceiro" style="max-height: 200px; opacity: 0.5;" class="mb-4">
+                <?php // Empty state com ícone FA (o assets/images/empty.svg
+                      // referenciado antes nunca existiu — renderizava imagem quebrada). ?>
+                <div class="rounded-circle bg-primary-soft d-inline-flex align-items-center justify-content-center mb-4" style="width: 110px; height: 110px;">
+                    <i class="fa-solid fa-people-group text-primary" style="font-size: 3rem;"></i>
+                </div>
                 <h3 class="h5 text-muted">Nenhum parceiro encontrado no momento.</h3>
             </div>
         <?php else: ?>
@@ -37,10 +41,13 @@
                             <div class="card-body text-center p-4 d-flex flex-column">
                                 <div class="mb-4 mx-auto position-relative">
                                     <?php if(!empty($partner->logo)): ?>
-                                        <img src="<?= base_url('uploads/logos/'.$partner->logo) ?>" 
-                                             alt="<?= esc($partner->nome) ?>" 
+                                        <?php // accounts.logo guarda o caminho relativo completo
+                                              // (uploads/accounts/arquivo) — o prefixo uploads/logos/
+                                              // usado antes apontava para um diretório que não existe. ?>
+                                        <img src="<?= media_url($partner->logo) ?>"
+                                             alt="<?= esc($partner->nome) ?>"
                                              class="rounded-circle shadow-sm object-fit-cover"
-                                             style="width: 100px; height: 100px;">
+                                             style="width: 100px; height: 100px;" loading="lazy">
                                     <?php else: ?>
                                         <div class="rounded-circle bg-primary-soft d-flex align-items-center justify-content-center mx-auto" style="width: 100px; height: 100px;">
                                             <span class="h2 text-primary fw-bold mb-0"><?= substr($partner->nome, 0, 1) ?></span>

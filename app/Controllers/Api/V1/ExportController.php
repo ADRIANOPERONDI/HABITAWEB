@@ -42,7 +42,7 @@ class ExportController extends BaseController
      */
     private function handleExport(string $type)
     {
-        $accountId = $this->request->account_id ?? null;
+        $accountId = $this->request->auth_account_id ?? null;
         
         if (!$accountId) {
             return $this->failForbidden('Export requer autenticação com API Key vinculada a uma conta.');
@@ -66,7 +66,10 @@ class ExportController extends BaseController
                 ->setBody(file_get_contents($result['file_path']));
 
         } catch (\Exception $e) {
-            return $this->respondError('Erro ao exportar dados: ' . $e->getMessage(), 500);
+            // Detalhe só no log do servidor; ao cliente, mensagem genérica (evita vazar
+            // SQL/caminhos/detalhes internos na resposta da API).
+            log_message('error', '[API Export] ' . $e->getMessage());
+            return $this->respondError('Erro ao exportar dados. Tente novamente ou contate o suporte.', 500);
         }
     }
 }

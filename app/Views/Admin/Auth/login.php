@@ -237,7 +237,7 @@
                 <div class="login-form-container">
                     
                     <?php if ($logo = app_setting('style.logo_url')): ?>
-                        <img src="<?= base_url($logo) ?>" alt="Logo" class="brand-logo object-fit-contain">
+                        <img src="<?= media_url($logo) ?>" alt="Logo" class="brand-logo object-fit-contain">
                     <?php else: ?>
                         <div class="h2 fw-bold mb-4" style="color: var(--primary-color);">Habita<span class="text-dark">web</span></div>
                     <?php endif; ?>

@@ -2,54 +2,46 @@
 
 namespace Tests\E2E;
 
-use Tests\TestCase;
+use App\Database\Seeds\PlanSeeder;
+use App\Models\PaymentTransactionModel;
 use Tests\Fixtures\SubscriptionTestData;
+use Tests\Support\HabitawebTestCase;
 
 /**
  * SubscriptionE2EBase - Base class para testes E2E de subscriptions
- * 
+ *
  * Fornece helpers comuns para:
  * - Criar contas de teste com Shield users
  * - Upload e verificação de documentos KYC
  * - Criação de subscriptions via Asaas
  * - Simulação de webhooks
  * - Verificação de acesso
+ *
+ * Porta para Tests\Support\HabitawebTestCase (FeatureTestTrait + transação real
+ * por teste). Antes disso, esta base estendia Tests\TestCase, que NÃO isola
+ * dados entre testes — cada execução acumulava contas/planos no banco de teste,
+ * e como PlanModel::$validationRules exige 'nome' único, o segundo run em diante
+ * fazia o insert do plano de fallback falhar silenciosamente (insert() retornando
+ * false -> castado a 0), causando "Plano #0 não encontrado". Com a transação
+ * real por teste, cada execução parte de um estado limpo e o bug desaparece.
  */
-abstract class SubscriptionE2EBase extends TestCase
+abstract class SubscriptionE2EBase extends HabitawebTestCase
 {
-    protected $migrate = true;
-    protected $refresh = false;
-    protected $seeders = [];
     protected $testPersona = [];
     protected $testAccountId = null;
     protected $testUserId = null;
-    protected $asaasClient = null;
-    protected static bool $schemaReady = false;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        if (!self::$schemaReady) {
-            $migrator = \Config\Services::migrations();
-            $migrator->setNamespace(null)->latest();
-            self::$schemaReady = true;
-        }
-
-        $this->initializeAsaasClient();
-    }
-
-    protected function tearDown(): void
-    {
-        parent::tearDown();
-        // Limpeza pós-teste (opcional)
+        $this->seed(PlanSeeder::class);
     }
 
     // ================== HELPER METHODS ==================
 
     /**
      * Criar uma conta de teste completa com usuário Shield
-     * 
+     *
      * @param string $personaKey Chave da persona (persona_1_initial, etc)
      * @return array [accountId, userId, account, user]
      */
@@ -103,7 +95,7 @@ abstract class SubscriptionE2EBase extends TestCase
 
     /**
      * Upload e verificação de documentos KYC
-     * 
+     *
      * @param int $accountId
      * @param bool $withFacial Se deve também fazer verificação facial
      * @return array [success, message, kycData]
@@ -111,10 +103,10 @@ abstract class SubscriptionE2EBase extends TestCase
     protected function verifyAccountKYC(int $accountId, bool $withFacial = true): array
     {
         $kycService = new \App\Services\KYCService();
-        
+
         // 1. Upload de documentos
         $mockDocs = SubscriptionTestData::getMockDocumentImages();
-        
+
         // Simular upload de arquivo (em produção seria via HTTP request)
         $uploadPath = WRITEPATH . 'uploads/kyc/' . $accountId;
         if (!is_dir($uploadPath)) {
@@ -167,8 +159,12 @@ abstract class SubscriptionE2EBase extends TestCase
     }
 
     /**
-     * Criar subscription via Asaas API
-     * 
+     * Criar subscription local + a transação Asaas correspondente que o webhook
+     * real vai casar (App\Services\WebhookService::findTransactionBySubscriptionId
+     * casa por payment_transactions.gateway_subscription_id). Sem essa transação
+     * "PENDING" espelhando o gateway_subscription_id, um webhook PAYMENT_CONFIRMED
+     * de verdade não encontraria o que ativar.
+     *
      * @param int $accountId
      * @param int $planId
      * @param string $billingCycle 'MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL'
@@ -186,8 +182,14 @@ abstract class SubscriptionE2EBase extends TestCase
 
         // Calcular data de vencimento (período de teste = 30 dias)
         $endDate = (new \DateTime())->modify('+30 days')->format('Y-m-d');
+        $asaasSubscriptionId = 'sub_e2e_' . bin2hex(random_bytes(6));
 
-        // Criar subscription no DB
+        // Status ACTIVE já na criação (não PENDING-até-webhook): mantém a mesma
+        // convenção que os 9 cenários já assumem — vários fazem asserções de
+        // status logo após createSubscription(), antes de qualquer webhook.
+        // Redesenhar essa premissa (subscription só ativa após confirmação real
+        // de pagamento) é uma mudança de escopo maior, fora do que este ajuste
+        // (parar de reimplementar webhook/acesso localmente) se propôs a corrigir.
         $subscriptionData = [
             'account_id' => $accountId,
             'plan_id' => $planId,
@@ -196,173 +198,127 @@ abstract class SubscriptionE2EBase extends TestCase
             'data_inicio' => date('Y-m-d'),
             'data_fim' => $endDate,
             'proximo_pagamento' => $endDate,
-            // asaas_subscription_id seria preenchido pelo webhook
+            'asaas_subscription_id' => $asaasSubscriptionId,
         ];
 
         $subscriptionId = $subscriptionModel->insert($subscriptionData);
 
+        (new PaymentTransactionModel())->insert([
+            'subscription_id' => $subscriptionId,
+            'account_id' => $accountId,
+            'gateway' => 'asaas',
+            'gateway_subscription_id' => $asaasSubscriptionId,
+            'method' => 'PIX',
+            'amount' => (float) ($plan->preco_mensal ?? 0),
+            'status' => 'PENDING',
+            'type' => 'SUBSCRIPTION',
+            'due_date' => date('Y-m-d'),
+        ]);
+
         return [
             'subscriptionId' => $subscriptionId,
-            'asaasSubscriptionId' => null, // Seria setado via webhook
+            'asaasSubscriptionId' => $asaasSubscriptionId,
             'data' => $subscriptionModel->find($subscriptionId)
         ];
     }
 
     /**
-     * Simular webhook de pagamento do Asaas
-     * 
-     * @param string $eventType 'PAYMENT_CONFIRMED', 'PAYMENT_FAILED', etc
-     * @param array $paymentData
-     * @return array [$statusCode, $responseBody]
+     * Simular webhook de pagamento do Asaas — POST real e assinado para o
+     * endpoint de produção (App\Controllers\Web\WebhookController::asaas),
+     * passando pela validação de token (H7 da auditoria) e pela lógica real de
+     * App\Services\WebhookService::processEvent(). Nenhuma reimplementação local:
+     * o resultado reflete exatamente o que a Asaas dispararia em produção.
+     *
+     * @param string $eventType 'PAYMENT_CONFIRMED' ou 'PAYMENT_FAILED'
+     * @param array $paymentData Os cenários passam 'subscription' com o ID LOCAL
+     *              (numérico) retornado por createSubscription()['subscriptionId']
+     *              — convenção histórica mantida por compatibilidade. É traduzido
+     *              aqui para o asaas_subscription_id real antes do POST, já que é
+     *              esse o identificador que o webhook de produção usa para casar
+     *              a transação (App\Services\WebhookService::findTransactionBySubscriptionId).
+     * @return array [$statusCode, $responseBody, $json]
      */
     protected function simulateAsaasWebhook(string $eventType, array $paymentData): array
     {
-        $webhookData = [
+        if (!empty($paymentData['subscription']) && ctype_digit((string) $paymentData['subscription'])) {
+            $sub = model('App\Models\SubscriptionModel')->find((int) $paymentData['subscription']);
+            if ($sub && !empty($sub->asaas_subscription_id)) {
+                $paymentData['subscription'] = $sub->asaas_subscription_id;
+            }
+        }
+
+        $payment = array_merge([
+            'id' => 'pay_e2e_' . bin2hex(random_bytes(6)),
+            'billingType' => 'PIX',
+            'status' => $eventType === 'PAYMENT_CONFIRMED' ? 'CONFIRMED' : 'OVERDUE',
+            'value' => 199.90,
+            'subscription' => null, // asaas_subscription_id — obrigatório para casar a transação
+        ], $paymentData);
+
+        $webhookPayload = [
             'event' => $eventType,
-            'data' => array_merge([
-                'id' => 'pay_' . time(),
-                'billingType' => 'CREDIT_CARD',
-                'status' => 'CONFIRMED', // ou PENDING, RECEIVED, FAILED, etc
-                'value' => 199.90,
-                'netValue' => 185.00,
-                'grossValue' => 199.90,
-                'dueDate' => date('Y-m-d'),
-                'originalDueDate' => date('Y-m-d'),
-                'paymentDate' => date('Y-m-d'),
-                'clientPaymentDate' => date('Y-m-d H:i:s'),
-                'installmentNumber' => 1,
-                'subscription' => null,
-                'externalReference' => null,
-            ], $paymentData),
-            'timestamp' => date('Y-m-d\TH:i:s.000\Z'),
+            'payment' => $payment,
         ];
 
-        // Fazer POST para webhook endpoint
-        $webhookUrl = site_url('api/v1/webhooks/asaas');
+        // FeatureTestTrait::populateGlobals() copia os $params crus para $_POST
+        // (só a query string real vira string em HTTP de verdade); o filtro global
+        // 'invalidchars' então chama mb_check_encoding() em cada valor de $_POST e
+        // quebra ao encontrar um float/int não-string. O corpo JSON real (o que o
+        // controller efetivamente lê via getJSON()) não é afetado — só precisamos
+        // que os valores em $params (usados também para popular $_POST) sejam string.
+        $result = $this->withHeaders(['asaas-access-token' => 'phpunit-fixed-webhook-token'])
+            ->withBodyFormat('json')
+            ->post('asaas/webhook', $this->stringifyLeaves($webhookPayload));
 
-        try {
-            $client = \Config\Services::curlrequest();
-            $response = $client->post($webhookUrl, [
-                'json' => $webhookData,
-                'headers' => [
-                    'X-Webhook-Secret' => env('ASAAS_WEBHOOK_TOKEN', 'test'),
-                ]
-            ]);
+        $body = $result->getJSON();
 
-            return [
-                'statusCode' => $response->getStatusCode(),
-                'body' => $response->getBody(),
-                'json' => json_decode($response->getBody(), true)
-            ];
-        } catch (\Throwable $e) {
-            // Fallback offline para execução local sem servidor HTTP rodando.
-            $this->applyWebhookStateLocally($eventType, $paymentData);
-
-            return [
-                'statusCode' => 200,
-                'body' => json_encode(['success' => true, 'fallback' => 'local']),
-                'json' => ['success' => true, 'fallback' => 'local', 'error' => $e->getMessage()],
-            ];
-        }
+        return [
+            'statusCode' => $result->response()->getStatusCode(),
+            'body' => $body,
+            'json' => json_decode($body, true),
+        ];
     }
 
-    private function applyWebhookStateLocally(string $eventType, array $paymentData): void
+    private function stringifyLeaves(array $data): array
     {
-        $subscriptionId = (int) ($paymentData['subscription'] ?? 0);
-        if ($subscriptionId <= 0) {
-            return;
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $data[$key] = $this->stringifyLeaves($value);
+            } elseif (is_int($value) || is_float($value)) {
+                $data[$key] = (string) $value;
+            }
         }
 
-        $subModel = model('App\Models\SubscriptionModel');
-        $sub = $subModel->find($subscriptionId);
-        if (!$sub) {
-            return;
-        }
-
-        if ($eventType === 'PAYMENT_FAILED') {
-            $subModel->update($subscriptionId, ['status' => 'SUSPENDED']);
-            return;
-        }
-
-        if ($eventType === 'PAYMENT_CONFIRMED') {
-            $currentEnd = !empty($sub->data_fim) ? new \DateTime($sub->data_fim) : new \DateTime();
-            $nextEnd = $currentEnd->modify('+1 month')->format('Y-m-d');
-
-            $subModel->update($subscriptionId, [
-                'status' => 'ACTIVE',
-                'data_fim' => $nextEnd,
-                'proximo_pagamento' => $nextEnd,
-            ]);
-        }
+        return $data;
     }
 
     /**
-     * Verificar acesso de usuário a rota protegida
-     * 
+     * Verificar acesso de usuário a rota protegida — GET real através do
+     * App\Filters\AdminAuth de produção (KYC + assinatura + fatura em dia),
+     * não mais uma reimplementação das regras em query builder.
+     *
      * @param int $userId
      * @param string $route
      * @return array [canAccess, statusCode, message]
      */
-    protected function checkUserAccess(int $userId, string $route = '/admin/dashboard'): array
+    protected function checkUserAccess(int $userId, string $route = 'admin/dashboard'): array
     {
-        $db = \Config\Database::connect();
-        $user = $db->table('users')->select('id, account_id, active')->where('id', $userId)->get()->getRow();
-
-        if (!$user || empty($user->account_id) || (int) $user->active !== 1) {
-            return [
-                'canAccess' => false,
-                'statusCode' => 302,
-                'message' => 'Acesso bloqueado (usuário inválido/inativo)',
-            ];
+        $user = model('App\Models\UserModel')->find($userId);
+        if (!$user) {
+            return ['canAccess' => false, 'statusCode' => 302, 'message' => 'Usuário não encontrado'];
         }
 
-        // Super Admin bypassa KYC/assinatura/licença.
-        $isSuperAdmin = $db->table('auth_groups_users')
-            ->where('user_id', $userId)
-            ->where('group', 'superadmin')
-            ->countAllResults() > 0;
-
-        if ($isSuperAdmin) {
-            return [
-                'canAccess' => true,
-                'statusCode' => 200,
-                'message' => 'Acesso permitido (superadmin bypass)',
-            ];
-        }
-
-        $account = $db->table('accounts')
-            ->select('id, status, is_verified, verification_status, id_front, id_back, selfie')
-            ->where('id', $user->account_id)
-            ->get()
-            ->getRow();
-
-        $subscription = $db->table('subscriptions')
-            ->select('id, status')
-            ->where('account_id', $user->account_id)
-            ->where('status', 'ACTIVE')
-            ->get()
-            ->getRow();
-
-        $isKycVerified = $account
-            && (bool) $account->is_verified
-            && ($account->verification_status === 'VERIFIED')
-            && !empty($account->id_front)
-            && !empty($account->id_back)
-            && !empty($account->selfie);
-
-        $canAccess = $account
-            && $account->status === 'ACTIVE'
-            && $isKycVerified
-            && !empty($subscription);
-
-        $message = $canAccess
-            ? 'Acesso permitido'
-            : 'Acesso bloqueado (falta KYC ou subscription ativa)';
+        $result = $this->actingAs($user)->get(ltrim($route, '/'));
+        $status = $result->response()->getStatusCode();
+        $isRedirect = $result->response() instanceof \CodeIgniter\HTTP\RedirectResponse
+            || ($status >= 300 && $status < 400);
 
         return [
-            'canAccess' => $canAccess,
-            'statusCode' => $canAccess ? 200 : 302,
-            'message' => $message,
+            'canAccess' => !$isRedirect && $status < 300,
+            'statusCode' => $status,
+            'message' => $isRedirect
+                ? 'Bloqueado pelo AdminAuth (redirecionado para ' . $result->response()->getHeaderLine('Location') . ')'
+                : 'Acesso permitido',
         ];
     }
 
@@ -386,7 +342,7 @@ abstract class SubscriptionE2EBase extends TestCase
     /**
      * Avançar data do sistema (para testar renovações, carências, etc)
      * NOTA: Isso é complexo em produção. Para E2E, usar Carbon para mock de data
-     * 
+     *
      * @param int $days
      * @return void
      */
@@ -394,14 +350,6 @@ abstract class SubscriptionE2EBase extends TestCase
     {
         // TODO: Implementar com Carbon::setTestNow() ou similar
         // Por enquanto, apenas modificar datas manualmente em testes específicos
-    }
-
-    // ================== PRIVATE METHODS ==================
-
-    private function initializeAsaasClient(): void
-    {
-        $config = SubscriptionTestData::getAsaasConfig();
-        // TODO: Inicializar cliente HTTP para Asaas se necessário
     }
 
     /**

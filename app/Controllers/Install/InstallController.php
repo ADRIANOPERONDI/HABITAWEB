@@ -49,6 +49,12 @@ class InstallController extends BaseController
 
     public function testDatabase()
     {
+        // Defesa em profundidade: bloqueia o instalador após a instalação concluída,
+        // mesmo que o filtro global de instalação seja alterado no futuro.
+        if ($this->isInstalled()) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Sistema já instalado.']);
+        }
+
         // Headers JSON para resposta
         $this->response->setHeader('Content-Type', 'application/json');
         
@@ -87,6 +93,11 @@ class InstallController extends BaseController
 
     public function saveStep()
     {
+        // Defesa em profundidade: não aceita mais dados de instalação após instalado.
+        if ($this->isInstalled()) {
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'message' => 'Sistema já instalado.']);
+        }
+
         $step = $this->request->getPost('step');
         $installData = session('install_data') ?? [];
 
@@ -261,9 +272,18 @@ app.baseURL = '{$data['base_url']}'
 # Encryption
 encryption.key = " . bin2hex(random_bytes(16)) . "
 
-# Session
-app.sessionDriver = 'CodeIgniter\\\\Session\\\\Handlers\\\\FileHandler'
-app.sessionSavePath = null
+# Cache (Redis) - assume Redis local sem senha; ajuste manualmente se o
+# ambiente de produção usar host/porta/senha diferentes.
+cache.handler = redis
+cache.backupHandler = file
+cache.redis.host = 127.0.0.1
+cache.redis.port = 6379
+cache.redis.timeout = 1
+cache.redis.database = 0
+
+# Session (Redis)
+session.driver = CodeIgniter\\Session\\Handlers\\RedisHandler
+session.savePath = tcp://127.0.0.1:6379?database=1&timeout=1
 
 # Email (Configure depois)
 email.protocol = mail

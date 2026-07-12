@@ -241,10 +241,19 @@ class AsaasGateway implements GatewayInterface
         return false; 
     }
     
-    public function handleWebhook(array $payload): array
+    public function handleWebhook(array $payload, array $headers = [], string $rawBody = ''): array
     {
+        // Valida o token de acesso do Asaas (header asaas-access-token). O endpoint
+        // principal (Web\WebhookController::asaas) já valida; aqui é a proteção do
+        // caminho genérico /webhook/asaas. Fail-closed.
+        $expectedToken = (string) $this->webhookSecret;
+        $receivedToken = (string) ($headers['asaas-access-token'] ?? '');
+        if ($expectedToken === '' || ! hash_equals($expectedToken, $receivedToken)) {
+            throw new \Exception('Webhook Asaas rejeitado: token de acesso ausente ou inválido.');
+        }
+
         $event = $payload['event'] ?? '';
-        
+
         return [
             'event_type' => $event,
             'reference_id' => $payload['payment']['id'] ?? $payload['subscription']['id'] ?? null,
@@ -420,7 +429,15 @@ class AsaasGateway implements GatewayInterface
         
         if ($response->getStatusCode() >= 400) {
             log_message('error', 'Asaas API Error - Status: ' . $response->getStatusCode());
-            log_message('error', 'Asaas API Error - Body: ' . json_encode($body));
+            // Loga só código/descrição do erro — nunca o body completo, que pode conter
+            // PII do cliente (nome, CPF/CNPJ, e-mail, endereço).
+            $errorSummary = (isset($body['errors']) && is_array($body['errors']))
+                ? implode('; ', array_map(
+                    static fn($e) => ($e['code'] ?? '') . ':' . ($e['description'] ?? ''),
+                    $body['errors']
+                ))
+                : ($body['message'] ?? 'sem detalhe');
+            log_message('error', 'Asaas API Error - Detail: ' . $errorSummary);
             log_message('error', 'Asaas API Error - URL: ' . $this->baseUrl . $endpoint);
             
             $errorMessage = $body['errors'][0]['description'] ?? 

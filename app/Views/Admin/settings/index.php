@@ -130,7 +130,7 @@
                                             </div>
                                             <?php if ($setting->value): ?>
                                                 <div class="mt-2 p-3 border rounded-4 d-inline-block bg-white shadow-sm position-relative">
-                                                    <img src="<?= base_url($setting->value) ?>" id="preview-<?= str_replace('.', '-', $setting->key) ?>" height="60" class="object-fit-contain" alt="Preview">
+                                                    <img src="<?= media_url($setting->value) ?>" id="preview-<?= str_replace('.', '-', $setting->key) ?>" height="60" class="object-fit-contain" alt="Preview">
                                                     <div class="small fw-bold text-muted mt-1 text-center">Atual</div>
                                                 </div>
                                             <?php endif; ?>

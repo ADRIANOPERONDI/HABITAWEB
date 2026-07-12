@@ -264,8 +264,8 @@
                 $logoHeight = app_setting('style.logo_height', 70);
             ?>
             <?php if ($logoOriginal): ?>
-                <img src="<?= base_url($logoOriginal) ?>" class="logo-light-theme" alt="Logo" height="<?= $logoHeight ?>">
-                <img src="<?= base_url($logoWhite) ?>" class="logo-dark-theme" alt="Logo" height="<?= $logoHeight ?>">
+                <img src="<?= media_url($logoOriginal) ?>" class="logo-light-theme" alt="Logo" height="<?= $logoHeight ?>">
+                <img src="<?= media_url($logoWhite) ?>" class="logo-dark-theme" alt="Logo" height="<?= $logoHeight ?>">
             <?php else: ?>
                 <span class="fw-bold fs-4 text-primary"><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
             <?php endif; ?>
@@ -320,7 +320,7 @@
         </div>
     </nav>
     
-    <div style="margin-top: 80px;"></div>
+    <div style="margin-top: 106px;"></div>
 
     <!-- Main Content -->
     <main>
@@ -337,7 +337,7 @@
                             $footerLogo = app_setting('style.logo_footer_url') ?: app_setting('style.logo_url');
                             if ($footerLogo): 
                         ?>
-                            <img src="<?= base_url($footerLogo) ?>" alt="Logo" height="40" class="object-fit-contain">
+                            <img src="<?= media_url($footerLogo) ?>" alt="Logo" height="40" class="object-fit-contain">
                         <?php else: ?>
                             <span class="fs-4 fw-bold text-white"><?= app_setting('seo.title', 'Habitaweb') ?></span>
                         <?php endif; ?>

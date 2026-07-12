@@ -78,16 +78,29 @@ class CouponModel extends Model
     }
 
     /**
-     * Incrementa o uso do cupom e registra log
+     * Incrementa o uso do cupom (de forma atômica) e registra log.
+     *
+     * O incremento é condicionado a (max_uses IS NULL OR used_count < max_uses)
+     * na própria query, então used_count nunca ultrapassa max_uses mesmo com
+     * requisições de checkout concorrentes usando o mesmo cupom perto do limite.
+     *
+     * @return bool true se o uso foi registrado; false se o cupom já estava esgotado.
      */
-    public function registerUsage($couponId, $accountId, $transactionId, $discountAmount)
+    public function registerUsage($couponId, $accountId, $transactionId, $discountAmount): bool
     {
-        // Update Counter
-        $this->set('used_count', 'used_count + 1', false)
-             ->update($couponId);
-
-        // Insert Log
         $db = \Config\Database::connect();
+
+        $db->query(
+            "UPDATE coupons SET used_count = used_count + 1
+             WHERE id = ? AND (max_uses IS NULL OR used_count < max_uses)",
+            [$couponId]
+        );
+
+        // Se nenhuma linha foi afetada, outra requisição consumiu o último uso.
+        if ($db->affectedRows() < 1) {
+            return false;
+        }
+
         $db->table('coupon_usages')->insert([
             'coupon_id' => $couponId,
             'account_id' => $accountId,
@@ -95,6 +108,8 @@ class CouponModel extends Model
             'discount_applied' => $discountAmount,
             'used_at' => date('Y-m-d H:i:s')
         ]);
+
+        return true;
     }
     
     /**

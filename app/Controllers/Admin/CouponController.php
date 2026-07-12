@@ -39,8 +39,12 @@ class CouponController extends BaseController
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
-        $data = $this->request->getPost();
-        
+        // Whitelist explícita — impede mass assignment de campos gerenciados pelo
+        // servidor (ex.: used_count, que só deve ser incrementado por registerUsage()).
+        $allowed = ['account_id', 'code', 'description', 'discount_type', 'discount_value',
+                    'max_uses', 'valid_from', 'valid_until', 'is_active', 'carencia_valor', 'carencia_tipo'];
+        $data = array_intersect_key($this->request->getPost(), array_flip($allowed));
+
         // Formatar datas vazias para null
         $data['valid_from'] = !empty($data['valid_from']) ? $data['valid_from'] : null;
         $data['valid_until'] = !empty($data['valid_until']) ? $data['valid_until'] : null;
@@ -49,6 +53,11 @@ class CouponController extends BaseController
         $data['code'] = strtoupper($data['code']); // Force uppercase
 
         if ($this->couponModel->save($data)) {
+            audit_log('coupon.created', [
+                'entity_type' => 'coupon',
+                'entity_id'   => $this->couponModel->getInsertID(),
+                'metadata'    => ['code' => $data['code'] ?? null, 'discount_type' => $data['discount_type'] ?? null, 'discount_value' => $data['discount_value'] ?? null],
+            ]);
             return redirect()->to('admin/coupons')->with('message', 'Cupom criado com sucesso!');
         }
 
@@ -81,8 +90,11 @@ class CouponController extends BaseController
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
-        $data = $this->request->getPost();
-        
+        // Whitelist explícita (mesma regra do store) — nunca aceitar used_count via POST.
+        $allowed = ['account_id', 'code', 'description', 'discount_type', 'discount_value',
+                    'max_uses', 'valid_from', 'valid_until', 'is_active', 'carencia_valor', 'carencia_tipo'];
+        $data = array_intersect_key($this->request->getPost(), array_flip($allowed));
+
         $data['id'] = $id;
         $data['valid_from'] = !empty($data['valid_from']) ? $data['valid_from'] : null;
         $data['valid_until'] = !empty($data['valid_until']) ? $data['valid_until'] : null;
@@ -91,6 +103,11 @@ class CouponController extends BaseController
         $data['code'] = strtoupper($data['code']);
 
         if ($this->couponModel->save($data)) {
+            audit_log('coupon.updated', [
+                'entity_type' => 'coupon',
+                'entity_id'   => $id,
+                'metadata'    => ['code' => $data['code'] ?? null, 'discount_type' => $data['discount_type'] ?? null, 'discount_value' => $data['discount_value'] ?? null],
+            ]);
             return redirect()->to('admin/coupons')->with('message', 'Cupom atualizado com sucesso!');
         }
 

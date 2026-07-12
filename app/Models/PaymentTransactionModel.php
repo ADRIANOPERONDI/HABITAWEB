@@ -195,8 +195,13 @@ class PaymentTransactionModel extends Model
      */
     public function isAccountBlockedByOverdue(int $accountId, int $days = 3): bool
     {
+        // Inclui OVERDUE: quando o gateway confirma o vencimento (webhook PAYMENT_OVERDUE),
+        // a transação passa de PENDING para OVERDUE. Sem OVERDUE aqui, o sinal MAIS forte
+        // de inadimplência (vencimento confirmado pelo gateway) deixava de bloquear a conta —
+        // a lacuna de segurança do cenário 3. A recuperação (PAYMENT_CONFIRMED) move a
+        // transação para CONFIRMED, saindo deste filtro e desbloqueando a conta.
         return $this->where('account_id', $accountId)
-                    ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                    ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
                     ->where('due_date <=', date('Y-m-d', strtotime("-{$days} days")))
                     ->countAllResults() > 0;
     }
@@ -210,11 +215,37 @@ class PaymentTransactionModel extends Model
     {
         $results = $this->select('account_id')
                         ->distinct()
-                        ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                        ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
                         ->where('due_date <=', date('Y-m-d', strtotime("-{$days} days")))
                         ->findAll();
-        
-        return array_column($results, 'account_id');
+
+        // intval: o driver Postgres devolve bigint como string — o docblock
+        // promete inteiros e comparações estritas (in_array strict) dependem disso.
+        return array_map('intval', array_column($results, 'account_id'));
+    }
+
+    /**
+     * Versão cacheada de getOverdueAccountIds — este método roda em TODA busca
+     * pública (listProperties e buildPublicMapSearchQuery), então sem cache
+     * vira uma query extra por requisição no caminho mais quente do site.
+     * TTL curto (120s) + invalidação ativa em upsertTransaction() mantêm o
+     * bloqueio de inadimplentes com atraso máximo de 2 minutos.
+     */
+    public function getOverdueAccountIdsCached(int $days = 3): array
+    {
+        $cacheKey = "overdue_account_ids_{$days}";
+
+        // Importante: lista vazia também é cacheada ([] !== null) — o caso
+        // comum "ninguém inadimplente" é exatamente o que mais precisa de cache.
+        $ids = cache($cacheKey);
+        if ($ids !== null) {
+            return $ids;
+        }
+
+        $ids = $this->getOverdueAccountIds($days);
+        cache()->save($cacheKey, $ids, 120);
+
+        return $ids;
     }
 
     /**
@@ -222,16 +253,21 @@ class PaymentTransactionModel extends Model
      */
     public function upsertTransaction(array $data)
     {
+        // Qualquer mudança de transação pode alterar o conjunto de contas
+        // inadimplentes — invalida o cache de getOverdueAccountIdsCached()
+        // (chave por $days; 3 é o único valor usado em produção hoje).
+        cache()->delete('overdue_account_ids_3');
+
         if (!empty($data['gateway_transaction_id']) && !empty($data['gateway'])) {
             $existing = $this->where('gateway_transaction_id', $data['gateway_transaction_id'])
                              ->where('gateway', $data['gateway'])
                              ->first();
-            
+
             if ($existing) {
                 return $this->update($existing['id'], $data);
             }
         }
-        
+
         return $this->insert($data);
     }
 }

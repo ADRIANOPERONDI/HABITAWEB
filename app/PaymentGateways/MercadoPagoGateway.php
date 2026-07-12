@@ -168,13 +168,17 @@ class MercadoPagoGateway implements GatewayInterface
         return true;
     }
 
-    public function handleWebhook(array $payload): array
+    public function handleWebhook(array $payload, array $headers = [], string $rawBody = ''): array
     {
         // MP envia ?topic=payment&id=123
         // Ou body com type=payment
-        
+
         $type = $payload['type'] ?? ($payload['topic'] ?? '');
         $id = $payload['data']['id'] ?? ($payload['id'] ?? '');
+
+        // Valida a assinatura x-signature antes de confiar no evento (fail-closed).
+        // A re-consulta na API abaixo é defesa adicional, não substitui a assinatura.
+        $this->verifyWebhookSignature($headers, (string) $id);
 
         // Fetch details to confirm status (Security best practice)
         $data = [];
@@ -202,6 +206,72 @@ class MercadoPagoGateway implements GatewayInterface
         }
 
         return $event;
+    }
+
+    /**
+     * Verifica o cabeçalho x-signature do Mercado Pago (esquema ts=...,v1=hmac),
+     * usando o manifesto id;request-id;ts conforme a documentação. Fail-closed.
+     */
+    private function verifyWebhookSignature(array $headers, string $dataId): void
+    {
+        $secret     = (string) ($this->config['webhook_secret'] ?? '');
+        $xSignature = (string) ($headers['x-signature'] ?? '');
+        $xRequestId = (string) ($headers['x-request-id'] ?? '');
+
+        if ($secret === '' || $xSignature === '') {
+            throw new \Exception('Webhook Mercado Pago rejeitado: assinatura ausente ou secret não configurado.');
+        }
+
+        $ts = '';
+        $v1 = '';
+        foreach (explode(',', $xSignature) as $kv) {
+            $pair = array_pad(explode('=', trim($kv), 2), 2, '');
+            if ($pair[0] === 'ts') {
+                $ts = $pair[1];
+            } elseif ($pair[0] === 'v1') {
+                $v1 = $pair[1];
+            }
+        }
+
+        if ($ts === '' || $v1 === '') {
+            throw new \Exception('Webhook Mercado Pago rejeitado: cabeçalho de assinatura malformado.');
+        }
+
+        if (abs(time() - (int) $ts) > 300) {
+            throw new \Exception('Webhook Mercado Pago rejeitado: fora da janela de tempo (possível replay).');
+        }
+
+        $manifest = 'id:' . strtolower($dataId) . ';request-id:' . $xRequestId . ';ts:' . $ts . ';';
+        $expected = hash_hmac('sha256', $manifest, $secret);
+
+        if (! hash_equals($expected, $v1)) {
+            throw new \Exception('Webhook Mercado Pago rejeitado: assinatura inválida.');
+        }
+    }
+
+    /**
+     * Métodos da interface ainda não implementados para o Mercado Pago. Lançam exceção
+     * (fail-loud) em vez de retornar dado vazio, para não mascarar uso indevido caso o
+     * gateway seja ativado sem completar a implementação.
+     */
+    public function findCustomerByDocument(string $document): ?string
+    {
+        throw new \Exception('MercadoPagoGateway::findCustomerByDocument ainda não implementado.');
+    }
+
+    public function updateCustomer(string $customerId, array $customerData): bool
+    {
+        throw new \Exception('MercadoPagoGateway::updateCustomer ainda não implementado.');
+    }
+
+    public function getSubscription(string $subscriptionId): ?array
+    {
+        throw new \Exception('MercadoPagoGateway::getSubscription ainda não implementado.');
+    }
+
+    public function getPendingPayments(string $customerId): array
+    {
+        throw new \Exception('MercadoPagoGateway::getPendingPayments ainda não implementado.');
     }
 
     public function getSupportedMethods(): array

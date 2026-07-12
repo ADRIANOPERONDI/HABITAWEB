@@ -4,14 +4,16 @@
         return;
     }
 
+    // media_variant_url resolve a variante 'card' (~480px) quando existe e cai
+    // no original quando não — cards nunca devem baixar a foto em tamanho cheio.
     $fallbackImage = !empty($property->cover_image)
-        ? (strpos($property->cover_image, 'http') === 0 ? $property->cover_image : base_url($property->cover_image))
+        ? media_variant_url($property->cover_image, 'card')
         : base_url('assets/img/placeholder-house.png');
 
     $images = [];
     foreach (($property->carousel_images ?? []) as $img) {
         if (!empty($img)) {
-            $images[] = strpos($img, 'http') === 0 ? $img : base_url($img);
+            $images[] = media_variant_url($img, 'card');
         }
     }
 

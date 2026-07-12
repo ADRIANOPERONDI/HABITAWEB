@@ -563,7 +563,7 @@ body {
 
 /* Premium map search */
 .map-premium-page {
-    height: calc(100vh - 80px);
+    height: calc(100vh - 106px);
     min-height: 680px;
     display: grid;
     grid-template-columns: minmax(460px, 48vw) 1fr;
@@ -699,14 +699,15 @@ body {
 }
 
 .map-floating-actions {
-    position: absolute;
-    left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%);
-    z-index: 1100;
     display: flex;
     gap: 10px;
     pointer-events: auto;
+}
+
+.leaflet-bottom.leaflet-left {
+    left: 50% !important;
+    transform: translateX(-50%);
+    bottom: 12px !important;
 }
 
 .map-floating-btn {
@@ -833,7 +834,7 @@ body {
     }
 
     .map-premium-page {
-        height: calc(100vh - 74px);
+        height: calc(100vh - 106px);
         min-height: 620px;
         display: block;
         position: relative;
@@ -870,8 +871,8 @@ body {
         box-shadow: var(--premium-shadow);
     }
 
-    .map-floating-actions {
-        bottom: 78px;
+    .leaflet-bottom.leaflet-left {
+        bottom: 68px !important;
     }
 }
 

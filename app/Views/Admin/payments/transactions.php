@@ -147,7 +147,11 @@ $(document).ready(function() {
             ...(isAdmin ? [{
                 data: 'account_name',
                 render: function(data) {
-                    return `<div class="fw-bold text-dark small">${data || 'N/A'}</div>`;
+                    // Escapa via textContent para evitar XSS armazenado pelo nome da conta.
+                    const el = document.createElement('div');
+                    el.className = 'fw-bold text-dark small';
+                    el.textContent = data || 'N/A';
+                    return el.outerHTML;
                 }
             }] : []),
             { 

@@ -27,12 +27,8 @@ class TeamController extends BaseController
         // Ou lista todos.
         $team = $this->userModel
             ->where('account_id', $accountId)
-            ->where('id !=', auth()->id()) 
+            ->where('id !=', auth()->id())
             ->findAll();
-
-        // O ID 17 foi criado antes do fix do import do UserModel, vamos vinculá-lo agora para aparecer na lista.
-        $this->userModel->builder()->where('id', 17)->where('account_id', null)->set(['account_id' => $accountId])->update();
-
 
         // Para cada usuário, carregamos os grupos para exibir.
         // Shield UserModel retorna Entity, mas groups ficam em outra tabela.
@@ -185,9 +181,24 @@ class TeamController extends BaseController
             $user->nome = $data['nome'];
         }
 
-        // Update Role
+        // Update Role — mesma whitelist usada em create(), nunca aceitar grupo arbitrário
+        // (ex.: 'superadmin') vindo do POST.
         if (isset($data['role'])) {
+            $rules = ['role' => 'required|in_list[imobiliaria_admin,imobiliaria_corretor]'];
+            $errors = ['role' => ['in_list' => 'Selecione um cargo válido.']];
+
+            if (! $this->validate($rules, $errors)) {
+                return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+            }
+
             $user->syncGroups([$data['role']]);
+
+            audit_log('user.role_changed', [
+                'account_id'  => $accountId,
+                'entity_type' => 'user',
+                'entity_id'   => $user->id,
+                'metadata'    => ['role' => $data['role']],
+            ]);
         }
 
         // Save User (Name/Role/etc)

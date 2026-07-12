@@ -74,4 +74,70 @@ class Services extends BaseService
 
         return new \App\Services\WebhookService();
     }
+
+    /**
+     * Buffer de métricas em Redis (contador de visitas, ranking sujo) —
+     * ver App\Libraries\Metrics\RedisMetricsBuffer para o porquê de não usar
+     * o cache handler. Singleton por request (conexão lazy, fail-open).
+     */
+    public static function metricsBuffer($getShared = true): \App\Libraries\Metrics\RedisMetricsBuffer
+    {
+        if ($getShared) {
+            return static::getSharedInstance('metricsBuffer');
+        }
+
+        return new \App\Libraries\Metrics\RedisMetricsBuffer();
+    }
+
+    /**
+     * Disco de uploads públicos (imagens de imóvel, logos, imagens de
+     * settings). Backend escolhido por storage.driver no .env:
+     * 'local' (default) = FCPATH, servido estático pelo webserver;
+     * 's3' = duas vias — tenta o bucket S3 primeiro e cai para o disco
+     * local se o S3 falhar (FallbackStorage). Config S3 incompleta também
+     * degrada para local (com warning no log) em vez de derrubar o app.
+     */
+    public static function publicStorage($getShared = true): \App\Libraries\Storage\StorageInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('publicStorage');
+        }
+
+        return static::buildStorage(true, FCPATH);
+    }
+
+    /**
+     * Disco de uploads privados (documentos KYC, frames de biometria) — sem
+     * URL pública (fail-closed) em QUALQUER backend, inclusive no composto
+     * de duas vias. Leitura pelo proxy autenticado (KycFileController) ou
+     * signed URL de curta duração.
+     */
+    public static function privateStorage($getShared = true): \App\Libraries\Storage\StorageInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('privateStorage');
+        }
+
+        return static::buildStorage(false, WRITEPATH);
+    }
+
+    private static function buildStorage(bool $public, string $localBaseDir): \App\Libraries\Storage\StorageInterface
+    {
+        $local = new \App\Libraries\Storage\LocalStorage($localBaseDir, $public);
+
+        if (config('Storage')->driver !== 's3') {
+            return $local;
+        }
+
+        try {
+            return new \App\Libraries\Storage\FallbackStorage(
+                \App\Libraries\Storage\S3StorageFactory::make($public),
+                $local
+            );
+        } catch (\RuntimeException $e) {
+            log_message('warning', '[Storage] driver=s3 mas a config está incompleta — operando só com disco local. ' . $e->getMessage());
+
+            return $local;
+        }
+    }
 }

@@ -65,7 +65,8 @@ class ProfileController extends BaseController
             }
 
             if ($docFile && $docFile->isValid() && !$docFile->hasMoved()) {
-                $data[$field] = $this->moveAndOptimizeImage($docFile, 'uploads/verification', 1600, 1600, 80);
+                // Disco privado (fora do webroot); caminho armazenado é relativo a WRITEPATH (ex.: kyc/xxx.jpg).
+                $data[$field] = $this->moveAndOptimizeImage($docFile, 'kyc', 1600, 1600, 80, private: true);
                 $docUploaded = true;
             }
         }
@@ -80,7 +81,8 @@ class ProfileController extends BaseController
                 }
 
                 if ($frame && $frame->isValid() && !$frame->hasMoved()) {
-                    $capturedPaths[] = $this->moveAndOptimizeImage($frame, 'uploads/verification/liveness', 900, 900, 75);
+                    // Frames de biometria também no disco privado (fora do webroot).
+                    $capturedPaths[] = $this->moveAndOptimizeImage($frame, 'kyc/liveness', 900, 900, 75, private: true);
                 }
             }
             if (!empty($capturedPaths)) {
@@ -121,26 +123,32 @@ class ProfileController extends BaseController
         return null;
     }
 
-    private function moveAndOptimizeImage($file, string $relativeDir, int $maxWidth, int $maxHeight, int $quality): string
+    private function moveAndOptimizeImage($file, string $relativeDir, int $maxWidth, int $maxHeight, int $quality, bool $private = false): string
     {
+        // Documentos sensíveis (KYC) vão para o disco PRIVADO (base WRITEPATH,
+        // fora do webroot, sem URL pública por contrato); imagens públicas
+        // (ex.: logo) para o disco público (base FCPATH). Backends trocáveis
+        // em Config\Services sem tocar aqui.
         $newName = $file->getRandomName();
-        $absoluteDir = FCPATH . $relativeDir;
-        $file->move($absoluteDir, $newName);
-
-        $relativePath = $relativeDir . '/' . $newName;
-        $absolutePath = FCPATH . $relativePath;
 
         try {
             $image = \Config\Services::image('gd');
 
-            // Reduz a imagem preservando proporção para aliviar payload e armazenamento.
-            $image->withFile($absolutePath)
+            // Reduz a imagem preservando proporção para aliviar payload e
+            // armazenamento — no arquivo TEMPORÁRIO, antes do put(): com
+            // backend remoto (S3) não existe caminho absoluto final para
+            // pós-processar. O handler GD decide o formato pelo tipo detectado
+            // no load (getimagesize), não pela extensão, então o tmp sem
+            // extensão funciona.
+            $image->withFile($file->getTempName())
                 ->resize($maxWidth, $maxHeight, true, 'auto')
-                ->save($absolutePath, $quality);
+                ->save($file->getTempName(), $quality);
         } catch (Throwable $e) {
             log_message('warning', '[ProfileController] Falha ao otimizar imagem: ' . $e->getMessage());
         }
 
-        return $relativePath;
+        $storage = $private ? service('privateStorage') : service('publicStorage');
+
+        return $storage->put($relativeDir . '/' . $newName, $file->getTempName());
     }
 }

@@ -176,8 +176,8 @@
                     $logoWhite = app_setting('style.logo_footer_url') ?: $logoOriginal;
                 ?>
                 <?php if ($logoOriginal): ?>
-                    <img src="<?= base_url($logoOriginal) ?>" alt="Logo" height="55" class="object-fit-contain logo-light-theme">
-                    <img src="<?= base_url($logoWhite) ?>" alt="Logo" height="55" class="object-fit-contain logo-dark-theme">
+                    <img src="<?= media_url($logoOriginal) ?>" alt="Logo" height="55" class="object-fit-contain logo-light-theme">
+                    <img src="<?= media_url($logoWhite) ?>" alt="Logo" height="55" class="object-fit-contain logo-dark-theme">
                 <?php else: ?>
                     <i class="fa-solid fa-house-chimney-user"></i>
                     <span><?= esc(app_setting('site.name', 'Habitaweb')) ?></span>
@@ -350,7 +350,7 @@
                 <div class="dropdown profile-dropdown">
                     <button class="btn btn-white border-0 d-flex align-items-center gap-2 p-1 pe-3 rounded-pill bg-white shadow-sm" type="button" data-bs-toggle="dropdown">
                         <?php if ($acc && (is_object($acc) ? $acc->logo : ($acc['logo'] ?? null))): ?>
-                            <img src="<?= base_url(is_object($acc) ? $acc->logo : $acc['logo']) ?>" class="rounded-circle object-fit-cover" width="35" height="35">
+                            <img src="<?= media_url(is_object($acc) ? $acc->logo : $acc['logo']) ?>" class="rounded-circle object-fit-cover" width="35" height="35">
                         <?php else: ?>
                             <img src="https://ui-avatars.com/api/?name=<?= urlencode($displayName) ?>&background=6366f1&color=fff" class="rounded-circle" width="35">
                         <?php endif; ?>
@@ -488,7 +488,7 @@
             Swal.fire({
                 icon: 'error',
                 title: 'Ops!',
-                text: '<?= session('error') ?>',
+                text: <?= json_encode((string) session('error')) ?>,
                 confirmButtonColor: '#344767'
             });
         <?php endif; ?>
@@ -497,7 +497,7 @@
             Swal.fire({
                 icon: 'error',
                 title: 'Erros de Validação',
-                html: '<?= implode("<br>", session('errors')) ?>',
+                html: <?= json_encode(implode('<br>', array_map('esc', (array) session('errors')))) ?>,
                 confirmButtonColor: '#344767'
             });
         <?php endif; ?>

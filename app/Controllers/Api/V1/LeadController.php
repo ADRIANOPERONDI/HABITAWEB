@@ -22,7 +22,7 @@ class LeadController extends BaseController
      */
     public function index()
     {
-        $accountId = $this->request->account_id ?? null;
+        $accountId = $this->request->auth_account_id ?? null;
         
         if (!$accountId) {
             return $this->failForbidden('Acesso restrito a contas autenticadas.');
@@ -82,8 +82,8 @@ class LeadController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $lead->account_id_anunciante != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $lead->account_id_anunciante != $accountId) {
             return $this->failForbidden('Acesso negado a este lead.');
         }
 
@@ -142,8 +142,8 @@ class LeadController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $lead->account_id_anunciante != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $lead->account_id_anunciante != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -175,8 +175,8 @@ class LeadController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $lead->account_id_anunciante != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $lead->account_id_anunciante != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 

@@ -19,7 +19,7 @@ class ImportController extends BaseController
      */
     public function properties()
     {
-        $accountId = $this->request->account_id ?? null;
+        $accountId = $this->request->auth_account_id ?? null;
         
         if (!$accountId) {
             return $this->failForbidden('Import requer autenticação com API Key vinculada a uma conta.');

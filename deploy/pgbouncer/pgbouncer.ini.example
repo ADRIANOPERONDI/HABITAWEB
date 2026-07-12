@@ -1,0 +1,48 @@
+; PgBouncer para o Habitaweb — template de produção.
+; Copie para /etc/pgbouncer/pgbouncer.ini e ajuste hosts/credenciais.
+;
+; VERIFICADO (2026-07-11): o modo "transaction" é seguro para esta aplicação —
+; o único ponto que dependia de estado preso à conexão física (advisory lock
+; no limite de plano) foi trocado por SELECT ... FOR UPDATE transacional
+; (PropertyService::trySaveProperty), e o teste de concorrência com duas
+; ativações simultâneas ATRAVÉS do pooler em modo transação confirmou:
+; exatamente uma venceu, a outra foi rejeitada no limite do plano.
+;
+; ⚠️ Se algum dia reintroduzirem pg_advisory_lock/SET/estados de sessão fora
+; de transação, mude pool_mode para "session" (perde eficiência de conexões).
+
+[databases]
+; nome-que-o-app-usa = destino real
+habitaweb = host=10.0.0.30 port=5432 dbname=habitaweb
+
+[pgbouncer]
+listen_addr = 0.0.0.0          ; restrinja por firewall à rede interna
+listen_port = 6432
+
+; Autenticação: use auth_type=scram-sha-256 (mesmo método do Postgres) e
+; gere o userlist com o hash real: SELECT usename, passwd FROM pg_shadow;
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+
+pool_mode = transaction
+
+; Dimensionamento (ver GUIA_ESCALABILIDADE_PRODUCAO.md seção 5):
+; max_client_conn >= N instâncias × pm.max_children (com folga);
+; default_pool_size = conexões REAIS abertas no Postgres por database/usuário —
+; normalmente 2-3× os núcleos do servidor de banco já saturam.
+max_client_conn = 500
+default_pool_size = 25
+reserve_pool_size = 5
+reserve_pool_timeout = 3
+
+; Higiene de conexões
+server_idle_timeout = 600
+server_lifetime = 3600
+query_wait_timeout = 60
+
+logfile = /var/log/pgbouncer/pgbouncer.log
+pidfile = /var/run/pgbouncer/pgbouncer.pid
+
+; Monitoramento: psql -p 6432 -U <admin> pgbouncer -c "SHOW POOLS;"
+admin_users = pgbouncer_admin
+stats_users = pgbouncer_stats

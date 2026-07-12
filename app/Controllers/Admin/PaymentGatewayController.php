@@ -87,6 +87,16 @@ class PaymentGatewayController extends BaseController
             }
         }
 
+        // Auditoria: registra a reconfiguração (apenas nomes dos campos, nunca os valores).
+        audit_log('payment_gateway.updated', [
+            'entity_type' => 'payment_gateway',
+            'entity_id'   => $id,
+            'metadata'    => [
+                'gateway'      => $gateway->code ?? $gateway->name ?? (string) $id,
+                'keys_changed' => array_values(array_diff(array_keys($postData), ['csrf_test_name'])),
+            ],
+        ]);
+
         // Test configuration
         try {
             $className = $gateway->class_name;

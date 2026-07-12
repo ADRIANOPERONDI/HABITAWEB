@@ -84,6 +84,12 @@ class ApiKeysController extends BaseController
         $accountId = (int)$this->request->getPost('account_id');
         $rateLimitPerHour = (int)($this->request->getPost('rate_limit_per_hour') ?? 1000);
 
+        // Teto server-side: um cliente não pode se auto-conceder um limite arbitrário
+        // (o min/max do formulário HTML é apenas client-side). Superadmin não é limitado.
+        if (!$isSuperAdmin) {
+            $rateLimitPerHour = max(100, min($rateLimitPerHour, 5000));
+        }
+
         // Validação: Super Admin pode escolher conta, Cliente usa a própria
         if (!$isSuperAdmin) {
             if (!$user->account_id) {

@@ -7,6 +7,24 @@ use CodeIgniter\RESTful\ResourceController;
 class BaseController extends ResourceController
 {
     /**
+     * Verifica se o usuário autenticado (via API) é superadmin, consultando o
+     * grupo REAL do usuário — em vez do frágil "auth_user_id == 1", que quebra
+     * se o ID 1 não for o superadmin (ex.: após reseed do banco).
+     */
+    protected function isSuperAdmin(): bool
+    {
+        $userId = (int) ($this->request->auth_user_id ?? 0);
+        if ($userId <= 0) {
+            return false;
+        }
+
+        return \Config\Database::connect()->table('auth_groups_users')
+            ->where('user_id', $userId)
+            ->where('group', 'superadmin')
+            ->countAllResults() > 0;
+    }
+
+    /**
      * Helper para respostas de sucesso padronizadas.
      */
     protected function respondSuccess($data = null, string $message = 'Success')

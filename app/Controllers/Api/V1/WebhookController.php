@@ -22,7 +22,7 @@ class WebhookController extends BaseController
      */
     public function index()
     {
-        $accountId = $this->request->account_id ?? null;
+        $accountId = $this->request->auth_account_id ?? null;
         
         if (!$accountId) {
             return $this->failForbidden('Acesso restrito a contas autenticadas.');
@@ -51,8 +51,8 @@ class WebhookController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $webhook->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $webhook->account_id != $accountId) {
             return $this->failForbidden('Acesso negado a este webhook.');
         }
 
@@ -65,7 +65,7 @@ class WebhookController extends BaseController
      */
     public function create()
     {
-        $accountId = $this->request->account_id ?? null;
+        $accountId = $this->request->auth_account_id ?? null;
         
         if (!$accountId) {
             return $this->failForbidden('Webhook requer autenticação com API Key vinculada a uma conta.');
@@ -128,8 +128,8 @@ class WebhookController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $webhook->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $webhook->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -173,8 +173,8 @@ class WebhookController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $webhook->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $webhook->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -202,8 +202,8 @@ class WebhookController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $webhook->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $webhook->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -223,7 +223,8 @@ class WebhookController extends BaseController
                 'target_url' => $webhook->target_url
             ]);
         } catch (\Exception $e) {
-            return $this->respondError('Erro ao enviar teste: ' . $e->getMessage(), 500);
+            log_message('error', '[API Webhook test] ' . $e->getMessage());
+            return $this->respondError('Erro ao enviar o teste do webhook. Verifique a URL de destino e tente novamente.', 500);
         }
     }
 }

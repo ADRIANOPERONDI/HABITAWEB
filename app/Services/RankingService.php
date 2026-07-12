@@ -54,16 +54,39 @@ class RankingService
 
     /**
      * Atualiza o score no banco de dados.
+     *
+     * Debounce de 30s por imóvel: updateScore é chamado a CADA foto enviada
+     * (upload de 20 fotos = 20 recálculos, ~4 queries cada). Na janela do
+     * debounce, o recálculo é adiado para o cron (spark metrics:flush) via
+     * marcador no Redis — o score fica correto ao final do lote com 1 cálculo
+     * imediato + 1 diferido. Se o Redis estiver fora, executa síncrono como
+     * antes (o debounce só é pulado quando dá pra adiar com segurança).
+     *
+     * @param bool $force true = ignora o debounce (usado pelo flusher).
      */
-    public function updateScore(int $propertyId)
+    public function updateScore(int $propertyId, bool $force = false)
     {
+        if (! $force) {
+            $recentKey = "ranking_recent_{$propertyId}";
+
+            if (cache($recentKey) !== null) {
+                // Recalculado há <30s: adia pro flusher — mas só se o marcador
+                // "sujo" puder ser gravado; sem Redis, calcula síncrono.
+                if (service('metricsBuffer')->markRankingDirty($propertyId)) {
+                    return;
+                }
+            } else {
+                cache()->save($recentKey, 1, 30);
+            }
+        }
+
         $propertyModel = model('App\Models\PropertyModel');
         $property = $propertyModel->find($propertyId);
 
         if (!$property) return;
 
         $newScore = $this->calculateScore($property);
-        
+
         $propertyModel->update($propertyId, ['score_qualidade' => $newScore]);
     }
 }

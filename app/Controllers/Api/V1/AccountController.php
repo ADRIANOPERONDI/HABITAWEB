@@ -24,7 +24,7 @@ class AccountController extends BaseController
     public function index()
     {
         $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->request->auth_user_id == 1; 
+        $isSuperAdmin     = $this->isSuperAdmin(); 
         $accountType      = $this->request->auth_account_type;
         
         $filters = $this->request->getGet();
@@ -49,7 +49,7 @@ class AccountController extends BaseController
     public function show($id = null)
     {
         $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->request->auth_user_id == 1;
+        $isSuperAdmin     = $this->isSuperAdmin();
 
         if (!$isSuperAdmin && $id != $currentAccountId) {
             // Verificar se o ID pertence à imobiliária (se for subconta)
@@ -73,7 +73,7 @@ class AccountController extends BaseController
      */
     public function create()
     {
-        $isSuperAdmin     = $this->request->auth_user_id == 1;
+        $isSuperAdmin     = $this->isSuperAdmin();
         $accountType      = $this->request->auth_account_type;
 
         if (!$isSuperAdmin && $accountType !== 'imobiliaria') {
@@ -103,7 +103,7 @@ class AccountController extends BaseController
     public function update($id = null)
     {
         $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->request->auth_user_id == 1;
+        $isSuperAdmin     = $this->isSuperAdmin();
 
         if (!$isSuperAdmin && $id != $currentAccountId) {
             // Verifica se é subconta da imobiliária
@@ -114,10 +114,14 @@ class AccountController extends BaseController
         }
 
         $data = $this->request->getJSON(true);
-        
-        // Impede mudança de tipo por não-admin
+
+        // Lista branca de campos que um não-superadmin pode alterar na própria conta.
+        // NUNCA incluir campos de confiança/status (is_verified, verification_status,
+        // type, parent_account_id, status) — esses só mudam por fluxo interno/admin.
         if (!$isSuperAdmin) {
-            unset($data['type'], $data['parent_account_id']);
+            $allowed = ['nome', 'email', 'telefone', 'whatsapp', 'creci', 'logo',
+                        'whatsapp_hub_config', 'whatsapp_messages_config'];
+            $data = array_intersect_key($data, array_flip($allowed));
         }
 
         $result = $this->accountService->trySaveAccount($data, $id);
@@ -135,7 +139,7 @@ class AccountController extends BaseController
     public function delete($id = null)
     {
         $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->request->auth_user_id == 1;
+        $isSuperAdmin     = $this->isSuperAdmin();
 
         if (!$isSuperAdmin && $id != $currentAccountId) {
             $account = $this->accountService->getAccountById($id);

@@ -31,9 +31,10 @@ $routes->get('imoveis/(:segment)', 'Web\SearchController::searchOne/$1'); // ex:
 $routes->get('imoveis/(:segment)/(:segment)', 'Web\SearchController::searchTwo/$1/$2'); // ex: venda/sao-paulo
 $routes->get('imoveis/(:segment)/(:segment)/(:segment)', 'Web\SearchController::searchThree/$1/$2/$3'); // ex: venda/sao-paulo/centro
 $routes->get('imovel/(:num)', 'Web\PropertyDetailsController::show/$1');
-$routes->post('leads', 'Web\LeadController::store');
-$routes->post('leads/register-event', 'Web\LeadController::registerEvent');
-$routes->post('alertas/criar', 'Web\PropertyAlertController::create');
+// Endpoints públicos com rate limit por IP (anti-spam / anti-enumeração)
+$routes->post('leads', 'Web\LeadController::store', ['filter' => 'api_rate_limit']);
+$routes->post('leads/register-event', 'Web\LeadController::registerEvent', ['filter' => 'api_rate_limit']);
+$routes->post('alertas/criar', 'Web\PropertyAlertController::create', ['filter' => 'api_rate_limit']);
 
 // Checkout Routes
 $routes->group('checkout', function($routes) {
@@ -41,7 +42,8 @@ $routes->group('checkout', function($routes) {
     $routes->get('plan/(:num)', 'Web\CheckoutController::plan/$1');
     $routes->post('process', 'Web\CheckoutController::process');
     $routes->get('success', 'Web\CheckoutController::success');
-    $routes->get('validate-coupon', 'Web\CheckoutController::validateCoupon');
+    // Rate limit para impedir brute force/enumeração de códigos de cupom
+    $routes->get('validate-coupon', 'Web\CheckoutController::validateCoupon', ['filter' => 'api_rate_limit']);
 });
 
 // Webhooks
@@ -62,25 +64,33 @@ $routes->get('privacidade', 'Web\PageController::privacidade');
 // Custom Partner Registration
 
 $routes->get('anuncie', 'Web\RegisterController::index');
-$routes->post('anuncie', 'Web\RegisterController::process');
-$routes->get('register/check-email', 'Web\RegisterController::checkEmail'); // AJAX Check
+$routes->post('anuncie', 'Web\RegisterController::process', ['filter' => 'api_rate_limit']);
+$routes->get('register/check-email', 'Web\RegisterController::checkEmail', ['filter' => 'api_rate_limit']); // AJAX Check (rate limited: anti-enumeração de e-mail)
 
 
 $routes->group('', ['filter' => 'session'], function($routes) {
     $routes->get('meus-favoritos', 'Web\MyFavoritesController::index');
 });
 
+// Toggle de favorito a partir da página pública do imóvel (visitante logado via
+// sessão, não API key/token) — reaproveita a mesma lógica/model de
+// Api\V1\FavoriteController::toggle, só que fora do grupo 'api_auth' (que exige
+// Authorization: Bearer, algo que um visitante comum do site não tem). Protegido
+// por CSRF normal (fora de api/*, não está na lista de exceção) + a própria
+// checagem auth()->loggedIn() dentro do controller.
+$routes->post('favoritos/toggle', '\App\Controllers\Api\V1\FavoriteController::toggle');
+
 // DISABLE Shield default routes (we use custom admin routes)
 // service('auth')->routes($routes);
 
 // Enable both humanized and legacy routes for Email Activation
 $routes->get('ativacao/codigo',    '\App\Controllers\Auth\ActivationController::show',   ['as' => 'auth-action-show']);
-$routes->post('ativacao/verificar', '\App\Controllers\Auth\ActivationController::verify', ['as' => 'auth-action-verify']);
-$routes->post('ativacao/reenviar',  '\App\Controllers\Auth\ActivationController::resend', ['as' => 'auth-action-resend']);
+$routes->post('ativacao/verificar', '\App\Controllers\Auth\ActivationController::verify', ['as' => 'auth-action-verify', 'filter' => 'auth-rates']);
+$routes->post('ativacao/reenviar',  '\App\Controllers\Auth\ActivationController::resend', ['as' => 'auth-action-resend', 'filter' => 'auth-rates']);
 
 // Legacy Shield routes (fallback to avoid 404)
 $routes->get('auth/a/show',       '\App\Controllers\Auth\ActivationController::show');
-$routes->post('auth/a/verify',     '\App\Controllers\Auth\ActivationController::verify');
+$routes->post('auth/a/verify',     '\App\Controllers\Auth\ActivationController::verify', ['filter' => 'auth-rates']);
 $routes->post('auth/a/resend',     '\App\Controllers\Auth\ActivationController::resend');
 
 // FORCE redirect from /login to /admin/login
@@ -134,20 +144,24 @@ $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api\\V1'], function(
 
 $routes->get('api/docs', 'Api\DocsController::index');
 $routes->get('api/docs/json', 'Api\DocsController::json');
-$routes->get('api/test-suite', 'Api\DocsController::testSuite');
+// ATENÇÃO: a rota 'api/test-suite' foi REMOVIDA por segurança — ela gerava uma API key
+// válida e permanente para a primeira conta do banco, sem autenticação. Não reabrir.
 
 // Rotas de Login Administrativo Redirecionado
 $routes->get('admin/login', '\App\Controllers\Admin\Auth\LoginController::loginView');
-$routes->post('admin/login', '\App\Controllers\Admin\Auth\LoginController::loginAction');
+$routes->post('admin/login', '\App\Controllers\Admin\Auth\LoginController::loginAction', ['filter' => 'auth-rates']);
 $routes->get('admin/logout', '\App\Controllers\Admin\Auth\LoginController::logoutAction');
 
 // Magic Link (Esqueci Senha)
 $routes->group('login/magic-link', ['namespace' => 'CodeIgniter\Shield\Controllers'], function($routes) {
     $routes->get('/', 'MagicLinkController::loginView', ['as' => 'magic-link']);
-    $routes->post('/', 'MagicLinkController::loginAction');
+    $routes->post('/', 'MagicLinkController::loginAction', ['filter' => 'auth-rates']);
     $routes->get('callback', 'MagicLinkController::loginCallback', ['as' => 'verify-magic-link']);
     $routes->get('message', 'MagicLinkController::feedback', ['as' => 'magic-link-message']);
 });
+
+// Serve documentos de KYC (fora do webroot) apenas a dono/revisor autenticado
+$routes->get('admin/kyc-file/(:num)/(:segment)', '\App\Controllers\KycFileController::show/$1/$2', ['filter' => 'admin_auth']);
 
 // Redireciona /admin se não estiver logado (via admin_auth)
 $routes->get('admin', '\App\Controllers\Admin\DashboardController::index', ['filter' => 'admin_auth']);
@@ -275,11 +289,11 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('notifications/mark-read/(:num)', 'NotificationController::markAsRead/$1');
     $routes->post('notifications/mark-all-read', 'NotificationController::markAllAsRead');
 
-    // Financial Dashboard
-    $routes->get('financeiro', 'FinancialDashboardController::index');
+    // Financial Dashboard (dados financeiros de TODA a plataforma — restrito à equipe interna)
+    $routes->get('financeiro', 'FinancialDashboardController::index', ['filter' => 'group:superadmin,admin']);
 
-    // Payment Gateways Management
-    $routes->group('payment-gateways', function($routes) {
+    // Payment Gateways Management (configuração global de gateways — apenas superadmin)
+    $routes->group('payment-gateways', ['filter' => 'group:superadmin'], function($routes) {
         $routes->get('/', 'PaymentGatewayController::index');
         $routes->get('sync', 'PaymentGatewayController::sync');
         $routes->get('configure/(:num)', 'PaymentGatewayController::configure/$1');
@@ -288,8 +302,10 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
         $routes->post('set-primary/(:num)', 'PaymentGatewayController::setPrimary/$1');
     });
 
-    // Coupons
-    $routes->resource('coupons', ['controller' => 'CouponController']);
+    // Coupons (mantida a rota resource legada, mas agora protegida pelo mesmo grupo
+    // das rotas de CouponsController — antes esta rota herdava só admin_auth e permitia
+    // que qualquer usuário do painel criasse/alterasse cupons via PUT/POST).
+    $routes->resource('coupons', ['controller' => 'CouponController', 'filter' => 'group:superadmin,admin']);
 
     // Promotion Packages (CRUD)
     $routes->group('packages', function($routes) {

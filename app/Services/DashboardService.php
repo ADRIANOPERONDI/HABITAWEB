@@ -28,8 +28,34 @@ class DashboardService
 
     /**
      * Coleta todos os dados necessários para o dashboard.
+     *
+     * Cacheado por 60s por combinação conta/corretor/filtros: são ~15 queries
+     * por render (métricas, gráficos, comparativos) — staleness de 1 minuto é
+     * imperceptível num painel de métricas, e elimina o custo em recarregações
+     * e navegação de ida-e-volta.
      */
     public function getDashboardData(int $accountId, array $filters = [], ?int $brokerId = null, bool $isSuperAdmin = false): array
+    {
+        $cacheKey = sprintf(
+            'dashboard_%d_%s_%d_%s',
+            $accountId,
+            $brokerId ?? 'all',
+            (int) $isSuperAdmin,
+            md5(json_encode($filters))
+        );
+
+        $cached = cache($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $data = $this->buildDashboardData($accountId, $filters, $brokerId, $isSuperAdmin);
+        cache()->save($cacheKey, $data, 60);
+
+        return $data;
+    }
+
+    private function buildDashboardData(int $accountId, array $filters, ?int $brokerId, bool $isSuperAdmin): array
     {
         // 1. Dados da Conta e Plano
         $account = $this->accountModel->find($accountId);

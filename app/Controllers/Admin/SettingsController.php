@@ -49,10 +49,13 @@ class SettingsController extends BaseController
         $service = new \App\Services\NotificationService();
         $to = $this->request->getPost('email') ?? $user->email;
         
+        // immediate: o teste de SMTP precisa do resultado REAL da conexão —
+        // enfileirar aqui devolveria "sucesso" sem ter testado nada.
         $success = $service->sendEmail(
-            $to, 
+            $to,
             "Teste de Configuração SMTP - " . app_setting('site.name'),
-            "<h3>Sucesso!</h3><p>Se você está lendo isso, sua configuração de SMTP no portal está funcionando corretamente.</p>"
+            "<h3>Sucesso!</h3><p>Se você está lendo isso, sua configuração de SMTP no portal está funcionando corretamente.</p>",
+            immediate: true
         );
 
         if ($success) {
@@ -198,12 +201,13 @@ class SettingsController extends BaseController
                 $realDbKey = $keyMap[$postedKey];
                 
                 if ($file->isValid() && !$file->hasMoved()) {
-                    // Upload
+                    // Upload via storage abstrato (disco público)
                     $newName = $file->getRandomName();
-                    $folder = 'uploads/settings';
-                    $file->move(FCPATH . $folder, $newName);
-                    $relativePath = $folder . '/' . $newName;
-                    
+                    $relativePath = service('publicStorage')->put(
+                        'uploads/settings/' . $newName,
+                        $file->getTempName()
+                    );
+
                     $model->update($realDbKey, ['value' => $relativePath]);
                     $updatedCount++;
                 }

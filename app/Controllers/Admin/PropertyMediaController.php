@@ -58,17 +58,21 @@ class PropertyMediaController extends BaseController
 
         // Gera nome único
         $newName = $file->getRandomName();
-        
-        // Move para public/uploads/properties
-        // Nota: Em produção usaríamos writable e serviríamos via controller ou symlink/CDN.
-        // Para simplificar agora: public path.
-        $path = FCPATH . 'uploads/properties/';
-        
-        $file->move($path, $newName);
+        $targetPath = 'uploads/properties/' . $newName;
 
-        // SECURITY: Remove EXIF metadata to prevent privacy leaks (GPS, camera info, ISO, timestamps)
-        $fullPath = $path . $newName;
-        $this->removeExifData($fullPath);
+        // SECURITY: Remove EXIF metadata to prevent privacy leaks (GPS, camera info, ISO, timestamps).
+        // No arquivo temporário, ANTES de entregar ao storage — com backend
+        // remoto (S3) não existe caminho absoluto final para pós-processar.
+        $this->removeExifData($file->getTempName());
+
+        // Variantes (thumbnails card/gallery) antes do put() — o put() consome
+        // o arquivo temporário de origem.
+        (new \App\Libraries\Media\ImageVariantGenerator())->generate($file->getTempName(), $targetPath);
+
+        // Grava via storage abstrato (disco público) — troca de backend
+        // (S3/NFS) acontece só em Config\Services, não aqui.
+        $storage = service('publicStorage');
+        $relativePath = $storage->put($targetPath, $file->getTempName());
 
         // Instancia o Model
         $mediaModel = model('App\Models\PropertyMediaModel');
@@ -80,7 +84,7 @@ class PropertyMediaController extends BaseController
 
         $mediaId = $mediaModel->insert([
             'property_id' => $propertyId,
-            'url'         => 'uploads/properties/' . $newName,
+            'url'         => $relativePath,
             'tipo'        => 'IMAGE',
             'ordem'       => 0, // TODO: Implementar ordenação
             'principal'   => ! $hasMain, // Primeira imagem vira principal
@@ -103,7 +107,7 @@ class PropertyMediaController extends BaseController
         return $this->response->setJSON([
             'success' => true,
             'id' => $mediaId,
-            'url' => base_url('uploads/properties/' . $newName),
+            'url' => $storage->getPublicUrl($relativePath),
             'is_main' => $isMainReally
         ]);
     }
@@ -114,11 +118,9 @@ class PropertyMediaController extends BaseController
         $media = $mediaModel->find($id);
 
         if ($media) {
-            // Remove arquivo físico
-            $filePath = FCPATH . $media->url; // CORRIGIDO: era media_url, correto é url
-            if (file_exists($filePath)) {
-                unlink($filePath);
-            }
+            // Remove arquivo físico via storage abstrato (original + variantes)
+            service('publicStorage')->delete($media->url);
+            (new \App\Libraries\Media\ImageVariantGenerator())->deleteVariants($media->url);
             // Remove do banco
             $propertyId = $media->property_id;
             $mediaModel->delete($id);

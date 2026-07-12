@@ -299,14 +299,15 @@ class PaymentService
         }
 
         $subId = $subscriptionData['subscription_id'];
-        
+
         // FIX: Asaas creates PIX and Boleto subscriptions as ACTIVE immediately.
         // We must override this locally to PENDING to ensure the first invoice is paid.
         if (in_array($billingType, ['PIX', 'BOLETO'])) {
-            $status = 'PENDING';
+            $fallbackStatus = 'PENDING';
         } else {
-            $status = strtoupper($subscriptionData['status'] ?? 'ACTIVE');
+            $fallbackStatus = strtoupper($subscriptionData['status'] ?? 'ACTIVE');
         }
+        $status = $this->determineInitialSubscriptionStatus($finalGraceDays, $fallbackStatus);
         
         $subscriptionFields = [
             'account_id' => $accountId,
@@ -389,7 +390,22 @@ class PaymentService
             'local_id' => $localSubId
         ];
     }
-    
+
+    /**
+     * Decide o status inicial da assinatura local na contratação.
+     *
+     * Planos com carência (graceDays > 0, de plans.carencia_dias) liberam acesso
+     * imediato: a primeira fatura só vence ao fim da carência (due_date já
+     * calculado com esse mesmo graceDays), e o bloqueio por inadimplência
+     * (PaymentTransactionModel::isAccountBlockedByOverdue) assume sozinho se ela
+     * vencer sem pagamento. Sem carência, usa o status padrão de cada fluxo
+     * (ex.: PENDING para PIX/Boleto/tokenização, até o webhook confirmar).
+     */
+    public function determineInitialSubscriptionStatus(int $graceDays, string $fallbackStatus): string
+    {
+        return $graceDays > 0 ? 'ACTIVE' : $fallbackStatus;
+    }
+
     /**
      * Get active gateway name (for UI)
      */
@@ -428,6 +444,25 @@ class PaymentService
             ];
         }
 
+        // Reivindica atomicamente o direito de criar a assinatura recorrente. Duas
+        // entregas concorrentes do webhook não podem ambas passar daqui: só quem
+        // conseguir marcar a linha (asaas_subscription_id ainda vazio) prossegue para
+        // criar a assinatura no Asaas — evita cobrança duplicada no cartão.
+        $subDb = \Config\Database::connect();
+        $subDb->query(
+            "UPDATE subscriptions SET asaas_subscription_id = ?
+             WHERE id = ? AND (asaas_subscription_id IS NULL OR asaas_subscription_id = '')",
+            ['PENDING_CREATION', $subscriptionId]
+        );
+        if ($subDb->affectedRows() < 1) {
+            // Outra entrega já reivindicou/criou. Re-lê e retorna sem chamar o gateway.
+            $fresh = $this->subscriptionModel->find($subscriptionId);
+            return [
+                'subscription_id' => $fresh->asaas_subscription_id ?? null,
+                'already_exists' => true,
+            ];
+        }
+
         $planModel = model('App\Models\PlanModel');
         $plan = $planModel->find($subscription->plan_id);
 
@@ -456,11 +491,21 @@ class PaymentService
             'creditCardToken' => $creditCardToken,
         ];
 
-        $nativeSubscription = $this->activeGateway->createSubscription($customerId, (string) $subscription->plan_id, $subscriptionData);
-        $asaasSubscriptionId = $nativeSubscription['subscription_id'] ?? null;
+        try {
+            $nativeSubscription = $this->activeGateway->createSubscription($customerId, (string) $subscription->plan_id, $subscriptionData);
+            $asaasSubscriptionId = $nativeSubscription['subscription_id'] ?? null;
 
-        if (!$asaasSubscriptionId) {
-            throw new \Exception('Asaas nao retornou ID da assinatura recorrente de cartao.');
+            if (!$asaasSubscriptionId) {
+                throw new \Exception('Asaas nao retornou ID da assinatura recorrente de cartao.');
+            }
+        } catch (\Throwable $e) {
+            // Falhou ao criar no gateway: libera a reivindicação para permitir retry futuro
+            // (senão a linha ficaria presa em 'PENDING_CREATION' e bloquearia novas tentativas).
+            $subDb->query(
+                "UPDATE subscriptions SET asaas_subscription_id = NULL WHERE id = ? AND asaas_subscription_id = ?",
+                [$subscriptionId, 'PENDING_CREATION']
+            );
+            throw $e;
         }
 
         $nextBillingDate = $nativeSubscription['next_billing_date'] ?? $nextDueDate;
@@ -1068,11 +1113,12 @@ class PaymentService
             throw new \Exception("Erro no gateway: " . $e->getMessage());
         }
 
-        // 4. Create PENDING Subscription (Waiting for Payment)
+        // 4. Create Subscription. Sem carência, fica PENDING até o webhook confirmar
+        // o primeiro pagamento (ver determineInitialSubscriptionStatus).
         $subscription = [
             'account_id' => $accountId,
             'plan_id' => $planId,
-            'status' => 'PENDING', // Will activate on Webhook
+            'status' => $this->determineInitialSubscriptionStatus($finalGraceDays, 'PENDING'),
             'data_inicio' => date('Y-m-d'),
             'data_fim' => date('Y-m-d', strtotime("+$monthsToAdd months")),
             'valor' => $finalAmount,

@@ -33,7 +33,7 @@ class SearchController extends BaseController
         // Ex: /imoveis/venda/sao-paulo
         $filters = $this->getFiltersFromRequest();
         $filters['tipo_negocio'] = $this->mapTransactionType($segment1);
-        $filters['cidade']       = $this->unslugify($segment2);
+        $filters['cidade']       = $this->resolveLocation($segment2, 'cidade');
 
         return $this->executeSearch($filters);
     }
@@ -43,10 +43,25 @@ class SearchController extends BaseController
         // Ex: /imoveis/venda/sao-paulo/centro
         $filters = $this->getFiltersFromRequest();
         $filters['tipo_negocio'] = $this->mapTransactionType($segment1);
-        $filters['cidade']       = $this->unslugify($segment2);
-        $filters['bairro']       = $this->unslugify($segment3);
+        $filters['cidade']       = $this->resolveLocation($segment2, 'cidade');
+        $filters['bairro']       = $this->resolveLocation($segment3, 'bairro');
 
         return $this->executeSearch($filters);
+    }
+
+    /**
+     * Slug de URL SEO -> nome exato do banco ("sao-paulo" -> "São Paulo"),
+     * via PropertyService::resolveLocationName. Corrige dois bugs de uma vez:
+     * o filtro (o LIKE anterior era sensível a acento e nunca casava) e a
+     * pré-seleção do <select> na view (que compara com o valor exato).
+     * Sem resolução (cidade desconhecida), mantém o unslugify antigo — o
+     * match por LOWER() no service ainda dá uma chance ao valor cru.
+     */
+    private function resolveLocation(string $segment, string $field): string
+    {
+        $raw = $this->unslugify($segment);
+
+        return service('propertyService')->resolveLocationName($raw, $field) ?? $raw;
     }
 
     private function executeSearch(array $filters)

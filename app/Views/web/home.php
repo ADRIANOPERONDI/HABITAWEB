@@ -92,9 +92,9 @@
                              </div>
                             
                             <?php if($property->cover_image): ?>
-                                <img src="<?= (strpos($property->cover_image, 'http') === 0 ? $property->cover_image : base_url($property->cover_image)) ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
+                                <img src="<?= media_variant_url($property->cover_image, 'card') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" loading="lazy" decoding="async" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
                             <?php else: ?>
-                                <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto">
+                                <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto" loading="lazy" decoding="async">
                             <?php endif; ?>
                         </div>
                         <div class="card-body p-3 d-flex flex-column flex-grow-1 bg-white">
@@ -172,9 +172,9 @@
                                      </div>
                                     
                                     <?php if($property->cover_image): ?>
-                                        <img src="<?= (strpos($property->cover_image, 'http') === 0 ? $property->cover_image : base_url($property->cover_image)) ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
+                                        <img src="<?= media_variant_url($property->cover_image, 'card') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" loading="lazy" decoding="async" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
                                     <?php else: ?>
-                                        <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto">
+                                        <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto" loading="lazy" decoding="async">
                                     <?php endif; ?>
                                 </div>
                                 <div class="card-body p-3 d-flex flex-column flex-grow-1">
@@ -237,7 +237,7 @@
                                     <i class="fa-solid fa-circle-check fs-6"></i>
                                 </div>
                             <?php endif; ?>
-                            <img src="<?= base_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2">
+                            <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
                             <div class="small fw-bold text-dark text-truncate d-block"><?= esc($partner->nome) ?></div>
                             <span class="xsmall text-muted text-uppercase" style="font-size: 10px;"><?= esc($partner->tipo_conta) ?></span>
                         </div>

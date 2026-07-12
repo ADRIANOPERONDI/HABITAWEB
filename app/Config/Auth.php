@@ -274,7 +274,10 @@ class Auth extends ShieldAuth
         CompositionValidator::class,
         NothingPersonalValidator::class,
         DictionaryValidator::class,
-        // PwnedValidator::class,
+        // Verifica se a senha aparece em vazamentos conhecidos (HaveIBeenPwned, via k-anonymity).
+        // ATENÇÃO: exige acesso de saída (HTTPS) do servidor para api.pwnedpasswords.com;
+        // sem egress, a validação de senha falha. Validar em homologação antes do deploy.
+        PwnedValidator::class,
     ];
 
     /**

@@ -19,6 +19,10 @@ class PropertyDetailsController extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound("Imóvel não encontrado: $id");
         }
 
+        // isFavorited já vem de getPropertyDetails() (mesma checagem, mesmo
+        // auth()->id()) — o bloco duplicado que existia aqui fazia uma segunda
+        // query idêntica por page view de usuário logado.
+
         return view('web/property_details', $data);
     }
 }

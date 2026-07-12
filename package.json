@@ -1,0 +1,14 @@
+{
+  "name": "habitaweb-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "E2E de frontend (Playwright) do Habitaweb — não é o app PHP, só o tooling de teste de navegador.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

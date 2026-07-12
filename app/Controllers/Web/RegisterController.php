@@ -56,8 +56,13 @@ class RegisterController extends BaseController
 
             return redirect()->to(url_to('auth-action-show'))->with('message', lang('App.register_success'));
 
-        } catch (\Exception $e) {
-            return redirect()->back()->withInput()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            // \Throwable (não só \Exception): AccountService::registerUser() agora
+            // relança qualquer \Throwable após rollback (ver comentário lá) — um
+            // catch(\Exception) aqui deixaria um \Error escapar como 500 cru de
+            // novo, mesmo com a transação já revertida corretamente do lado do service.
+            log_message('error', '[RegisterController] Falha no cadastro: ' . $e->getMessage());
+            return redirect()->back()->withInput()->with('error', 'Não foi possível concluir o cadastro. Tente novamente em instantes.');
         }
     }
 

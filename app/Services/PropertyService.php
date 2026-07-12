@@ -91,9 +91,30 @@ class PropertyService
             log_message('emergency', '[PropertyService] Entity attributes after fill - Meta Title: ' . ($property->meta_title ?? 'NULL'));
 
             // 4. PLAN LIMITS
-            if ($property->status === 'ACTIVE') {
+            // Trava por linha (accounts.id) dentro de uma transação explícita para o
+            // limite de plano valer sob concorrência - substituiu um advisory lock do
+            // Postgres (pg_advisory_lock), que é preso à CONEXÃO FÍSICA, não à
+            // transação: sob connection pooling em modo "transação" (ex.: PgBouncer),
+            // o lock, a checagem de limite e o save poderiam rodar em conexões físicas
+            // diferentes, e o lock pararia de proteger qualquer coisa - silenciosamente,
+            // só sob concorrência real. SELECT ... FOR UPDATE dentro de
+            // transStart()/transComplete() é correto sob qualquer modo de pooling
+            // porque o tempo de vida do lock é o da transação, não o da conexão.
+            $planDb = \Config\Database::connect();
+            $planLockActive = false;
+
+            if ($property->status === 'ACTIVE' && !$isStaff) {
+                if ($planDb->DBDriver === 'Postgre') {
+                    $planDb->transStart();
+                    $planDb->query('SELECT id FROM accounts WHERE id = ? FOR UPDATE', [(int) $property->account_id]);
+                    $planLockActive = true;
+                }
+
                 $limitCheck = $this->checkPlanLimits((int)$property->account_id, $id, $isStaff);
                 if (!$limitCheck['allowed']) {
+                    if ($planLockActive) {
+                        $planDb->transRollback();
+                    }
                     return [
                         'success' => false,
                         'data'    => $property,
@@ -122,6 +143,9 @@ class PropertyService
 
             // 6. SAVE
             if (!$this->propertyModel->save($property)) {
+                if ($planLockActive) {
+                    $planDb->transRollback();
+                }
                 log_message('emergency', '[PropertyService] SAVE ERROR: ' . json_encode($this->propertyModel->errors()));
                 return [
                     'success' => false,
@@ -129,6 +153,12 @@ class PropertyService
                     'errors'  => $this->propertyModel->errors(),
                     'message' => 'Falha na persistência dos dados.',
                 ];
+            }
+
+            // Persistido dentro da mesma transação da checagem de limite: agora sim
+            // pode liberar a trava, via commit (a contagem do limite já reflete este imóvel).
+            if ($planLockActive) {
+                $planDb->transComplete();
             }
 
             $savedId = $id ?? $this->propertyModel->getInsertID();
@@ -161,6 +191,9 @@ class PropertyService
             ];
 
         } catch (\Exception $e) {
+            if (!empty($planLockActive)) {
+                $planDb->transRollback();
+            }
             log_message('emergency', '[PropertyService] EXCEPTION: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return [
                 'success' => false,
@@ -341,9 +374,14 @@ class PropertyService
     }
 
     /**
-     * Retorna imóveis que possuem destaque ou turbo ativos (Patrocinados).
+     * Retorna o POOL de imóveis patrocinados (destaque ou turbo ativos),
+     * ordenado por recência — substitui o antigo getSponsoredProperties com
+     * ORDER BY RANDOM(): RANDOM() força ordenação completa a cada requisição
+     * e é incacheável. O chamador (Home) cacheia este pool e faz o sorteio
+     * (shuffle) em PHP a cada requisição, preservando a rotação visual sem
+     * custo de query.
      */
-    public function getSponsoredProperties(int $limit = 4): array
+    public function getSponsoredPool(int $poolSize = 12): array
     {
         $builder = $this->propertyModel->builder();
         $builder->select('properties.*, accounts.is_verified as account_verified')
@@ -355,9 +393,9 @@ class PropertyService
                 ->groupEnd()
                 ->groupBy('properties.id')
                 ->groupBy('accounts.is_verified')
-                ->orderBy('RANDOM()');
-                
-        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class);
+                ->orderBy('properties.created_at', 'DESC');
+
+        $properties = $builder->get($poolSize)->getResult(\App\Entities\Property::class);
 
         if (empty($properties)) {
             return [];
@@ -404,8 +442,8 @@ class PropertyService
         // Esconder propriedades de contas com faturas atrasadas há mais de 3 dias (apenas em produção para evitar que dados sumam localmente)
         if (defined('ENVIRONMENT') && ENVIRONMENT === 'production') {
             $txModel = model('App\Models\PaymentTransactionModel');
-            $blockedAccountIds = $txModel->getOverdueAccountIds(3);
-            
+            $blockedAccountIds = $txModel->getOverdueAccountIdsCached(3);
+
             if (!empty($blockedAccountIds)) {
                 $builder->whereNotIn('properties.account_id', $blockedAccountIds);
             }
@@ -461,14 +499,14 @@ class PropertyService
             }
         }
         
-        if (!empty($filters['cidade'])) {
-            $builder->like('properties.cidade', $filters['cidade'], 'both'); 
-        }
+        // Cidade/bairro: match EXATO indexável em vez do LIKE '%..%' anterior —
+        // que além de forçar seq scan era sensível a caso/acento (slug de URL
+        // SEO nunca casava com "São Paulo"). resolveLocationName normaliza
+        // slug/sem-acento para o nome exato do banco; sem resolução, cai no
+        // LOWER() = (coberto pelo índice funcional idx_properties_status_lower_city_neighborhood).
+        $this->applyLocationFilter($builder, $filters, 'cidade');
+        $this->applyLocationFilter($builder, $filters, 'bairro');
 
-        if (!empty($filters['bairro'])) {
-            $builder->like('properties.bairro', $filters['bairro'], 'both');
-        }
-        
         if (isset($filters['min_price'])) {
             $builder->where('properties.preco >=', $filters['min_price']);
         }
@@ -613,7 +651,7 @@ class PropertyService
 
         if (defined('ENVIRONMENT') && ENVIRONMENT === 'production') {
             $txModel = model('App\Models\PaymentTransactionModel');
-            $blockedAccountIds = $txModel->getOverdueAccountIds(3);
+            $blockedAccountIds = $txModel->getOverdueAccountIdsCached(3);
 
             if (!empty($blockedAccountIds)) {
                 $builder->whereNotIn('properties.account_id', $blockedAccountIds);
@@ -650,13 +688,10 @@ class PropertyService
             }
         }
 
-        if (!empty($filters['cidade'])) {
-            $builder->like('properties.cidade', $filters['cidade'], 'both');
-        }
-
-        if (!empty($filters['bairro'])) {
-            $builder->like('properties.bairro', $filters['bairro'], 'both');
-        }
+        // Mesmo racional do listProperties: match exato indexável (ver
+        // resolveLocationName) em vez de LIKE sensível a caso/acento.
+        $this->applyLocationFilter($builder, $filters, 'cidade');
+        $this->applyLocationFilter($builder, $filters, 'bairro');
 
         if (isset($filters['min_price']) && $filters['min_price'] !== '') {
             $builder->where('properties.preco >=', (float) $filters['min_price']);
@@ -764,9 +799,19 @@ class PropertyService
 
     /**
      * Incrementa o contador de visitas de um imóvel.
+     *
+     * Bufferizado em Redis (flush por cron: spark metrics:flush) — sem o
+     * buffer, cada page view de detalhe fazia um UPDATE na linha do imóvel,
+     * serializando visitas concorrentes do mesmo anúncio e gerando dead
+     * tuples/churn de índice numa tabela intensamente lida. Redis fora do ar
+     * => cai no UPDATE direto (comportamento antigo), nunca perde a visita.
      */
     public function incrementVisit(int $id): void
     {
+        if (service('metricsBuffer')->bufferVisit($id)) {
+            return;
+        }
+
         $this->propertyModel->where('id', $id)
                             ->set('visitas_count', 'visitas_count + 1', false)
                             ->update();
@@ -947,11 +992,80 @@ class PropertyService
      */
     public function getSearchFilterOptions(): array
     {
+        // Instâncias LIMPAS do model, não $this->propertyModel: este método é
+        // chamado por resolveLocationName() no MEIO da montagem do builder de
+        // listProperties — reusar o model compartilhado misturaria o estado do
+        // builder em andamento com estas queries de distinct, corrompendo ambas.
         return [
-            'cidades' => $this->propertyModel->distinct()->select('cidade')->where('status', 'ACTIVE')->orderBy('cidade', 'ASC')->findAll(),
-            'bairros' => $this->propertyModel->distinct()->select('bairro')->where('status', 'ACTIVE')->orderBy('bairro', 'ASC')->findAll(),
-            'tipos'   => $this->propertyModel->distinct()->select('tipo_imovel')->where('status', 'ACTIVE')->orderBy('tipo_imovel', 'ASC')->findAll(),
+            'cidades' => (new PropertyModel())->distinct()->select('cidade')->where('status', 'ACTIVE')->orderBy('cidade', 'ASC')->findAll(),
+            'bairros' => (new PropertyModel())->distinct()->select('bairro')->where('status', 'ACTIVE')->orderBy('bairro', 'ASC')->findAll(),
+            'tipos'   => (new PropertyModel())->distinct()->select('tipo_imovel')->where('status', 'ACTIVE')->orderBy('tipo_imovel', 'ASC')->findAll(),
         ];
+    }
+
+    /**
+     * Aplica o filtro de cidade/bairro num builder: resolve para o nome exato
+     * (usa o índice composto existente) ou, sem resolução, compara por
+     * LOWER() = (índice funcional). Compartilhado por listProperties e
+     * buildPublicMapSearchQuery.
+     */
+    private function applyLocationFilter($builder, array $filters, string $field): void
+    {
+        if (empty($filters[$field])) {
+            return;
+        }
+
+        $input    = (string) $filters[$field];
+        $resolved = $this->resolveLocationName($input, $field);
+
+        if ($resolved !== null) {
+            $builder->where("properties.{$field}", $resolved);
+        } else {
+            $builder->where("LOWER(properties.{$field})", mb_strtolower(trim($input)));
+        }
+    }
+
+    /**
+     * Resolve uma entrada de cidade/bairro (slug de URL SEO tipo "sao-paulo",
+     * ou texto digitado sem acento) para o nome EXATO como está no banco
+     * ("São Paulo"), comparando as formas transliteradas/minúsculas de ambos
+     * os lados via mb_url_title (que remove acentos).
+     *
+     * Isso corrige um bug real: o LIKE anterior era sensível a caso/acento no
+     * Postgres, então /imoveis/venda/sao-paulo simplesmente NÃO filtrava nada
+     * de "São Paulo". De quebra, o match exato usa o índice composto
+     * (status, cidade, bairro) em vez de seq scan com '%...%'.
+     *
+     * Usa a mesma lista distinct cacheada por 1h do executeSearch
+     * (search_filter_options). Retorna null se não encontrar.
+     *
+     * @param string $field 'cidade' ou 'bairro'
+     */
+    public function resolveLocationName(string $input, string $field): ?string
+    {
+        if (! in_array($field, ['cidade', 'bairro'], true)) {
+            return null;
+        }
+
+        helper('url'); // mb_url_title (translitera acentos) vive no URL helper
+
+        $options = cache('search_filter_options');
+        if ($options === null) {
+            $options = $this->getSearchFilterOptions();
+            cache()->save('search_filter_options', $options, 3600);
+        }
+
+        $needle = mb_url_title(mb_strtolower(trim($input)), '-');
+        $list   = $field === 'cidade' ? ($options['cidades'] ?? []) : ($options['bairros'] ?? []);
+
+        foreach ($list as $row) {
+            $value = $row->{$field} ?? null;
+            if ($value !== null && mb_url_title(mb_strtolower($value), '-') === $needle) {
+                return $value;
+            }
+        }
+
+        return null;
     }
     /**
      * Define se o imóvel é um Destaque do Plano.
@@ -995,22 +1109,60 @@ class PropertyService
             return ['success' => false, 'message' => 'Arquivo inválido ou já movido.'];
         }
 
-        // 3. Move File
-        try {
-            // Generate random name
-            $newName = $file->getRandomName();
-            
-            // Directory: public/uploads/properties/{id}/
-            $path = 'uploads/properties/' . $propertyId;
-            
-            // Ensure directory exists
-            if (!is_dir(FCPATH . $path)) {
-                mkdir(FCPATH . $path, 0755, true);
-            }
+        // 2b. Validação REAL de conteúdo — impede upload de scripts disfarçados de imagem.
+        //     (Espelha as checagens já usadas no upload do painel admin.)
+        $maxBytes = 5 * 1024 * 1024; // 5 MB
+        if ($file->getSize() > $maxBytes) {
+            return ['success' => false, 'message' => 'Arquivo excede o tamanho máximo de 5 MB.'];
+        }
 
-            $file->move(FCPATH . $path, $newName);
-            
-            $publicUrl = $path . '/' . $newName;
+        // MIME real lido do conteúdo do arquivo, nunca do header enviado pelo cliente.
+        $realMime = null;
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $realMime = finfo_file($finfo, $file->getTempName());
+            finfo_close($finfo);
+        } else {
+            $realMime = $file->getMimeType();
+        }
+
+        // Mapa de MIME permitido -> extensão segura forçada no nome do arquivo salvo.
+        $mimeToExt = [
+            'image/jpeg' => 'jpg',
+            'image/png'  => 'png',
+            'image/webp' => 'webp',
+        ];
+        if (!isset($mimeToExt[$realMime])) {
+            return ['success' => false, 'message' => 'Tipo de arquivo não permitido. Envie apenas imagens JPG, PNG ou WebP.'];
+        }
+
+        // Confirma que é uma imagem realmente decodificável, com dimensões sãs.
+        $dimensions = @getimagesize($file->getTempName());
+        if ($dimensions === false) {
+            return ['success' => false, 'message' => 'O arquivo enviado não é uma imagem válida.'];
+        }
+        [$imgWidth, $imgHeight] = $dimensions;
+        if ($imgWidth < 100 || $imgHeight < 100 || $imgWidth > 12000 || $imgHeight > 12000) {
+            return ['success' => false, 'message' => 'Dimensões de imagem inválidas (entre 100px e 12000px).'];
+        }
+
+        // 3. Store File
+        try {
+            // Nome aleatório com extensão FORÇADA pelo MIME real (nunca a extensão do cliente,
+            // que poderia ser .php). Elimina o vetor de RCE mesmo para arquivos polyglot.
+            $newName = bin2hex(random_bytes(16)) . '.' . $mimeToExt[$realMime];
+            $targetPath = 'uploads/properties/' . $propertyId . '/' . $newName;
+
+            // Variantes (thumbnails card/gallery) ANTES do put() do original —
+            // LocalStorage::put() consome (unlink) o arquivo de origem. Falha
+            // de variante não derruba o upload (o helper cai no original).
+            (new \App\Libraries\Media\ImageVariantGenerator())->generate($file->getTempName(), $targetPath);
+
+            // Via storage abstrato (disco público): permite trocar disco local
+            // por S3/NFS sem tocar aqui — validação de conteúdo acima permanece
+            // no service, ANTES do put(), independente do backend.
+            $storage = service('publicStorage');
+            $publicUrl = $storage->put($targetPath, $file->getTempName());
 
             // 4. Insert into DB
             $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
@@ -1032,10 +1184,10 @@ class PropertyService
             service('rankingService')->updateScore($propertyId);
 
             return [
-                'success' => true, 
+                'success' => true,
                 'media' => [
                     'id' => $mediaId,
-                    'url' => base_url($publicUrl),
+                    'url' => $storage->getPublicUrl($publicUrl),
                     'principal' => $isMain
                 ]
             ];
@@ -1063,6 +1215,14 @@ class PropertyService
         }
 
         if ($mediaModel->delete($mediaId)) {
+            // Remove o arquivo físico do storage. O soft-delete no banco não torna o
+            // arquivo inacessível por URL, então ele precisa ser apagado explicitamente.
+            if (!empty($media->url)) {
+                service('publicStorage')->delete($media->url);
+                // Variantes (card/gallery) acompanham o original.
+                (new \App\Libraries\Media\ImageVariantGenerator())->deleteVariants($media->url);
+            }
+
             // Se era a principal, define uma nova principal
             if ($media->principal) {
                 // Pega a próxima mais antiga

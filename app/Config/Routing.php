@@ -137,4 +137,13 @@ class Routing extends BaseRouting
      * Default: false
      */
     public bool $translateUriToCamelCase = true;
+
+    /**
+     * If TRUE, the system will look for attributes on controller
+     * class and methods that can run before and after the
+     * controller/method.
+     *
+     * If FALSE, will ignore any attributes.
+     */
+    public bool $useControllerAttributes = true;
 }

@@ -28,12 +28,19 @@
                             </div>
                         <?php else: ?>
                             <!-- THEATER CAROUSEL V2 -->
-                            <?php foreach($medias as $index => $media): 
-                                $imgUrl = !empty($media->url) ? (strpos($media->url, 'http') === 0 ? $media->url : base_url($media->url)) : base_url('assets/img/placeholder-house.png');
+                            <?php foreach($medias as $index => $media):
+                                // Imagem exibida: variante gallery (~1280px); fundo desfocado:
+                                // variante card (~480px) — o blur não precisa de resolução.
+                                $imgUrl  = !empty($media->url) ? media_variant_url($media->url, 'gallery') : base_url('assets/img/placeholder-house.png');
+                                $blurUrl = !empty($media->url) ? media_variant_url($media->url, 'card') : $imgUrl;
                             ?>
                             <div class="carousel-item h-100 <?= $index === 0 ? 'active' : '' ?>" style="overflow: hidden;">
-                                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('<?= $imgUrl ?>') center/cover; filter: blur(15px); opacity: 0.5; transform: scale(1.1);"></div>
-                                <img src="<?= $imgUrl ?>" class="d-block w-100 h-100 position-relative" style="z-index: 1; object-fit: contain;" alt="Foto do imóvel">
+                                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('<?= $blurUrl ?>') center/cover; filter: blur(15px); opacity: 0.5; transform: scale(1.1);"></div>
+                                <?php // GLightbox: clique abre a foto em tela cheia (zoom/swipe no
+                                      // mobile). href usa a variante gallery — mesma da exibição. ?>
+                                <a href="<?= $imgUrl ?>" class="glightbox d-block w-100 h-100 position-relative" data-gallery="property-gallery" style="z-index: 1;" aria-label="Ampliar foto">
+                                    <img src="<?= $imgUrl ?>" class="d-block w-100 h-100" style="object-fit: contain;" alt="Foto do imóvel" <?= $index > 0 ? 'loading="lazy" decoding="async"' : '' ?>>
+                                </a>
                             </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -60,7 +67,7 @@
                         </span>
                     <?php endif; ?>
                 </div>
-                <button class="btn btn-outline-danger rounded-circle border-0 btn-favorite p-2" data-id="<?= $property->id ?>" title="Favoritar">
+                <button class="btn btn-outline-danger rounded-circle border-0 btn-favorite p-2" data-id="<?= $property->id ?>" data-favorited="<?= ($isFavorited ?? false) ? '1' : '0' ?>" data-csrf-header="<?= csrf_header() ?>" data-csrf-hash="<?= csrf_hash() ?>" title="<?= ($isFavorited ?? false) ? 'Remover dos favoritos' : 'Favoritar' ?>">
                    <i class="<?= ($isFavorited ?? false) ? 'fa-solid text-danger' : 'fa-regular' ?> fa-heart fa-2x"></i>
                 </button>
             </div>
@@ -190,7 +197,7 @@
 
             <h4 class="fw-bold mb-3">Descrição</h4>
             <div class="text-muted lh-lg mb-5">
-                <?= $property->descricao ?>
+                <?= clean_html($property->descricao) ?>
             </div>
 
             <h4 class="fw-bold mb-3">Outras Características</h4>
@@ -263,7 +270,7 @@
                     <div class="d-flex align-items-center mb-3">
                         <div class="flex-shrink-0">
                             <?php if($property->account_logo): ?>
-                                <img src="<?= base_url($property->account_logo) ?>" class="rounded-3 shadow-sm object-fit-contain bg-white" width="64" height="64">
+                                <img src="<?= media_url($property->account_logo) ?>" class="rounded-3 shadow-sm object-fit-contain bg-white" width="64" height="64">
                             <?php else: ?>
                                 <img src="https://ui-avatars.com/api/?name=<?= urlencode($property->account_name) ?>&background=random" class="rounded-circle" width="60" height="60">
                             <?php endif; ?>
@@ -419,6 +426,44 @@
                         btn.innerHTML = originalText;
                     });
                 });
+
+                const favoriteBtn = document.querySelector('.btn-favorite');
+                if (favoriteBtn) {
+                    favoriteBtn.addEventListener('click', function() {
+                        if (favoriteBtn.disabled) return;
+                        favoriteBtn.disabled = true;
+
+                        fetch('<?= site_url('favoritos/toggle') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                [favoriteBtn.dataset.csrfHeader]: favoriteBtn.dataset.csrfHash,
+                            },
+                            body: JSON.stringify({ property_id: favoriteBtn.dataset.id }),
+                        })
+                        .then(response => {
+                            if (response.status === 401) {
+                                window.location.href = '<?= site_url('login') ?>';
+                                throw new Error('Não autenticado');
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            const icon = favoriteBtn.querySelector('i');
+                            const nowFavorited = data.status === 'added';
+                            favoriteBtn.dataset.favorited = nowFavorited ? '1' : '0';
+                            favoriteBtn.title = nowFavorited ? 'Remover dos favoritos' : 'Favoritar';
+                            icon.classList.toggle('fa-solid', nowFavorited);
+                            icon.classList.toggle('text-danger', nowFavorited);
+                            icon.classList.toggle('fa-regular', !nowFavorited);
+                        })
+                        .catch(error => console.error(error))
+                        .finally(() => {
+                            favoriteBtn.disabled = false;
+                        });
+                    });
+                }
                 </script>
             </div>
         </div>
@@ -436,7 +481,7 @@
             <div class="modal-body p-4 pt-0 text-center">
                 <div class="mb-4">
                     <?php if($property->account_logo): ?>
-                        <img src="<?= base_url($property->account_logo) ?>" class="rounded-3 shadow-sm mb-3 object-fit-contain bg-white" width="80" height="80">
+                        <img src="<?= media_url($property->account_logo) ?>" class="rounded-3 shadow-sm mb-3 object-fit-contain bg-white" width="80" height="80">
                     <?php else: ?>
                         <img src="https://ui-avatars.com/api/?name=<?= urlencode($property->account_name) ?>&background=random" class="rounded-circle mb-3" width="70" height="70">
                     <?php endif; ?>
@@ -551,5 +596,17 @@ function handleWhatsAppClick(number, channelName) {
     .then(updateLeadCsrf)
     .catch(error => console.warn('Lead WhatsApp tracking failed', error));
 }
+</script>
+
+<!-- GLightbox: galeria em tela cheia com zoom/swipe (mobile) ao clicar nas fotos -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox@3.3.0/dist/css/glightbox.min.css">
+<script src="https://cdn.jsdelivr.net/npm/glightbox@3.3.0/dist/js/glightbox.min.js" defer></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // defer no script do GLightbox: garante presença antes deste init.
+    if (typeof GLightbox === 'function') {
+        GLightbox({ selector: '.glightbox', touchNavigation: true, loop: true });
+    }
+});
 </script>
 <?= $this->endSection() ?>

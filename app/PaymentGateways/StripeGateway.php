@@ -204,8 +204,11 @@ class StripeGateway implements GatewayInterface
         return true;
     }
 
-    public function handleWebhook(array $payload): array
+    public function handleWebhook(array $payload, array $headers = [], string $rawBody = ''): array
     {
+        // Valida a assinatura antes de confiar no payload (fail-closed).
+        $this->verifyWebhookSignature($headers, $rawBody);
+
         $type = $payload['type'] ?? '';
         $obj = $payload['data']['object'] ?? [];
 
@@ -241,6 +244,65 @@ class StripeGateway implements GatewayInterface
         }
 
         return $event;
+    }
+
+    /**
+     * Verifica o cabeçalho Stripe-Signature (esquema t=timestamp,v1=hmac).
+     * Lança exceção se o secret não estiver configurado ou a assinatura for inválida.
+     */
+    private function verifyWebhookSignature(array $headers, string $rawBody): void
+    {
+        $secret    = (string) ($this->config['webhook_secret'] ?? '');
+        $sigHeader = (string) ($headers['stripe-signature'] ?? '');
+
+        if ($secret === '' || $sigHeader === '' || $rawBody === '') {
+            throw new Exception('Webhook Stripe rejeitado: assinatura ausente ou secret não configurado.');
+        }
+
+        $parts = [];
+        foreach (explode(',', $sigHeader) as $kv) {
+            $pair = array_pad(explode('=', trim($kv), 2), 2, '');
+            $parts[$pair[0]][] = $pair[1];
+        }
+
+        $timestamp  = $parts['t'][0] ?? '';
+        $signatures = $parts['v1'] ?? [];
+
+        if ($timestamp === '' || $signatures === []) {
+            throw new Exception('Webhook Stripe rejeitado: cabeçalho de assinatura malformado.');
+        }
+
+        // Tolerância de 5 min contra replay.
+        if (abs(time() - (int) $timestamp) > 300) {
+            throw new Exception('Webhook Stripe rejeitado: fora da janela de tempo (possível replay).');
+        }
+
+        $expected = hash_hmac('sha256', $timestamp . '.' . $rawBody, $secret);
+
+        foreach ($signatures as $sig) {
+            if (hash_equals($expected, (string) $sig)) {
+                return; // válido
+            }
+        }
+
+        throw new Exception('Webhook Stripe rejeitado: assinatura inválida.');
+    }
+
+    /**
+     * Ainda não implementado para Stripe. Lança exceção (fail-loud) em vez de retornar
+     * dado vazio, para não mascarar uso indevido caso o gateway seja ativado sem completar.
+     */
+    public function getSubscription(string $subscriptionId): ?array
+    {
+        throw new Exception('StripeGateway::getSubscription ainda não implementado.');
+    }
+
+    /**
+     * Ainda não implementado para Stripe (ver getSubscription).
+     */
+    public function getPendingPayments(string $customerId): array
+    {
+        throw new Exception('StripeGateway::getPendingPayments ainda não implementado.');
     }
 
     public function getActiveSubscription(string $customerId): ?array

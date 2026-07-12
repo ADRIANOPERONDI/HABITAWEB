@@ -202,8 +202,16 @@ class AccountService
             // Note: We use the global 'model' helper to get the specific UserModel extended in App if exists, or Shield's
             $users = model('App\Models\UserModel'); 
             
+            // users.username é varchar(30). Sem truncar, um e-mail com parte local
+            // longa (comum em endereços corporativos, ex.: nome.sobrenome.cargo@empresa.com.br)
+            // estoura o limite da coluna. O INSERT falha silenciosamente (DBDebug=false),
+            // a transação fica "abortada" no Postgres, e a query seguinte de
+            // Shield\UserModel::saveEmailIdentity() explode com um Error (não Exception)
+            // não capturado pelo catch abaixo — ver o ajuste de \Throwable também.
+            $localPart = mb_substr(explode('@', $data['email'])[0], 0, 27);
+
             $user = new User([
-                'username' => explode('@', $data['email'])[0] . rand(100,999),
+                'username' => $localPart . rand(100,999),
                 'email'    => $data['email'],
                 'password' => $data['password'],
                 'active'   => 0,
@@ -236,7 +244,16 @@ class AccountService
 
             return $user;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // \Throwable, não só \Exception: a falha real que expôs esse gap
+            // ("Call to a member function getRow() on false", dentro de
+            // insertID() dispachado por Shield\UserModel::saveEmailIdentity()
+            // após um INSERT silenciosamente rejeitado) é um \Error em PHP, que
+            // um catch(\Exception) não intercepta — a transação ficava aberta e
+            // o registro em `accounts` do passo 1 sobrevivia à falha do passo 2,
+            // bloqueando permanentemente o mesmo e-mail/documento em tentativas
+            // futuras (accountModel->documentExists()/is_unique[auth_identities.secret]
+            // encontram a conta órfã).
             $db->transRollback();
             throw $e;
         }

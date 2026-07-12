@@ -614,6 +614,9 @@
                                     <i class="fa-solid fa-cloud-arrow-up fa-3x text-primary mb-3"></i>
                                     <h6 class="fw-bold">Arraste suas fotos aqui</h6>
                                     <p class="text-muted small">Ou clique para selecionar arquivos do seu computador</p>
+                                    <?php if (! isset($property)): ?>
+                                        <p class="small text-primary fw-semibold"><i class="fa-solid fa-circle-info me-1"></i> Pode escolher as fotos agora — elas serão enviadas junto quando você salvar o imóvel.</p>
+                                    <?php endif; ?>
                                     <input type="file" id="fileInput" class="d-none" multiple accept="image/*">
                                     <button type="button" class="btn btn-primary rounded-pill px-4 mt-2" onclick="document.getElementById('fileInput').click()">
                                         Procurar Fotos
@@ -827,8 +830,14 @@ $(document).ready(function() {
                         mediaTab.show();
                     }
                     
-                    if (res.redirect) {
-                        setTimeout(() => window.location.href = res.redirect, 1000);
+                    // Fotos escolhidas antes do cadastro sobem agora, junto do
+                    // salvar; o redirect (publicação) espera a fila terminar
+                    // para não abortar uploads no meio.
+                    const goRedirect = res.redirect ? function () { window.location.href = res.redirect; } : null;
+                    if (propertyId && pendingFiles.length > 0) {
+                        flushPendingFiles(goRedirect);
+                    } else if (goRedirect) {
+                        setTimeout(goRedirect, 1000);
                     }
                 } else {
                     let errorMsg = res.message || 'Falha ao salvar';
@@ -846,6 +855,47 @@ $(document).ready(function() {
             }
         });
     });
+
+    // --- Autosave de rascunho (60s) ---
+    // GUARDA CRÍTICA: o fluxo de salvar rascunho força status=DRAFT — autosave
+    // só pode rodar para registro NOVO ou já em DRAFT, senão rebaixaria um
+    // imóvel ACTIVE publicado para rascunho silenciosamente.
+    (function () {
+        const initialStatus = '<?= esc($property->status ?? 'DRAFT', 'js') ?>';
+        if (initialStatus !== 'DRAFT') {
+            return;
+        }
+
+        let autosaveDirty = false;
+        const $form = $('#propertyForm');
+
+        $form.on('change input', 'input, select, textarea', function () {
+            autosaveDirty = true;
+        });
+
+        setInterval(function () {
+            if (!autosaveDirty) return;
+
+            // Não atropela um save manual em andamento.
+            if ($('#btnDraftSave').prop('disabled')) return;
+
+            // Pré-requisitos do servidor: sem título ou sem conta (quando o
+            // campo existe), o handler mostraria um Swal de validação a cada
+            // ciclo — melhor esperar em silêncio até o form estar salvável.
+            if (!$form.find('[name="titulo"]').val()) return;
+            const $accountSelect = $form.find('#main_account_id');
+            if ($accountSelect.length > 0 && !$accountSelect.val()) return;
+
+            autosaveDirty = false;
+            $('#btnDraftSave').trigger('click');
+
+            if (!document.getElementById('autosaveInfo')) {
+                $('#btnDraftSave').after('<small id="autosaveInfo" class="text-muted ms-2"></small>');
+            }
+            const hh = new Date().toTimeString().slice(0, 5);
+            $('#autosaveInfo').text('Rascunho salvo automaticamente às ' + hh);
+        }, 60000);
+    })();
 
     // Select2 Integration for Client Search
     $('select[name="client_id"]').select2({
@@ -957,7 +1007,7 @@ $(document).ready(function() {
         // Initial Gallery Load
         <?php if(isset($property) && isset($property->images)): ?>
             <?php foreach($property->images as $img): ?>
-                addPic('<?= base_url($img->url) ?>', <?= $img->id ?>, <?= json_encode((bool)$img->principal) ?>);
+                addPic('<?= media_variant_url($img->url, 'card') ?>', <?= $img->id ?>, <?= json_encode((bool)$img->principal) ?>);
             <?php endforeach; ?>
         <?php endif; ?>
 
@@ -965,57 +1015,64 @@ $(document).ready(function() {
 
         function handleFiles(files) {
             if(files.length === 0) return;
-            
-            // Se não temos ID, salva rascunho automaticamente antes de fazer upload
+
+            // Imóvel ainda não existe: NADA de criar rascunho automático só
+            // para poder subir foto — as fotos entram numa fila local (com
+            // preview) e sobem todas juntas quando o imóvel for salvo.
             if (!propertyId) {
-                $('#uploadProgress').removeClass('d-none');
-                $('.progress-bar').css('width', '10%').text('Salvando rascunho...');
-
-                const $form = $('#propertyForm');
-                if (window.editorInstance) {
-                    $form.find('textarea[name="descricao"]').val(window.editorInstance.getData());
-                }
-
-                const draftData = new FormData($form[0]);
-                draftData.set('status', 'DRAFT');
-
-                $.ajax({
-                    url: '<?= site_url("admin/properties") ?>',
-                    type: 'POST',
-                    data: draftData,
-                    processData: false,
-                    contentType: false,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    success: function(res) {
-                        if (res.success && res.id) {
-                            propertyId = res.id;
-                            uploadUrl = '<?= site_url("admin/properties") ?>/' + propertyId + '/media';
-                            $form.attr('action', '<?= site_url("admin/properties") ?>/' + res.id);
-                            if ($form.find('input[name="_method"]').length === 0) {
-                                $form.prepend('<input type="hidden" name="_method" value="PUT">');
-                            }
-                            $('#mediaTabPlaceholder').addClass('d-none');
-                            $('#mediaTabContent').removeClass('d-none');
-                            $('#btnDraftSave').html('<i class="fa-solid fa-file-pen me-2"></i> Atualizar Rascunho');
-                            Toast.fire({ icon: 'info', title: 'Rascunho criado! Enviando fotos...' });
-                            processUploadQueue(files);
-                        } else {
-                            $('#uploadProgress').addClass('d-none');
-                            Swal.fire('Atenção', 'Preencha pelo menos o título e a conta antes de enviar fotos.', 'warning');
-                        }
-                    },
-                    error: function() {
-                        $('#uploadProgress').addClass('d-none');
-                        Swal.fire('Erro', 'Não foi possível criar o rascunho para as fotos.', 'error');
-                    }
-                });
+                queuePendingFiles(files);
                 return;
             }
 
             processUploadQueue(files);
         }
 
-        function processUploadQueue(files) {
+        // --- Fila de fotos pré-cadastro ---
+        let pendingFiles = [];
+
+        function queuePendingFiles(files) {
+            let added = 0;
+            Array.from(files).forEach(file => {
+                if (file.type && !file.type.startsWith('image/')) return;
+                const uid = 'pf' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                pendingFiles.push({ uid: uid, file: file });
+                added++;
+                const preview = URL.createObjectURL(file);
+                $('#galleryContainer').append(`
+                    <div class="col-6 col-md-4 col-lg-3 mb-3 pending-media" id="pending-${uid}">
+                        <div class="gallery-item-premium position-relative rounded overflow-hidden" style="height: 220px; border: 2px dashed #adb5bd;">
+                            <img src="${preview}" class="w-100 h-100 object-fit-cover" style="opacity: .85;" alt="Foto aguardando envio">
+                            <span class="position-absolute top-0 start-0 badge bg-secondary m-2 shadow-sm"><i class="fa-regular fa-clock me-1"></i>Enviada ao salvar</span>
+                            <div class="position-absolute bottom-0 end-0 p-2">
+                                <button type="button" onclick="removePending('${uid}')" class="btn btn-danger btn-sm rounded shadow-sm" title="Remover da fila">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>`);
+            });
+            if (added > 0) {
+                Toast.fire({ icon: 'info', title: added + ' foto(s) na fila — serão enviadas ao salvar o imóvel.' });
+            }
+        }
+
+        window.removePending = function(uid) {
+            pendingFiles = pendingFiles.filter(p => p.uid !== uid);
+            $('#pending-' + uid).remove();
+        };
+
+        function flushPendingFiles(onDone) {
+            if (pendingFiles.length === 0 || !propertyId) {
+                if (onDone) onDone();
+                return;
+            }
+            const files = pendingFiles.map(p => p.file);
+            pendingFiles = [];
+            $('.pending-media').remove();
+            processUploadQueue(files, onDone);
+        }
+
+        function processUploadQueue(files, onDone) {
             $('#uploadProgress').removeClass('d-none');
             let total = files.length;
             let done = 0;
@@ -1045,6 +1102,7 @@ $(document).ready(function() {
                                 $('#uploadProgress').addClass('d-none');
                                 $('.progress-bar').css('width', '0%');
                                 Toast.fire({ icon: 'success', title: 'Upload concluído!' });
+                                if (onDone) onDone();
                             }, 800);
                         }
                     }

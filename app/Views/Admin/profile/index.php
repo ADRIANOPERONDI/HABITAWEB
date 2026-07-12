@@ -118,7 +118,7 @@
                     <div class="d-flex align-items-center gap-4 mb-5 pb-4 border-bottom">
                         <div class="logo-preview-wrapper">
                             <?php if ($account->logo): ?>
-                                <img src="<?= base_url($account->logo) ?>" alt="Logo da Conta" id="logoPreview">
+                                <img src="<?= media_url($account->logo) ?>" alt="Logo da Conta" id="logoPreview">
                             <?php else: ?>
                                 <i class="fa-solid fa-building fa-2x text-light" id="logoPlaceholder"></i>
                                 <img src="" alt="Preview" id="logoPreview" style="display: none;">
@@ -205,7 +205,7 @@
                                         <label class="form-label fw-bold small">RG ou CNH (Frente)</label>
                                         <div class="verification-upload-box" style="cursor: default; pointer-events: none;">
                                             <?php if($account->id_front): ?>
-                                                <img src="<?= base_url($account->id_front) ?>" class="img-fluid rounded">
+                                                <img src="<?= site_url('admin/kyc-file/' . $account->id . '/id_front') ?>" class="img-fluid rounded">
                                             <?php else: ?>
                                                 <i class="fas fa-check text-success fa-2x"></i>
                                                 <span class="d-block small mt-2 text-success">Enviado</span>
@@ -216,7 +216,7 @@
                                         <label class="form-label fw-bold small">RG ou CNH (Verso)</label>
                                         <div class="verification-upload-box" style="cursor: default; pointer-events: none;">
                                             <?php if($account->id_back): ?>
-                                                <img src="<?= base_url($account->id_back) ?>" class="img-fluid rounded">
+                                                <img src="<?= site_url('admin/kyc-file/' . $account->id . '/id_back') ?>" class="img-fluid rounded">
                                             <?php else: ?>
                                                 <i class="fas fa-check text-success fa-2x"></i>
                                                 <span class="d-block small mt-2 text-success">Enviado</span>
@@ -227,7 +227,7 @@
                                         <label class="form-label fw-bold small">Selfie com Documento</label>
                                         <div class="verification-upload-box" style="cursor: default; pointer-events: none;">
                                             <?php if($account->selfie): ?>
-                                                <img src="<?= base_url($account->selfie) ?>" class="img-fluid rounded">
+                                                <img src="<?= site_url('admin/kyc-file/' . $account->id . '/selfie') ?>" class="img-fluid rounded">
                                             <?php else: ?>
                                                 <i class="fas fa-check text-success fa-2x"></i>
                                                 <span class="d-block small mt-2 text-success">Enviado</span>
@@ -259,7 +259,7 @@
                                     <label class="form-label fw-bold small">RG ou CNH (Frente)</label>
                                     <div class="verification-upload-box" onclick="document.getElementById('idFrontInput').click()" id="boxFront">
                                         <?php if($account->id_front && $account->verification_status !== 'REJECTED'): ?>
-                                            <img src="<?= base_url($account->id_front) ?>" class="img-fluid rounded">
+                                            <img src="<?= site_url('admin/kyc-file/' . $account->id . '/id_front') ?>" class="img-fluid rounded">
                                         <?php else: ?>
                                             <i class="fas fa-id-card fa-2x opacity-25"></i>
                                             <span class="d-block small mt-2">Clique para Upload</span>
@@ -272,7 +272,7 @@
                                     <label class="form-label fw-bold small">RG ou CNH (Verso)</label>
                                     <div class="verification-upload-box" onclick="document.getElementById('idBackInput').click()" id="boxBack">
                                         <?php if($account->id_back && $account->verification_status !== 'REJECTED'): ?>
-                                            <img src="<?= base_url($account->id_back) ?>" class="img-fluid rounded">
+                                            <img src="<?= site_url('admin/kyc-file/' . $account->id . '/id_back') ?>" class="img-fluid rounded">
                                         <?php else: ?>
                                             <i class="fas fa-id-card fa-2x opacity-25"></i>
                                             <span class="d-block small mt-2">Clique para Upload</span>
@@ -285,7 +285,7 @@
                                     <label class="form-label fw-bold small">Selfie com Documento</label>
                                     <div class="verification-upload-box" onclick="openCamera('selfieInput', 'Selfie com Documento', 'user')" id="boxSelfie">
                                         <?php if($account->selfie && $account->verification_status !== 'REJECTED'): ?>
-                                            <img src="<?= base_url($account->selfie) ?>" class="img-fluid rounded">
+                                            <img src="<?= site_url('admin/kyc-file/' . $account->id . '/selfie') ?>" class="img-fluid rounded">
                                         <?php else: ?>
                                             <i class="fas fa-camera fa-2x opacity-25"></i>
                                             <span class="d-block small mt-2">Toque para Tirar Foto</span>

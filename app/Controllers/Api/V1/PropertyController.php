@@ -30,7 +30,7 @@ class PropertyController extends BaseController
     {
         $data = $this->request->getJSON(true);
         $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->request->auth_user_id == 1;
+        $isSuperAdmin     = $this->isSuperAdmin();
 
         // Força account_id do usuário logado se não for super admin
         if (!$isSuperAdmin || !isset($data['account_id'])) {
@@ -56,19 +56,22 @@ class PropertyController extends BaseController
         }
 
         // SECURITY: Validate authorization - user can only update properties of their own account
-        $accountId = $this->request->account_id ?? null;
+        $accountId = $this->request->auth_account_id ?? null;
         if (!$accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
         // Verify property belongs to user's account
-        $property = $this->propertyModel->find($id);
+        $propertyModel = model('App\\Models\\PropertyModel');
+        $property = $propertyModel->find($id);
         if (!$property || $property->account_id != $accountId) {
             log_message('warning', "IDOR attempt: User {$accountId} tried to update property {$id} they don't own");
             return $this->failForbidden('Acesso negado a este imóvel.');
         }
 
         $data = $this->request->getJSON(true);
+        // Nunca permitir reatribuir o imóvel a outra conta via corpo da requisição.
+        unset($data['account_id']);
         $result = $this->propertyService->trySaveProperty($data, $id);
 
         if ($result['success']) {
@@ -94,8 +97,8 @@ class PropertyController extends BaseController
         }
 
         // Validação de acesso: usuário só pode ver imóveis da própria conta
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $details['property']->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $details['property']->account_id != $accountId) {
             return $this->failForbidden('Acesso negado a este imóvel.');
         }
 
@@ -118,8 +121,8 @@ class PropertyController extends BaseController
         }
 
         // Validação de acesso
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $property->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $property->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -207,8 +210,8 @@ class PropertyController extends BaseController
             return $this->failNotFound('Imóvel não encontrado.');
         }
 
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $property->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $property->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -245,8 +248,8 @@ class PropertyController extends BaseController
             return $this->failNotFound('Imóvel não encontrado.');
         }
 
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $property->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $property->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 
@@ -277,8 +280,8 @@ class PropertyController extends BaseController
             return $this->failNotFound('Imóvel não encontrado.');
         }
 
-        $accountId = $this->request->account_id ?? null;
-        if ($accountId && $property->account_id != $accountId) {
+        $accountId = $this->request->auth_account_id ?? null;
+        if (!$accountId || $property->account_id != $accountId) {
             return $this->failForbidden('Acesso negado.');
         }
 

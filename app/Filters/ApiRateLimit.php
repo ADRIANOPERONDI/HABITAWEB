@@ -20,32 +20,42 @@ class ApiRateLimit implements FilterInterface
             return null;
         }
 
-        // Determina o identificador para rate limit
-        $identifier = $this->getIdentifier($request);
-        
+        // Determina identificador + limite a partir da identidade da requisição
+        // (chave de API > token Shield > IP). Resolvido aqui de forma independente,
+        // então funciona mesmo rodando ANTES do filtro de autenticação.
+        [$identifier, $limit] = $this->resolve($request);
+
         // Sanitiza o identificador para evitar caracteres reservados no Cache (ex: IPv6 ::1)
         $identifier = str_replace([':', '{', '}', '(', ')', '/', '\\', '@'], '_', $identifier);
-        
-        $limit = $this->getLimit($request);
 
         // Usa cache para armazenar contadores
         $cache = \Config\Services::cache();
         $cacheKey = "rate_limit_{$identifier}";
         $windowKey = "rate_limit_window_{$identifier}";
 
-        // Pega contador atual
-        $count = $cache->get($cacheKey) ?? 0;
-        $windowStart = $cache->get($windowKey);
-
-        // Se a janela não existe ou expirou, cria nova
+        // Pega janela atual; se não existe ou expirou, abre uma nova e zera o
+        // contador. Só a partir daqui o contador é incrementado de forma
+        // atômica (increment() = HINCRBY no Redis), pra duas requisições
+        // simultâneas (mesma identidade, possivelmente em instâncias
+        // diferentes) não lerem o mesmo valor e "perderem" um incremento no
+        // read-modify-write. increment() nunca deve ser seguido de get() na
+        // mesma chave no handler Redis (increment() não grava o campo
+        // __ci_type que get() exige) — por isso o save() abaixo sempre usa o
+        // valor de retorno do próprio increment(), nunca um get() posterior.
         $now = time();
+        $windowStart = $cache->get($windowKey);
         if (!$windowStart || ($now - $windowStart) >= 3600) {
-            $count = 0;
             $cache->save($windowKey, $now, 3600);
+            $cache->delete($cacheKey);
+            $windowStart = $now;
         }
 
-        // Incrementa contador
-        $count++;
+        $count = $cache->increment($cacheKey, 1);
+        if ($count === false) {
+            // Handler sem suporte a increment() (ex.: dummy) — cai pro
+            // padrão não atômico anterior como fallback.
+            $count = ($cache->get($cacheKey) ?? 0) + 1;
+        }
         $cache->save($cacheKey, $count, 3600);
 
         // Calcula valores para headers
@@ -78,41 +88,34 @@ class ApiRateLimit implements FilterInterface
     }
 
     /**
-     * Determina o identificador único para rate limiting
+     * Resolve [identificador, limite] a partir da identidade da requisição.
+     *
+     * Ordem de precedência:
+     *  1. API Key (pk_...): bucket por chave, com o limite configurado na própria chave.
+     *     Assim uma chave não escapa do limite trocando de IP, nem divide cota com
+     *     outras contas atrás do mesmo IP.
+     *  2. Token Shield (Bearer não-pk_): bucket estável por hash do token.
+     *  3. Anônimo (rotas públicas): bucket por IP, limite baixo.
+     *
+     * @return array{0:string,1:int}
      */
-    private function getIdentifier(RequestInterface $request): string
+    private function resolve(RequestInterface $request): array
     {
-        // Se autenticado via API Key, usa o ID da chave
-        if (property_exists($request, 'api_key_id')) {
-            return 'key_' . $request->api_key_id;
+        $authHeader = $request->getHeaderLine('Authorization');
+
+        if (preg_match('/Bearer\s+(pk_\S+)/i', $authHeader, $m)) {
+            $apiKey = model(\App\Models\ApiKeyModel::class)->findByPlainKey($m[1]);
+            if ($apiKey !== null) {
+                $limit = (int) ($apiKey->rate_limit_per_hour ?: 1000);
+                return ['key_' . $apiKey->id, $limit];
+            }
+            // Chave inválida: trata como anônimo (será barrado no api_auth de qualquer forma)
+        } elseif (preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
+            // Token Shield: identidade estável por hash, sem precisar validar aqui.
+            return ['tok_' . sha1($m[1]), 5000];
         }
 
-        // Se autenticado via Shield Token, usa o user_id
-        if (property_exists($request, 'user_id')) {
-            return 'user_' . $request->user_id;
-        }
-
-        // Caso contrário, usa IP (para rotas públicas)
-        return 'ip_' . $request->getIPAddress();
-    }
-
-    /**
-     * Determina o limite de requisições
-     */
-    private function getLimit(RequestInterface $request): int
-    {
-        // Se tem rate_limit customizado (de API Key), usa
-        if (property_exists($request, 'rate_limit')) {
-            return $request->rate_limit;
-        }
-
-        // Se é usuário autenticado via Shield, usa limite padrão
-        if (property_exists($request, 'user_id')) {
-            return 5000; // Usuários autenticados: 5000/hora
-        }
-
-        // IP não autenticado: limite baixo
-        return 100; // 100/hora
+        return ['ip_' . $request->getIPAddress(), 100];
     }
 
     /**

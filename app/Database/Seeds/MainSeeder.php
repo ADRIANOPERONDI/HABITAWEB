@@ -61,7 +61,7 @@ class MainSeeder extends Seeder
             $subModel->save([
                 'account_id'  => $account->id,
                 'plan_id'     => $plan->id,
-                'status'      => 'ATIVA',
+                'status'      => 'ACTIVE',
                 'data_inicio' => date('Y-m-d'),
                 'data_fim'    => date('Y-m-d', strtotime('+1 year')),
             ]);

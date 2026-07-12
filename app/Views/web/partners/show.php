@@ -1,5 +1,5 @@
 <?= $this->extend('Layouts/public') ?>
-<?= $this->section('title') ?><?= $partner->nome ?? 'Parceiro' ?><?= $this->endSection() ?>
+<?= $this->section('title') ?><?= esc($partner->nome ?? 'Parceiro') ?><?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 
@@ -9,8 +9,10 @@
         <div class="row align-items-center">
             <div class="col-md-3 text-center mb-4 mb-md-0">
                 <?php if(!empty($partner->logo)): ?>
-                    <img src="<?= base_url('uploads/logos/'.$partner->logo) ?>" 
-                         alt="<?= esc($partner->nome) ?>" 
+                    <?php // accounts.logo guarda o caminho relativo completo (uploads/accounts/...) —
+                          // mesmo bug de prefixo uploads/logos/ corrigido em partners/index.php. ?>
+                    <img src="<?= media_url($partner->logo) ?>"
+                         alt="<?= esc($partner->nome) ?>"
                          class="rounded-circle shadow-lg object-fit-cover border border-4 border-white"
                          style="width: 180px; height: 180px;">
                 <?php else: ?>

@@ -35,7 +35,7 @@
                         $lightLogo = app_setting('style.logo_footer_url') ?: app_setting('style.logo_url');
                         if ($lightLogo): 
                     ?>
-                        <img src="<?= base_url($lightLogo) ?>" class="system-logo-dash mb-3" alt="Logo">
+                        <img src="<?= media_url($lightLogo) ?>" class="system-logo-dash mb-3" alt="Logo">
                         <div class="mb-3">
                             <a href="<?= site_url('/') ?>" target="_blank" class="btn btn-sm btn-light text-primary fw-bold rounded-pill px-3 py-2 shadow-sm" title="Abrir o site em uma nova aba">
                                 <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Ir ao Site

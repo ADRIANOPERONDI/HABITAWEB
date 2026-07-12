@@ -22,21 +22,32 @@ class SubscriptionController extends BaseController
         $planModel = model('App\Models\PlanModel');
         $propertyModel = model('App\Models\PropertyModel');
 
-        // Sincronizar pagamentos pendentes com o gateway (Garante que cobranças órfãs apareçam)
-        try {
-            $paymentService = new \App\Services\PaymentService();
-            $paymentService->syncPendingPayments($accountId);
-            
-            // [Double Verification] Busca assinaturas para sincronizar (inclui ACTIVE para checar se expirou ou se há faturas novas)
-            $staleSubs = $subscriptionModel->where('account_id', $accountId)
-                                         ->whereIn('status', ['ACTIVE', 'SUSPENDED', 'PENDING', 'AWAITING_PAYMENT'])
-                                         ->findAll();
+        // Sincronizar pagamentos pendentes com o gateway (Garante que cobranças órfãs apareçam).
+        // Debounce de 120s por conta: sem isso, toda visita a esta página faz N
+        // chamadas HTTP síncronas ao Asaas (1 + 1 por assinatura não-terminal),
+        // sem limite - sob muitos admins/contas simultâneos isso vira pressão
+        // descontrolada no gateway. spark asaas:sync já reconcilia tudo via cron;
+        // este bloco só existe para dar frescor entre execuções do cron, então
+        // não precisa rodar em toda requisição.
+        $syncStaleKey = "subscription_sync_stale_{$accountId}";
+        if (cache()->get($syncStaleKey) === null) {
+            try {
+                $paymentService = new \App\Services\PaymentService();
+                $paymentService->syncPendingPayments($accountId);
 
-            foreach ($staleSubs as $subToSync) {
-                 $paymentService->syncSubscriptionStatus($subToSync->id);
+                // [Double Verification] Busca assinaturas para sincronizar (inclui ACTIVE para checar se expirou ou se há faturas novas)
+                $staleSubs = $subscriptionModel->where('account_id', $accountId)
+                                             ->whereIn('status', ['ACTIVE', 'SUSPENDED', 'PENDING', 'AWAITING_PAYMENT'])
+                                             ->findAll();
+
+                foreach ($staleSubs as $subToSync) {
+                     $paymentService->syncSubscriptionStatus($subToSync->id);
+                }
+
+                cache()->save($syncStaleKey, true, 120);
+            } catch (\Exception $e) {
+                log_message('error', '[SubscriptionController] Erro ao sincronizar pagamentos/status: ' . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            log_message('error', '[SubscriptionController] Erro ao sincronizar pagamentos/status: ' . $e->getMessage());
         }
 
         $subscription = $subscriptionModel->where('account_id', $accountId)

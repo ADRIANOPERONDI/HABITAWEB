@@ -19,10 +19,10 @@
                         <div class="position-relative">
                             <span class="badge bg-primary position-absolute top-0 start-0 m-3"><?= esc($property->tipo_negocio) ?></span>
                             <!-- Cover Image -->
-                            <?php 
-                                $cover = $property->cover_image ? base_url($property->cover_image) : 'https://placehold.co/600x400?text=Sem+Foto';
+                            <?php
+                                $cover = $property->cover_image ? media_variant_url($property->cover_image, 'card') : 'https://placehold.co/600x400?text=Sem+Foto';
                             ?>
-                            <img src="<?= $cover ?>" class="card-img-top object-fit-cover" height="250" alt="<?= esc($property->titulo) ?>">
+                            <img src="<?= $cover ?>" class="card-img-top object-fit-cover" height="250" alt="<?= esc($property->titulo) ?>" loading="lazy" decoding="async">
                             
                             <!-- Favorite Button (Always Active in this list) -->
                             <button class="btn btn-light rounded-circle position-absolute top-0 end-0 m-3 btn-favorite shadow-sm" data-id="<?= $property->id ?>">
