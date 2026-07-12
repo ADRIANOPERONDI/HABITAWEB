@@ -136,6 +136,8 @@ class Services extends BaseService
             );
         } catch (\RuntimeException $e) {
             log_message('warning', '[Storage] driver=s3 mas a config está incompleta — operando só com disco local. ' . $e->getMessage());
+            // Sinaliza para o banner do superadmin (nunca para os clientes).
+            \App\Libraries\Storage\FallbackStorage::flagDegraded($e->getMessage());
 
             return $local;
         }

@@ -379,7 +379,23 @@
 
         <div class="animate-fade-in" style="animation-delay: 0.1s">
             <!-- Flash Messages Removed: Now using SweetAlert2 via JS -->
-            
+
+            <?php // Aviso de storage S3 degradado: SÓ para o superadmin — os
+                  // clientes (tenants) nunca veem nada sobre infraestrutura.
+                  // O flag é gravado por FallbackStorage/Services quando um
+                  // upload cai para o disco local (TTL 6h, renovado a cada falha). ?>
+            <?php if (auth()->user()?->inGroup('superadmin') && ($s3Alert = cache('storage_s3_degraded'))): ?>
+                <div class="alert alert-warning d-flex align-items-center shadow-sm rounded-3 mb-4">
+                    <i class="fa-solid fa-triangle-exclamation fa-lg me-3"></i>
+                    <div>
+                        <strong>Storage S3 com falhas</strong> — os uploads estão caindo no disco local
+                        (última falha: <?= esc($s3Alert['at'] ?? '?') ?>).
+                        Verifique credenciais/conectividade em <code>storage.s3.*</code> no .env.
+                        <div class="small text-muted"><?= esc($s3Alert['reason'] ?? '') ?></div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <!-- Page Content -->
             <?= $this->renderSection('content') ?>
         </div>

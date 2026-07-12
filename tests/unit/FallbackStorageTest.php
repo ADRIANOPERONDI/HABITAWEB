@@ -47,6 +47,8 @@ final class FallbackStorageTest extends CIUnitTestCase
 
     public function testPutCaiParaOLocalQuandoPrimarioFalha(): void
     {
+        cache()->delete('storage_s3_degraded');
+
         $primary  = new FakeDiskStorage('https://cdn.exemplo.com', failPuts: true);
         $fallback = new FakeDiskStorage('http://localhost:8080');
         $storage  = new FallbackStorage($primary, $fallback);
@@ -60,6 +62,14 @@ final class FallbackStorageTest extends CIUnitTestCase
         $this->assertTrue($fallback->exists($path), 'com o primário fora, o arquivo deve pousar no local');
         // E a URL pública aponta para onde o arquivo REALMENTE está.
         $this->assertSame('http://localhost:8080/' . $path, $storage->getPublicUrl($path));
+
+        // A falha do primário sinaliza o banner do painel do superadmin
+        // (clientes não veem nada — para eles o upload funcionou).
+        $flag = cache('storage_s3_degraded');
+        $this->assertIsArray($flag);
+        $this->assertSame('backend fora do ar (simulado)', $flag['reason']);
+
+        cache()->delete('storage_s3_degraded');
     }
 
     public function testUploadDepoisDeCacheNegativoEhVistoImediatamente(): void

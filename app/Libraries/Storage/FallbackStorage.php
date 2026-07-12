@@ -54,6 +54,7 @@ class FallbackStorage implements StorageInterface
             // Path traversal (InvalidArgumentException) NÃO cai aqui de
             // propósito: deve estourar, não ser "resolvido" pelo fallback.
             log_message('warning', '[Storage] Primário falhou ao gravar ' . $relativePath . ' — usando disco local. Erro: ' . $e->getMessage());
+            self::flagDegraded($e->getMessage());
         }
 
         $stored = $this->fallback->put($relativePath, $sourceFile);
@@ -144,5 +145,19 @@ class FallbackStorage implements StorageInterface
     private function locationKey(string $relativePath): string
     {
         return 'stloc_' . md5(ltrim($relativePath, '/'));
+    }
+
+    /**
+     * Registra que a via S3 está falhando — consumido APENAS pelo banner do
+     * painel do superadmin (Layouts/master.php). Clientes (tenants) nunca
+     * veem nada sobre infraestrutura: para eles o upload simplesmente
+     * funcionou (caiu no disco local). TTL 6h, renovado a cada falha.
+     */
+    public static function flagDegraded(string $reason): void
+    {
+        cache()->save('storage_s3_degraded', [
+            'at'     => date('d/m/Y H:i'),
+            'reason' => mb_substr($reason, 0, 200),
+        ], 21600);
     }
 }
