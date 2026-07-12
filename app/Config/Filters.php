@@ -38,8 +38,6 @@ class Filters extends BaseFilters
         // Filtros de API
         'api_auth'      => \App\Filters\ApiAuth::class,
         'api_rate_limit'=> \App\Filters\ApiRateLimit::class,
-        // Filtro de Instalação
-        'installation_check' => \App\Filters\InstallationCheck::class,
         'verification'  => \App\Filters\VerificationFilter::class,
     ];
 
@@ -79,9 +77,8 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
-            'installation_check', // Redireciona para instalador se não instalado
             // 'honeypot',
-            'csrf' => ['except' => ['install/*', 'api/*', 'webhook/*', 'asaas/*', 'admin/properties/calculate-score']], // Desabilita CSRF no instalador, API, webhooks e cálculo de score admin
+            'csrf' => ['except' => ['api/*', 'webhook/*', 'asaas/*', 'admin/properties/calculate-score']],
             'invalidchars',
         ],
         'after' => [

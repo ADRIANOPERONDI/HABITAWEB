@@ -6,21 +6,6 @@ use CodeIgniter\Router\RouteCollection;
  * @var RouteCollection $routes
  */
 
-// TEST ROUTE - DELETE AFTER VERIFYING
-$routes->get('test-debug', function() {
-    die('O arquivo de rotas está SENDO LIDO no servidor!');
-});
-
-// ========== INSTALADOR (Wizard de Setup Inicial) ==========
-$routes->group('install', ['namespace' => 'App\Controllers\Install'], function($routes) {
-    $routes->get('/', 'InstallController::index');
-    $routes->get('step/(:num)', 'InstallController::step/$1');
-    $routes->post('test-database', 'InstallController::testDatabase');
-    $routes->post('saveStep', 'InstallController::saveStep');
-    $routes->post('process', 'InstallController::process');
-    $routes->get('finalize', 'InstallController::finalize');
-});
-
 // ========== ROTAS PÚBLICAS ==========
 $routes->get('/', 'Home::index');
 // Rotas de Busca (SEO Friendly)

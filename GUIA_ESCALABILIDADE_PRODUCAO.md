@@ -58,20 +58,20 @@ appendfsync everysec
 
 ```bash
 sudo systemctl restart redis-server
-redis-cli -a SuaSenhaAlfanumericaLonga123 ping   # → PONG
+redis-cli -a "$REDIS_PASSWORD" ping   # → PONG
 ```
 
 ### 2.2 Configuração no `.env` da aplicação
 
-Estas chaves **já estão** no `.env` de desenvolvimento e no template do
-instalador (`InstallController::createEnvFile`). Em produção, ajuste host/senha:
+Estas chaves estão documentadas no `env.example`. Em produção, ajuste
+host/senha apenas no `.env` protegido da instância:
 
 ```ini
 # Cache (Redis)
 cache.handler = redis
 cache.backupHandler = file
 cache.redis.host = 10.0.0.5          # IP do host Redis (127.0.0.1 se local)
-cache.redis.password = SuaSenhaAlfanumericaLonga123
+cache.redis.password = ${REDIS_PASSWORD}
 cache.redis.port = 6379
 cache.redis.timeout = 1
 cache.redis.database = 0
@@ -276,6 +276,20 @@ sudo mount -t nfs4 10.0.0.20:/exports/habitaweb-private         /var/www/habitaw
 - Zero mudança de código, zero migração de dados (só copiar os arquivos atuais
   para o export uma vez).
 - O nginx de cada instância continua servindo `public/uploads` estático.
+- No Nginx, bloqueie qualquer extensão executável dentro de uploads (o
+  `.htaccess` versionado cobre somente Apache):
+
+```nginx
+location ~* ^/uploads/.*\.(?:php[0-9]?|phtml|pht|phar|cgi|pl|py|rb|sh|asp|aspx|jsp)$ {
+    deny all;
+    return 403;
+}
+location ^~ /uploads/verification/ {
+    deny all;
+    return 403;
+}
+```
+
 - Limitação: o NFS vira ponto único de falha/gargalo em escala muito grande —
   suficiente para 2000 usuários, reavalie depois.
 

@@ -53,6 +53,17 @@ if (version_compare(PHP_VERSION, $minPhpVersion, '<')) {
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
 
+// E2E isolation: preload the tracked test configuration before the framework
+// reads the developer's .env. The command itself also enforces the marker and
+// exact database name before writing anything.
+if (getenv('HABITAWEB_E2E_TESTING') === '1') {
+    require_once __DIR__ . '/vendor/codeigniter4/framework/system/Config/DotEnv.php';
+    (new CodeIgniter\Config\DotEnv(__DIR__, '.env.testing'))->load();
+    putenv('CI_ENVIRONMENT=development');
+    $_ENV['CI_ENVIRONMENT'] = 'development';
+    $_SERVER['CI_ENVIRONMENT'] = 'development';
+}
+
 /*
  *---------------------------------------------------------------
  * SET THE CURRENT DIRECTORY

@@ -23,6 +23,25 @@ if (version_compare(PHP_VERSION, $minPhpVersion, '<')) {
     exit(1);
 }
 
+// The Playwright server is explicitly isolated from the developer database.
+// This marker is supplied only by the E2E runner; normal web requests cannot
+// select another environment file.
+if (getenv('HABITAWEB_E2E_TESTING') === '1') {
+    $projectRoot = dirname(__DIR__);
+    require_once $projectRoot . '/vendor/codeigniter4/framework/system/Config/DotEnv.php';
+    (new CodeIgniter\Config\DotEnv($projectRoot, '.env.testing'))->load();
+    putenv('CI_ENVIRONMENT=development');
+    $_ENV['CI_ENVIRONMENT'] = 'development';
+    $_SERVER['CI_ENVIRONMENT'] = 'development';
+
+    $e2eBaseUrl = getenv('HABITAWEB_E2E_BASE_URL');
+    if (is_string($e2eBaseUrl) && str_starts_with($e2eBaseUrl, 'http://localhost:')) {
+        putenv('app.baseURL=' . $e2eBaseUrl);
+        $_ENV['app.baseURL'] = $e2eBaseUrl;
+        $_SERVER['app.baseURL'] = $e2eBaseUrl;
+    }
+}
+
 /*
  *---------------------------------------------------------------
  * SET THE CURRENT DIRECTORY

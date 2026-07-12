@@ -1,34 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_PROCESS_ENV } from './e2e/support/testEnv';
 
-// PRECISA bater com app.baseURL em .env (hoje 'http://localhost:8080/'). Todo
-// redirect() de produção (ex.: LoginController -> config('Auth')->loginRedirect())
-// gera URL ABSOLUTA a partir desse baseURL, não da porta real da requisição — e
-// CodeIgniter\Config\DotEnv::setVariable() usa getenv($name, true) (só local),
-// que ignora variável de ambiente do shell e sempre reaplica o valor do .env. Ou
-// seja, apontar o webServer para outra porta aqui NÃO muda o baseURL que a app
-// usa para redirecionar — o browser é redirecionado de volta pra 8080 e cai em
-// ERR_CONNECTION_REFUSED se nada estiver escutando lá. Confirmado batendo com
-// curl: POST /admin/login com o server em :8098 respondeu 303 para
-// http://localhost:8080/admin (porta errada). Se precisar mudar a porta, mude
-// app.baseURL no .env também.
 const E2E_PORT = process.env.E2E_PORT ?? '8080';
 const E2E_BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${E2E_PORT}`;
+const E2E_SERVER_ENV = {
+  ...E2E_PROCESS_ENV,
+  HABITAWEB_E2E_BASE_URL: `${E2E_BASE_URL}/`,
+};
 
 /**
  * Config do E2E de frontend (Fase 2). O Playwright sobe o próprio `php spark
- * serve` (webServer abaixo) — que conecta no banco que .env apontar (o MESMO
- * banco do seu ambiente normal de desenvolvimento).
- *
- * NOTA IMPORTANTE: tentei originalmente isolar isso apontando o servidor para
- * habitaweb_test via variáveis de ambiente do processo, mas descobri que
- * CodeIgniter\Config\DotEnv sobrescreve incondicionalmente com os valores de
- * .env qualquer chave já presente no arquivo — variável de ambiente do shell
- * NÃO vence. Ou seja, essa isolação não é confiável e eu removi para não criar
- * falsa sensação de segurança. Por isso app/Commands/E2ESetup.php (rodado no
- * globalSetup abaixo) é estritamente NÃO-DESTRUTIVO — nunca DELETE/TRUNCATE, só
- * cria os registros fixos que faltarem — e imprime o banco conectado antes de
- * escrever, para você conferir. Se quiser isolamento real, aponte .env para um
- * banco dedicado de homologação antes de rodar `npm run test:e2e`.
+ * serve` com as variáveis de `.env.testing`. O setup também exige o marcador
+ * HABITAWEB_E2E_TESTING e recusa qualquer banco diferente de habitaweb_test.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -43,6 +26,7 @@ export default defineConfig({
 
   webServer: {
     command: `php spark serve --host localhost --port ${E2E_PORT}`,
+    env: E2E_SERVER_ENV,
     url: E2E_BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

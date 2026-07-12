@@ -1,2 +1,11 @@
 /.gitattributes export-ignore
 /.github export-ignore
+/.env.testing export-ignore
+/e2e export-ignore
+/node_modules export-ignore
+/package.json export-ignore
+/package-lock.json export-ignore
+/phpunit.xml.dist export-ignore
+/playwright.config.ts export-ignore
+/run_tests.sh export-ignore
+/tests export-ignore

@@ -23,7 +23,9 @@ php spark migrate --all -n CodeIgniter\\Settings # Settings tables
 php spark migrate                                 # App migrations (app/Database/Migrations)
 php spark db:seed PlanSeeder                       # seed subscription plans (other seeders in app/Database/Seeds)
 ```
-There is also a web installer wizard at `/install` (see `app/Controllers/Install/InstallController.php`) which drives first-time `.env` + DB + admin setup; `App\Filters\InstallationCheck` redirects every request there until `writable/.installed` exists.
+Initial setup is CLI-only: copy `env.example` to `.env`, run migrations and
+seeders, then create the administrator with Shield. There is intentionally no
+web installer route.
 
 ### Tests
 PHPUnit config is `phpunit.xml.dist`; test DB env vars point at Postgres (`habitaweb_test`). `.env.testing` holds the DB credentials used by `run_tests.sh`.
@@ -47,7 +49,11 @@ vendor/bin/phpunit tests/unit/PaymentGatewayTest.php   # run a single file
 Composer also exposes `composer test` (plain `phpunit`).
 
 ### Custom spark commands
-`app/Commands/` has ~30 custom commands for diagnosing/fixing production data — payment gateway config/encryption (`GatewayDebugConfig`, `GatewayFixEncryption`, `InspectAsaasKeys`), Asaas sync (`AsaasSync`, `UpdateAsaasConfig`), user/account repair (`ResetUser`, `FixBrokenAccounts`, `DeepReset`, `GeoReset`), and one-off test/seed helpers (`Test*`, `TestInsertPlanCommand`, etc). Run via `php spark <command:name>`; check the command's `$group`/`$name` for exact invocation.
+`app/Commands/` contains only operational commands such as Asaas sync, expiry
+checks, curation, the email worker, metrics flushing, media generation, upload
+migration, cleanup and password/account maintenance. The `e2e:setup` command
+is test-only: it requires the Playwright marker and refuses every database
+except `habitaweb_test`.
 
 ## Architecture
 
@@ -76,7 +82,4 @@ Auth groups (`app/Config/AuthGroups.php`, Shield-based): `superadmin`, `admin`, 
 
 ## Notable repo quirks
 
-- The repo root has many one-off Portuguese-language audit/report Markdown files (`AUDITORIA_SEGURANCA_COMPLETA.md`, `SECURITY_AUDIT_REPORT.md`, `PENETRATION_TESTING_GUIDE.md`, `RELATORIO_E2E_FINAL.md`, etc.) and standalone debug/verification PHP scripts at the root (`check_db.php`, `validate_system.php`, `verify_seeders.php`, `e2e_test.php`, ...). These are historical/manual tooling, not part of the app or the PHPUnit suite — don't assume they run in CI.
-- There are also several stray zero-byte/junk files at repo root (e.g. `1,`, `1000`, `ACTIVE`, `pk_test_,`) left over from earlier shell mishaps — ignore them, don't treat as project files.
-- `app/Config/Routes.php` still has a leftover `test-debug` route that `die()`s — a debug leftover, not intentional API surface.
 - `README.md` documents a **planned, not-yet-built** AI layer (`AIService`, `PropertyInsightService`, `TrustService`, `LeadInsightService`) gated by `AI_ENABLED`/`AI_PROVIDER` env vars, meant to be fully optional with mandatory local fallback when disabled/unavailable. Treat this as a roadmap note, not existing code, unless you find the actual classes.

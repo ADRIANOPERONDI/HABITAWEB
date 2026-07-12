@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 
 /**
  * Jornada 1: funil público — home → busca → mapa → detalhe → lead.
- * Não depende de login; usa imóveis ACTIVE que já existem no banco (não criamos
- * fixtures de imóvel aqui — o app já tem dados reais de imóveis publicados).
+ * Não depende de login; usa o imóvel ACTIVE criado de forma idempotente por
+ * `e2e:setup` exclusivamente em `habitaweb_test`.
  *
  * Seletores confirmados batendo direto no HTML renderizado (não no que a spec
  * original pré-crash supunha):

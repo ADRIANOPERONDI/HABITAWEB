@@ -1,6 +1,7 @@
 import { chromium, type FullConfig } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { E2E_PROCESS_ENV } from './testEnv';
 
 export const STORAGE_STATE_SUPERADMIN = path.join(__dirname, '.auth-superadmin.json');
 export const STORAGE_STATE_TENANT = path.join(__dirname, '.auth-tenant.json');
@@ -23,7 +24,11 @@ const ROOT_DIR = path.join(__dirname, '..', '..');
  */
 export default async function globalSetup(config: FullConfig): Promise<void> {
   console.log('[globalSetup] Rodando php spark e2e:setup...');
-  execFileSync('php', ['spark', 'e2e:setup'], { cwd: ROOT_DIR, stdio: 'inherit' });
+  execFileSync('php', ['spark', 'e2e:setup'], {
+    cwd: ROOT_DIR,
+    env: E2E_PROCESS_ENV,
+    stdio: 'inherit',
+  });
 
   const baseURL = config.projects[0]?.use?.baseURL ?? 'http://localhost:8080';
   const browser = await chromium.launch();

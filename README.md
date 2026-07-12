@@ -15,22 +15,19 @@ Sistema completo de gestão de imóveis com portal público, painel administrati
 
 ## 📦 Instalação
 
-O Habitaweb possui um instalador automático via web para facilitar a configuração inicial.
+Por segurança, a instalação é feita somente pelo terminal. Configure sempre o
+servidor Apache/Nginx com a pasta `public/` como document root; a raiz do
+repositório não pode ser exposta pela web.
 
-### Opção 1: Instalação Automática (Recomendado)
-1. Configure seu servidor (Apache/Nginx) apontando para a pasta `public/`.
-2. Acesse a URL do seu site no navegador.
-3. O sistema redirecionará automaticamente para o assistente de instalação (`/install`).
-4. Siga os 5 passos do wizard para configurar banco de dados, variáveis de ambiente e administrador.
+### 1. Obtenha o projeto
 
-### Opção 2: Instalação Manual
-Utilize esta opção se preferir configurar via terminal:
 ```bash
 git clone git@github.com:ADRIANOPERONDI/HABITAWEB.git
 cd habitaweb
 ```
 
 ### 2. Instale as dependências
+
 ```bash
 composer install
 ```
@@ -45,10 +42,13 @@ psql -U postgres -c "CREATE DATABASE habitaweb;"
 mysql -u root -p -e "CREATE DATABASE habitaweb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 ```
 
-### 4. Configure o arquivo .env
+### 4. Configure o arquivo `.env`
+
 Copie o arquivo de exemplo e configure suas variáveis:
+
 ```bash
 cp env.example .env
+chmod 600 .env
 ```
 
 Edite o `.env` e configure:
@@ -188,7 +188,7 @@ Ativação, nesta ordem:
 
 ```bash
 ./run_tests.sh setup                              # cria/prepara o banco habitaweb_test
-vendor/bin/phpunit --testsuite unit,feature,e2e   # 86 testes (usa .env.testing: Postgres + Redis DBs 6/7)
+vendor/bin/phpunit --testsuite unit,feature,e2e   # 85 testes (usa .env.testing: Postgres + Redis DBs 6/7)
 npx playwright test                               # 17 testes E2E de navegador (sobe o servidor sozinho)
 ```
 
@@ -254,23 +254,11 @@ AI_CACHE_TTL=86400
 - `LeadInsightService`: classificação de leads e sugestões de resposta para o anunciante.
 - Fallback local obrigatório: templates e regras internas devem cobrir todos os fluxos quando a IA estiver desligada ou indisponível.
 
-## 🔄 Reset para Nova Instalação
+## 🔄 Nova instalação
 
-Se você deseja "zerar" o sistema para realizar uma nova instalação limpa em outro servidor ou ambiente:
-
-1. **Remova o arquivo de bloqueio**:
-   ```bash
-   rm writable/.installed
-   ```
-2. **Remova o arquivo de configuração**:
-   ```bash
-   rm .env
-   ```
-3. **Limpe o Banco de Dados** (Exemplo PostgreSQL):
-   ```bash
-   psql -U postgres -d habitaweb -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-   ```
-4. **Acesse o navegador**: O sistema redirecionará automaticamente para o Instalador Web (`/install`).
+Para outra instância, crie um banco vazio, copie `env.example` para `.env`,
+gere uma nova chave de criptografia e execute migrations/seeders pelo terminal.
+Não reutilize `.env`, banco, uploads ou chaves de uma instalação existente.
 
 ## 📄 Licença
 

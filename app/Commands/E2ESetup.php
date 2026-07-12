@@ -17,17 +17,9 @@ use CodeIgniter\Shield\Entities\User;
  * credenciais fixas e conhecidas, para as jornadas de navegador poderem logar
  * sem precisar inspecionar o banco.
  *
- * IMPORTANTE — leia antes de rodar: `php spark serve` conecta no banco que
- * `.env` apontar (grupo 'default'), o MESMO usado pelo seu ambiente normal de
- * desenvolvimento. Tentei originalmente forçar esse comando a rodar isolado
- * contra habitaweb_test via variáveis de ambiente no processo do servidor, mas
- * descobri que os valores de .env sempre vencem variáveis de ambiente do shell
- * para chaves que já existem no arquivo (CodeIgniter\Config\DotEnv sobrescreve
- * incondicionalmente) — ou seja, essa abordagem NÃO isola de verdade e criaria
- * uma falsa sensação de segurança. Por isso este comando é estritamente
- * NÃO-DESTRUTIVO (nunca DELETE/TRUNCATE, só insere se não existir) e sempre
- * imprime o banco conectado antes de escrever, para você conferir/cancelar
- * (Ctrl+C) se não for o banco esperado.
+ * O comando só funciona quando o Playwright injeta o marcador explícito de E2E
+ * e a conexão aponta exatamente para `habitaweb_test`. As duas condições são
+ * verificadas antes de migrations ou qualquer escrita.
  */
 class E2ESetup extends BaseCommand
 {
@@ -46,9 +38,22 @@ class E2ESetup extends BaseCommand
 
     public function run(array $params)
     {
+        if (ENVIRONMENT === 'production' || env('HABITAWEB_E2E_TESTING', '0') !== '1') {
+            CLI::error('e2e:setup bloqueado: execute somente pelo Playwright com o ambiente E2E isolado.');
+
+            return EXIT_ERROR;
+        }
+
         $db = \Config\Database::connect();
-        CLI::write('Conectado em: ' . $db->getDatabase() . '@' . ($db->hostname ?? '?'), 'yellow');
-        CLI::write('(este comando só INSERE dados novos — nunca apaga nada existente)', 'yellow');
+        $databaseName = (string) $db->getDatabase();
+
+        if (! hash_equals('habitaweb_test', $databaseName)) {
+            CLI::error('e2e:setup bloqueado: o banco conectado não é habitaweb_test.');
+
+            return EXIT_ERROR;
+        }
+
+        CLI::write('Banco de teste validado: habitaweb_test', 'yellow');
 
         CLI::write('Rodando migrations (idempotente)...', 'yellow');
         \Config\Services::migrations()->setNamespace(null)->latest();
@@ -58,6 +63,11 @@ class E2ESetup extends BaseCommand
         $this->ensureReadyTenant();
         $this->ensurePendingVerificationAccount();
         $this->ensureReviewTargetAccount();
+        $this->ensureCheckoutCoupon();
+        $this->ensurePublicProperty();
+
+        // Busca/mapa usam cache; a limpeza é restrita ao Redis DB 6 do E2E.
+        cache()->clean();
 
         CLI::write('E2E setup concluído.', 'green');
     }
@@ -268,5 +278,76 @@ class E2ESetup extends BaseCommand
         ]);
 
         CLI::write('Conta-alvo de revisão criada: ' . self::REVIEW_TARGET_EMAIL, 'green');
+    }
+
+    private function ensureCheckoutCoupon(): void
+    {
+        $db = \Config\Database::connect();
+        $coupon = $db->table('coupons')->where('code', 'OFERTA524OFF')->get()->getRow();
+        $data = [
+            'account_id'     => null,
+            'description'    => 'Cupom fixo do Playwright',
+            'discount_type'  => 'percent',
+            'discount_value' => 10,
+            'max_uses'       => null,
+            'used_count'     => 0,
+            'valid_from'     => null,
+            'valid_until'    => null,
+            'is_active'      => true,
+            'updated_at'     => date('Y-m-d H:i:s'),
+        ];
+
+        if ($coupon) {
+            $db->table('coupons')->where('id', $coupon->id)->update($data);
+            CLI::write('Cupom E2E resetado.', 'cyan');
+            return;
+        }
+
+        $data['code'] = 'OFERTA524OFF';
+        $data['created_at'] = date('Y-m-d H:i:s');
+        $db->table('coupons')->insert($data);
+        CLI::write('Cupom E2E criado.', 'green');
+    }
+
+    private function ensurePublicProperty(): void
+    {
+        $db = \Config\Database::connect();
+        $exists = $db->table('properties')->where('titulo', 'E2E Imóvel Público')->countAllResults() > 0;
+        if ($exists) {
+            CLI::write('Imóvel público E2E já existe, pulando.', 'cyan');
+            return;
+        }
+
+        $account = $db->table('accounts')->where('email', self::TENANT_EMAIL)->get()->getRow();
+        $identity = $db->table('auth_identities')->where('secret', self::TENANT_EMAIL)->get()->getRow();
+        if (! $account || ! $identity) {
+            throw new \RuntimeException('Fixture tenant ausente ao criar imóvel E2E.');
+        }
+
+        $db->table('properties')->insert([
+            'account_id'          => $account->id,
+            'user_id_responsavel' => $identity->user_id,
+            'tipo_negocio'        => 'VENDA',
+            'tipo_imovel'         => 'APARTAMENTO',
+            'titulo'              => 'E2E Imóvel Público',
+            'descricao'           => 'Fixture isolada para busca, mapa, favoritos e lead.',
+            'preco'               => 350000,
+            'area_total'          => 75,
+            'quartos'             => 2,
+            'banheiros'           => 1,
+            'vagas'               => 1,
+            'estado'              => 'SP',
+            'cidade'              => 'São Paulo',
+            'bairro'              => 'Centro',
+            'latitude'            => -23.5505,
+            'longitude'           => -46.6333,
+            'status'              => 'ACTIVE',
+            'score_qualidade'     => 100,
+            'publicado_em'        => date('Y-m-d H:i:s'),
+            'created_at'          => date('Y-m-d H:i:s'),
+            'updated_at'          => date('Y-m-d H:i:s'),
+        ]);
+
+        CLI::write('Imóvel público E2E criado.', 'green');
     }
 }

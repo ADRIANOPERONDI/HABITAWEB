@@ -42,25 +42,27 @@ $RECYCLE.BIN/
 # These should never be under version control,
 # as it poses a security risk.
 .env
+.env.*
+!.env.testing
 .vagrant
 Vagrantfile
 
 #-------------------------
 # Temporary Files
 #-------------------------
-writable/cache/*
+/writable/cache/**
 !writable/cache/index.html
 
-writable/logs/*
+/writable/logs/**
 !writable/logs/index.html
 
-writable/session/*
+/writable/session/**
 !writable/session/index.html
 
-writable/uploads/*
+/writable/uploads/**
 !writable/uploads/index.html
 
-writable/debugbar/*
+/writable/debugbar/**
 !writable/debugbar/index.html
 
 # Installation status
@@ -129,7 +131,8 @@ _modules/*
 /results/
 /phpunit*.xml
 /tmp/
-/public/uploads/*
+/public/uploads/**
+!/public/uploads/.htaccess
 !/public/uploads/.gitkeep
 
 #-------------------------
@@ -139,4 +142,3 @@ _modules/*
 /playwright-report/
 /test-results/
 /e2e/support/.auth-*.json
-
