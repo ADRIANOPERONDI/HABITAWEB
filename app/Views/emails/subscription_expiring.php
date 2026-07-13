@@ -29,14 +29,14 @@
             </div>
             
             <p style="font-size: 16px; font-weight: bold; text-align: center;">
-                Sua assinatura vence em <span style="color: #f59e0b;"><?= date('d/m/Y', strtotime($subscription->data_final)) ?></span>
+                Sua assinatura vence em <span style="color: #f59e0b;"><?= date('d/m/Y', strtotime($subscription->data_fim)) ?></span>
             </p>
             
             <div class="info-box">
                 <h3>📋 Detalhes da Assinatura</h3>
                 <p><strong>Plano Atual:</strong> <?= esc($subscription->plano_nome ?? 'Não informado') ?></p>
                 <p><strong>Status:</strong> <span style="color: #10b981;">Ativo</span></p>
-                <p><strong>Data de Vencimento:</strong> <?= date('d/m/Y', strtotime($subscription->data_final)) ?></p>
+                <p><strong>Data de Vencimento:</strong> <?= date('d/m/Y', strtotime($subscription->data_fim)) ?></p>
             </div>
             
             <h3>⚠️ O que acontece se não renovar?</h3>

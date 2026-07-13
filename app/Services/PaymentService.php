@@ -692,6 +692,8 @@ class PaymentService
 
         // 4. Marca localmente como cancelado
         $this->subscriptionModel->update($subscriptionId, ['status' => 'CANCELLED']);
+        $this->deactivateAccountIfNoActiveSubscription((int) $subscription->account_id, $subscriptionId);
+        $this->clearSubscriptionCaches((int) $subscription->account_id);
 
         log_message('notice', "[PaymentService] Cancelamento atômico concluído para ID: $subscriptionId");
         return $success;
@@ -713,12 +715,40 @@ class PaymentService
                 
                 // Opcionalmente suspender a conta também
                 $this->accountModel->update($subscription->account_id, ['status' => 'SUSPENDED']);
+                $this->clearSubscriptionCaches((int) $subscription->account_id);
                 return true;
             }
             return false;
         } catch (\Exception $e) {
             throw new \Exception("Erro ao suspender no gateway: " . $e->getMessage());
         }
+    }
+
+    private function deactivateAccountIfNoActiveSubscription(int $accountId, int $exceptSubscriptionId): void
+    {
+        if ($accountId <= 0) {
+            return;
+        }
+
+        $activeSubscriptions = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->where('status', 'ACTIVE')
+            ->where('id !=', $exceptSubscriptionId)
+            ->countAllResults();
+
+        if ($activeSubscriptions === 0) {
+            $this->accountModel->update($accountId, ['status' => 'INACTIVE']);
+        }
+    }
+
+    private function clearSubscriptionCaches(int $accountId): void
+    {
+        if ($accountId <= 0) {
+            return;
+        }
+
+        cache()->delete("subscription_sync_stale_{$accountId}");
+        cache()->deleteMatching("dashboard_{$accountId}_*");
     }
 
     /**
@@ -1233,9 +1263,6 @@ class PaymentService
                     $newStatus = ($remoteStatus === 'EXPIRED') ? 'EXPIRED' : 'CANCELLED';
                 }
                 
-                if ($remoteStatus === 'ACTIVE' && in_array($localStatus, ['CANCELLED', 'SUSPENDED', 'EXPIRED', 'PENDING', 'AWAITING_PAYMENT'])) {
-                    $newStatus = 'ACTIVE';
-                }
             }
             
             // Housekeeping original problemático Removido: Se está ATIVA lá e ATIVA aqui, mantemos como está
@@ -1247,6 +1274,7 @@ class PaymentService
             if ($newStatus) {
                 log_message('notice', "[PaymentService] Syncing Sub #{$subscriptionId} from {$localStatus} to {$newStatus}");
                 $this->subscriptionModel->update($subscriptionId, ['status' => $newStatus]);
+                $this->clearSubscriptionCaches((int) $subscription->account_id);
                 
                 if (in_array($newStatus, ['CANCELLED', 'EXPIRED', 'INACTIVE'])) {
                      // SÓ desativa a conta se NÃO houver outra assinatura ATIVA
@@ -1295,6 +1323,7 @@ class PaymentService
 
         if ($subscription->account_id) {
             $this->accountModel->update($subscription->account_id, ['status' => 'ACTIVE']);
+            $this->clearSubscriptionCaches((int) $subscription->account_id);
         }
 
         // 1. Limpar outras transações PENDENTES para esta conta

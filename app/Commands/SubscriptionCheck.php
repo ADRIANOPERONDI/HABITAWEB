@@ -32,7 +32,7 @@ class SubscriptionCheck extends BaseCommand
             // Busca assinaturas que vencem nesta data
             $expiringSubscriptions = $subscriptionModel
                 ->where('status', 'ACTIVE')
-                ->where('DATE(data_final)', $targetDate)
+                ->where('DATE(data_fim)', $targetDate)
                 ->findAll();
             
             CLI::write("Verificando assinaturas que vencem em {$days} " . ($days === 1 ? 'dia' : 'dias') . "...", 'cyan');
@@ -86,7 +86,7 @@ class SubscriptionCheck extends BaseCommand
         
         $expired = $subscriptionModel
             ->where('status', 'ACTIVE')
-            ->where('data_final <', date('Y-m-d H:i:s'))
+            ->where('data_fim <', date('Y-m-d H:i:s'))
             ->findAll();
         
         $count = 0;
