@@ -14,8 +14,9 @@ class PlanModel extends Model
     protected $protectFields    = true;
     protected $allowedFields    = [
         'chave', 'nome', 'limite_imoveis_ativos', 'limite_turbo_mensal',
-        'limite_api_requests_dia', 'preco_mensal', 'preco_trimestral', 
-        'preco_semestral', 'preco_anual', 'limite_fotos_por_imovel', 'carencia_dias', 'ativo', 'descricao'
+        'limite_api_requests_dia', 'preco_mensal', 'preco_trimestral',
+        'preco_semestral', 'preco_anual', 'limite_fotos_por_imovel',
+        'destaques_mensais', 'carencia_dias', 'ativo', 'descricao'
     ];
 
     protected bool $allowEmptyInserts = false;
@@ -33,6 +34,7 @@ class PlanModel extends Model
 
     // Validation
     protected $validationRules      = [
+        'id' => 'permit_empty|is_natural_no_zero',
         'nome' => 'required|is_unique[plans.nome,id,{id}]',
         'chave' => 'required|is_unique[plans.chave,id,{id}]'
     ];

@@ -48,7 +48,7 @@ class PaymentGatewayConfigModel extends Model
             
             // Descriptografar se necessário e solicitado
             if ($decrypted && $config->is_sensitive && !empty($value)) {
-                $value = $this->decryptValue($value);
+                $value = $this->decryptValue($value, $config);
             }
             
             // Cast de tipo
@@ -100,15 +100,60 @@ class PaymentGatewayConfigModel extends Model
     /**
      * Descriptografar valor
      */
-    protected function decryptValue($value)
+    protected function decryptValue($value, ?object $config = null)
     {
+        $decoded = base64_decode((string) $value, true);
+
+        if ($decoded === false) {
+            return $this->recoverSensitiveValue($config, 'invalid_base64') ?? '';
+        }
+
         try {
             $encrypter = \Config\Services::encrypter();
-            return $encrypter->decrypt(base64_decode($value));
+            return $encrypter->decrypt($decoded);
         } catch (\Exception $e) {
-            log_message('error', 'Erro ao descriptografar config: ' . $e->getMessage());
-            return $value; // Retorna valor original se falhar
+            $fallback = $this->recoverSensitiveValue($config, $e->getMessage());
+
+            if ($fallback !== null) {
+                return $fallback;
+            }
+
+            log_message('error', 'Erro ao descriptografar config ' . ($config->config_key ?? 'unknown') . ': ' . $e->getMessage());
+            return '';
         }
+    }
+
+    protected function recoverSensitiveValue(?object $config, string $reason): ?string
+    {
+        if (!$config || empty($config->config_key)) {
+            return null;
+        }
+
+        $envKey = match ($config->config_key) {
+            'api_key'        => 'ASAAS_API_KEY',
+            'webhook_secret' => 'ASAAS_WEBHOOK_SECRET',
+            'webhook_token'  => 'ASAAS_WEBHOOK_TOKEN',
+            default          => null,
+        };
+
+        if ($envKey === null) {
+            return null;
+        }
+
+        $fallback = env($envKey, '');
+
+        if ($fallback === '' && $config->config_key === 'webhook_secret') {
+            $fallback = env('ASAAS_WEBHOOK_TOKEN', '');
+        }
+
+        if ($fallback === '') {
+            return null;
+        }
+
+        log_message('warning', "Config sensível {$config->config_key} recuperada de {$envKey} após falha de descriptografia ({$reason}); recriptografando com a chave atual.");
+        $this->saveConfig((int) $config->gateway_id, (string) $config->config_key, $fallback, true);
+
+        return $fallback;
     }
 
     /**
