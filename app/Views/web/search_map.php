@@ -623,7 +623,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 map.setView([position.coords.latitude, position.coords.longitude], 13);
                 setTimeout(() => {
                     suppressNextMoveFetch = false;
-                    fetchMapData();
+                    fetchMapData({ viewportBounds: true });
                 }, 250);
             },
             () => {},

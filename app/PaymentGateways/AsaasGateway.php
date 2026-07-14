@@ -12,10 +12,19 @@ class AsaasGateway implements GatewayInterface
     public function configure(array $config): void
     {
         $this->apiKey = $config['api_key'] ?? '';
-        $this->environment = $config['environment'] ?? 'sandbox';
         $this->webhookSecret = $config['webhook_token'] ?? $config['webhook_secret'] ?? '';
-        
-        $this->baseUrl = $this->environment === 'production' 
+
+        // Se a linha 'environment' do DB vier vazia/corrompida (ex.: falha de
+        // descriptografia retorna ''), NÃO assumir sandbox às cegas: cai para
+        // ASAAS_ENV do .env antes do default, senão uma chave de produção
+        // acaba batendo na URL de sandbox (401 invalid_environment).
+        $environment = $config['environment'] ?? '';
+        if (!in_array($environment, ['sandbox', 'production'], true)) {
+            $environment = env('ASAAS_ENV', 'sandbox');
+        }
+        $this->environment = $environment;
+
+        $this->baseUrl = $this->environment === 'production'
             ? 'https://api.asaas.com/v3'
             : 'https://api-sandbox.asaas.com/v3';
     }
