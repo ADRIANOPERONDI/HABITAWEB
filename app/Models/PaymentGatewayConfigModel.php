@@ -140,13 +140,19 @@ class PaymentGatewayConfigModel extends Model
             return null;
         }
 
-        $fallback = env($envKey, '');
+        $fallback = trim((string) env($envKey, ''));
 
         if ($fallback === '' && $config->config_key === 'webhook_secret') {
-            $fallback = env('ASAAS_WEBHOOK_TOKEN', '');
+            $fallback = trim((string) env('ASAAS_WEBHOOK_TOKEN', ''));
         }
 
-        if ($fallback === '') {
+        // Nunca substitua um segredo do banco por valores de exemplo do .env.
+        // Isso é especialmente importante durante rotação da encryption.key:
+        // uma falha de descriptografia não pode destruir a única cópia válida.
+        if ($fallback === '' || $this->isPlaceholderValue($fallback)) {
+            if ($fallback !== '') {
+                log_message('critical', "Config sensível {$config->config_key} não recuperada: {$envKey} contém um placeholder.");
+            }
             return null;
         }
 
@@ -154,6 +160,11 @@ class PaymentGatewayConfigModel extends Model
         $this->saveConfig((int) $config->gateway_id, (string) $config->config_key, $fallback, true);
 
         return $fallback;
+    }
+
+    private function isPlaceholderValue(string $value): bool
+    {
+        return preg_match('/^(your[_-]|change[_-]?me|replace[_-]?me|example|test[_-]?key|x{4,})/i', $value) === 1;
     }
 
     /**

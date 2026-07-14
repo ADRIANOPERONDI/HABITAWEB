@@ -11,7 +11,7 @@ class AsaasGateway implements GatewayInterface
     
     public function configure(array $config): void
     {
-        $this->apiKey = $config['api_key'] ?? '';
+        $this->apiKey = trim((string) ($config['api_key'] ?? ''));
         $this->webhookSecret = $config['webhook_token'] ?? $config['webhook_secret'] ?? '';
 
         // Se a linha 'environment' do DB vier vazia/corrompida (ex.: falha de
@@ -414,6 +414,12 @@ class AsaasGateway implements GatewayInterface
      */
     public function request(string $method, string $endpoint, array $data = [])
     {
+        if ($this->apiKey === '' || preg_match('/^(your[_-]|change[_-]?me|replace[_-]?me|example|test[_-]?key|x{4,})/i', $this->apiKey)) {
+            throw new \RuntimeException(
+                'ASAAS_API_KEY não configurada: informe uma chave válida do mesmo ambiente definido em ASAAS_ENV.'
+            );
+        }
+
         $client = \Config\Services::curlrequest();
         
         $options = [
