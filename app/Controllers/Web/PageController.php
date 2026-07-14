@@ -4,7 +4,6 @@ namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
 use App\Models\ClientModel;
-use App\Models\PropertyModel;
 
 class PageController extends BaseController
 {
@@ -23,7 +22,7 @@ class PageController extends BaseController
     public function sobre()
     {
         $clientModel = model(ClientModel::class);
-        $propertyModel = model(PropertyModel::class);
+        $propertyService = service('propertyService');
 
         return view('web/sobre', [
             'heroTitle' => app_setting('about.hero_title', 'Sobre a nossa empresa'),
@@ -39,7 +38,7 @@ class PageController extends BaseController
             'valuesContent' => app_setting('about.values_content', ''),
             'statsExperience' => $this->calculateYearsExperience(),
             'statsClients' => $clientModel->countRegisteredClients(),
-            'statsProperties' => $propertyModel->countPublicActiveProperties(),
+            'statsProperties' => $propertyService->countPublicProperties(),
             'ctaTitle' => app_setting('about.cta_title', ''),
             'ctaText' => app_setting('about.cta_text', ''),
         ]);

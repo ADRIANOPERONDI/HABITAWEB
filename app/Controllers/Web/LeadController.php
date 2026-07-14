@@ -33,6 +33,13 @@ class LeadController extends BaseController
             ])->setStatusCode(422);
         }
 
+        if (!(new \App\Services\PublicPropertyVisibilityService())->isVisible((int) $this->request->getPost('property_id'))) {
+            return $this->response->setJSON($this->jsonPayload([
+                'success' => false,
+                'message' => 'Imóvel não encontrado.',
+            ]))->setStatusCode(404);
+        }
+
         $service = service('leadService');
         
         $data = [
@@ -78,6 +85,13 @@ class LeadController extends BaseController
                 'success' => false,
                 'message' => 'Imóvel não informado.',
             ]))->setStatusCode(400);
+        }
+
+        if (!(new \App\Services\PublicPropertyVisibilityService())->isVisible((int) $propertyId)) {
+            return $this->response->setJSON($this->jsonPayload([
+                'success' => false,
+                'message' => 'Imóvel não encontrado.',
+            ]))->setStatusCode(404);
         }
 
         $service = service('leadService');

@@ -24,11 +24,14 @@ class MyFavoritesController extends BaseController
             // actually simple find is enough, we just need the cover.
             // But lets assume we want to show them nicely.
             
-            $properties = $propertyModel->whereIn('id', $ids)->findAll();
+            $builder = $propertyModel->whereIn('properties.id', $ids);
+            (new \App\Services\PublicPropertyVisibilityService())->apply($builder);
+            $properties = $builder->findAll();
             
             // Hydrate cover images
             $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
-            $medias = $mediaModel->whereIn('property_id', $ids)->findAll();
+            $visibleIds = array_map(static fn ($property) => (int) $property->id, $properties);
+            $medias = $visibleIds === [] ? [] : $mediaModel->whereIn('property_id', $visibleIds)->findAll();
             
             $mediaMap = [];
             foreach ($medias as $media) {

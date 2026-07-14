@@ -44,13 +44,19 @@ class PaymentTransactionModel extends Model
     // Callbacks
     protected $allowCallbacks = true;
     protected $beforeInsert   = [];
-    protected $afterInsert    = [];
+    protected $afterInsert    = ['invalidatePublicCaches'];
     protected $beforeUpdate   = [];
-    protected $afterUpdate    = [];
+    protected $afterUpdate    = ['invalidatePublicCaches'];
     protected $beforeFind     = [];
     protected $afterFind      = [];
     protected $beforeDelete   = [];
     protected $afterDelete    = [];
+
+    protected function invalidatePublicCaches(array $data): array
+    {
+        \App\Services\PublicPropertyVisibilityService::invalidateCaches();
+        return $data;
+    }
 
     /**
      * Buscar transações por conta com filtros
@@ -253,11 +259,6 @@ class PaymentTransactionModel extends Model
      */
     public function upsertTransaction(array $data)
     {
-        // Qualquer mudança de transação pode alterar o conjunto de contas
-        // inadimplentes — invalida o cache de getOverdueAccountIdsCached()
-        // (chave por $days; 3 é o único valor usado em produção hoje).
-        cache()->delete('overdue_account_ids_3');
-
         if (!empty($data['gateway_transaction_id']) && !empty($data['gateway'])) {
             $existing = $this->where('gateway_transaction_id', $data['gateway_transaction_id'])
                              ->where('gateway', $data['gateway'])

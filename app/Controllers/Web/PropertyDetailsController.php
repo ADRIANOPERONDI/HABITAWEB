@@ -10,14 +10,13 @@ class PropertyDetailsController extends BaseController
     {
         $propertyService = service('propertyService');
         
-        // Incrementa contador de visitas
-        $propertyService->incrementVisit($id);
-
-        $data = $propertyService->getPropertyDetails($id);
+        $data = $propertyService->getPublicPropertyDetails((int) $id);
 
         if (!$data) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound("Imóvel não encontrado: $id");
         }
+
+        $propertyService->incrementVisit((int) $id);
 
         // isFavorited já vem de getPropertyDetails() (mesma checagem, mesmo
         // auth()->id()) — o bloco duplicado que existia aqui fazia uma segunda

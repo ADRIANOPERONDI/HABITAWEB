@@ -1450,8 +1450,14 @@ class PaymentService
                         $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
                     }
                 } else {
-                    // Já existe localmente. Se estiver PENDING aqui mas RECEBIDO lá, sincronize!
-                    if ($localTransaction['status'] === 'PENDING' && ($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED')) {
+                    // Recupera também AWAITING_PAYMENT/OVERDUE. Antes, uma cobrança
+                    // paga no Asaas permanecia OVERDUE localmente e escondia todos
+                    // os imóveis da conta para sempre.
+                    $recoverableStatuses = ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'];
+                    if (
+                        in_array(strtoupper((string) $localTransaction['status']), $recoverableStatuses, true)
+                        && in_array($gatewayStatus, ['RECEIVED', 'CONFIRMED'], true)
+                    ) {
                         log_message('notice', "[PaymentService] Sync: Transação {$gatewayPaymentId} detectada como PAGA no gateway. Atualizando local...");
                         $this->transactionModel->update($localTransaction['id'], ['status' => 'SUCCESS']);
                         

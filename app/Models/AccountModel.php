@@ -41,13 +41,19 @@ class AccountModel extends Model
     // Callbacks
     protected $allowCallbacks = true;
     protected $beforeInsert   = [];
-    protected $afterInsert    = [];
+    protected $afterInsert    = ['invalidatePublicCaches'];
     protected $beforeUpdate   = [];
-    protected $afterUpdate    = [];
+    protected $afterUpdate    = ['invalidatePublicCaches'];
     protected $beforeFind     = [];
     protected $afterFind      = [];
     protected $beforeDelete   = [];
-    protected $afterDelete    = [];
+    protected $afterDelete    = ['invalidatePublicCaches'];
+
+    protected function invalidatePublicCaches(array $data): array
+    {
+        \App\Services\PublicPropertyVisibilityService::invalidateCaches();
+        return $data;
+    }
 
     /**
      * Verifica se a conta tem todas as verificações KYC completas

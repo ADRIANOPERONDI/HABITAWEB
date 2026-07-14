@@ -24,6 +24,10 @@ class FavoriteController extends ResourceController
             return $this->fail('Property ID is required');
         }
 
+        if (!(new \App\Services\PublicPropertyVisibilityService())->isVisible((int) $propertyId)) {
+            return $this->failNotFound('Imóvel não encontrado.');
+        }
+
         $model = model('App\Models\PropertyFavoriteModel');
         $existing = $model->where('user_id', $userId)
                           ->where('property_id', $propertyId)

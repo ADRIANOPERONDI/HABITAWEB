@@ -96,6 +96,7 @@ class SendPropertyAlerts extends BaseCommand
         $propertyModel = new PropertyModel();
         $builder = $propertyModel->where('status', 'ACTIVE')
                                  ->where('created_at >', $since);
+        (new \App\Services\PublicPropertyVisibilityService())->apply($builder);
 
         // Aplica os filtros salvos
         if (!empty($filtros['tipo_negocio'])) {

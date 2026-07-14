@@ -15,6 +15,7 @@ class PropertyService
     protected SubscriptionModel $subscriptionModel;
     protected PlanModel $planModel;
     protected CurationService $curationService;
+    protected PublicPropertyVisibilityService $publicVisibility;
 
     public function __construct()
     {
@@ -22,6 +23,7 @@ class PropertyService
         $this->subscriptionModel = Factories::models(SubscriptionModel::class);
         $this->planModel         = Factories::models(PlanModel::class);
         $this->curationService   = new CurationService();
+        $this->publicVisibility  = new PublicPropertyVisibilityService();
     }
 
     /**
@@ -175,7 +177,7 @@ class PropertyService
             }
             
             // CACHE
-            cache()->delete('search_filter_options');
+            PublicPropertyVisibilityService::invalidateCaches();
 
             // RANKING (Async update score)
             $rankingService = service('rankingService');
@@ -336,6 +338,8 @@ class PropertyService
                 ->groupBy('accounts.is_verified')
                 ->groupBy('plans.preco_mensal'); // Required for ORDER BY in Postgres
 
+        $this->publicVisibility->apply($builder);
+
         // Formula: (PlanPrice + (IsDestaque * 100) + (TurboLevel * 100)) * (Score / 100)
         $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (CASE WHEN properties.is_destaque = true THEN 100 ELSE 0 END) + (COALESCE(properties.highlight_level, 0) * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
         
@@ -393,6 +397,8 @@ class PropertyService
                 ->groupBy('accounts.is_verified')
                 ->orderBy('properties.created_at', 'DESC');
 
+        $this->publicVisibility->apply($builder);
+
         $properties = $builder->get($poolSize)->getResult(\App\Entities\Property::class);
 
         if (empty($properties)) {
@@ -423,6 +429,9 @@ class PropertyService
      */
     public function listProperties(array $filters = [], int $perPage = 15): array
     {
+        $publicOnly = ($filters['_public_only'] ?? false) === true;
+        unset($filters['_public_only']);
+
         $builder = $this->propertyModel->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
                                        ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
                                        ->join('accounts', 'accounts.id = properties.account_id', 'left');
@@ -437,23 +446,17 @@ class PropertyService
                 ->groupBy('accounts.is_verified')
                 ->groupBy('plans.preco_mensal');
 
-        // Esconder propriedades de contas com faturas atrasadas há mais de 3 dias (apenas em produção para evitar que dados sumam localmente)
-        if (defined('ENVIRONMENT') && ENVIRONMENT === 'production') {
-            $txModel = model('App\Models\PaymentTransactionModel');
-            $blockedAccountIds = $txModel->getOverdueAccountIdsCached(3);
-
-            if (!empty($blockedAccountIds)) {
-                $builder->whereNotIn('properties.account_id', $blockedAccountIds);
+        if ($publicOnly) {
+            $this->publicVisibility->apply($builder);
+        } else {
+            // Padrão interno: ACTIVE, a menos que especificado (ou ALL para admin).
+            if (isset($filters['show_deleted']) && $filters['show_deleted'] === true) {
+                $builder->onlyDeleted();
+            } elseif (isset($filters['status']) && $filters['status'] !== 'ALL') {
+                $builder->where('properties.status', $filters['status']);
+            } elseif (!isset($filters['status'])) {
+                $builder->where('properties.status', 'ACTIVE');
             }
-        }
-
-        // Padrão: ACTIVE, a menos que especificado (ou se for 'ALL' para admin)
-        if (isset($filters['show_deleted']) && $filters['show_deleted'] === true) {
-            $builder->onlyDeleted();
-        } elseif (isset($filters['status']) && $filters['status'] !== 'ALL') {
-             $builder->where('properties.status', $filters['status']);
-        } elseif (!isset($filters['status'])) {
-             $builder->where('properties.status', 'ACTIVE');
         }
 
         if (isset($filters['account_id'])) {
@@ -583,6 +586,13 @@ class PropertyService
         ];
     }
 
+    /** Lista pública; painel e API autenticada continuam usando listProperties(). */
+    public function listPublicProperties(array $filters = [], int $perPage = 15): array
+    {
+        $filters['_public_only'] = true;
+        return $this->listProperties($filters, $perPage);
+    }
+
     /**
      * Retorna pins leves para o mapa público, sem HTML e sem carregar galerias.
      */
@@ -647,16 +657,7 @@ class PropertyService
                 ->select('(SELECT COUNT(*) FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL) as media_count');
         }
 
-        if (defined('ENVIRONMENT') && ENVIRONMENT === 'production') {
-            $txModel = model('App\Models\PaymentTransactionModel');
-            $blockedAccountIds = $txModel->getOverdueAccountIdsCached(3);
-
-            if (!empty($blockedAccountIds)) {
-                $builder->whereNotIn('properties.account_id', $blockedAccountIds);
-            }
-        }
-
-        $builder->where('properties.status', $filters['status'] ?? 'ACTIVE');
+        $this->publicVisibility->apply($builder);
 
         if (!empty($filters['tipo_imovel'])) {
             $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
@@ -758,10 +759,27 @@ class PropertyService
      */
     public function getPropertyDetails(int $id): ?array
     {
-        $property = $this->propertyModel->select('properties.*, accounts.nome as account_name, accounts.telefone as account_phone, accounts.whatsapp as account_whatsapp, accounts.email as account_email, accounts.creci as account_creci, accounts.tipo_conta as account_type, accounts.logo as account_logo, accounts.is_verified as account_verified, accounts.whatsapp_hub_config, accounts.whatsapp_messages_config, clients.nome as client_name')
-                                   ->join('accounts', 'accounts.id = properties.account_id', 'left')
-                                   ->join('clients', 'clients.id = properties.client_id', 'left')
-                                   ->find($id);
+        return $this->loadPropertyDetails($id, false);
+    }
+
+    /** Busca pública: indisponíveis se comportam como inexistentes. */
+    public function getPublicPropertyDetails(int $id): ?array
+    {
+        return $this->loadPropertyDetails($id, true);
+    }
+
+    private function loadPropertyDetails(int $id, bool $publicOnly): ?array
+    {
+        $builder = (new PropertyModel())
+            ->select('properties.*, accounts.nome as account_name, accounts.telefone as account_phone, accounts.whatsapp as account_whatsapp, accounts.email as account_email, accounts.creci as account_creci, accounts.tipo_conta as account_type, accounts.logo as account_logo, accounts.is_verified as account_verified, accounts.whatsapp_hub_config, accounts.whatsapp_messages_config, clients.nome as client_name')
+            ->join('accounts', 'accounts.id = properties.account_id', 'left')
+            ->join('clients', 'clients.id = properties.client_id', 'left');
+
+        if ($publicOnly) {
+            $this->publicVisibility->apply($builder);
+        }
+
+        $property = $builder->find($id);
 
         if (!$property) {
             return null;
@@ -828,9 +846,15 @@ class PropertyService
      */
     public function restoreProperty(int $id): bool
     {
-        return $this->propertyModel->builder()
-                                   ->where('id', $id)
-                                   ->update(['deleted_at' => null]);
+        $restored = $this->propertyModel->builder()
+            ->where('id', $id)
+            ->update(['deleted_at' => null]);
+
+        if ($restored) {
+            PublicPropertyVisibilityService::invalidateCaches();
+        }
+
+        return $restored;
     }
 
     /**
@@ -994,10 +1018,16 @@ class PropertyService
         // chamado por resolveLocationName() no MEIO da montagem do builder de
         // listProperties — reusar o model compartilhado misturaria o estado do
         // builder em andamento com estas queries de distinct, corrompendo ambas.
+        $publicDistinct = function (string $field): array {
+            $model = (new PropertyModel())->distinct()->select($field);
+            $this->publicVisibility->apply($model);
+            return $model->orderBy($field, 'ASC')->findAll();
+        };
+
         return [
-            'cidades' => (new PropertyModel())->distinct()->select('cidade')->where('status', 'ACTIVE')->orderBy('cidade', 'ASC')->findAll(),
-            'bairros' => (new PropertyModel())->distinct()->select('bairro')->where('status', 'ACTIVE')->orderBy('bairro', 'ASC')->findAll(),
-            'tipos'   => (new PropertyModel())->distinct()->select('tipo_imovel')->where('status', 'ACTIVE')->orderBy('tipo_imovel', 'ASC')->findAll(),
+            'cidades' => $publicDistinct('cidade'),
+            'bairros' => $publicDistinct('bairro'),
+            'tipos'   => $publicDistinct('tipo_imovel'),
         ];
     }
 
@@ -1272,5 +1302,19 @@ class PropertyService
             'account_id' => $accountId,
             'status'     => 'ACTIVE'
         ])->countAllResults();
+    }
+
+    public function countPublicPropertiesByAccount(int $accountId): int
+    {
+        $model = (new PropertyModel())->where('properties.account_id', $accountId);
+        $this->publicVisibility->apply($model);
+        return $model->countAllResults();
+    }
+
+    public function countPublicProperties(): int
+    {
+        $model = new PropertyModel();
+        $this->publicVisibility->apply($model);
+        return $model->countAllResults();
     }
 }

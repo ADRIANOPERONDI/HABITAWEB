@@ -103,6 +103,10 @@ class LeadController extends BaseController
             return $this->respondError('property_id, nome_visitante e email_visitante são obrigatórios.', 400);
         }
 
+        if (!(new \App\Services\PublicPropertyVisibilityService())->isVisible((int) $data['property_id'])) {
+            return $this->respondError('Imóvel não encontrado.', 404);
+        }
+
         // Pega account_id do imóvel
         $propertyModel = model('App\\Models\\PropertyModel');
         $property = $propertyModel->find($data['property_id']);

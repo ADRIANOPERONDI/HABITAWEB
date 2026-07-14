@@ -3,8 +3,6 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
-use App\Models\AccountModel;
-use App\Models\PropertyModel;
 
 class PartnerController extends BaseController
 {
@@ -20,7 +18,7 @@ class PartnerController extends BaseController
         
         // Calculate total properties for each partner via service/model logic
         foreach ($data['partners'] as $partner) {
-            $partner->total_properties = $propertyService->countActivePropertiesByAccount($partner->id);
+            $partner->total_properties = $propertyService->countPublicPropertiesByAccount($partner->id);
         }
 
         return view('web/partners/index', [
@@ -45,7 +43,7 @@ class PartnerController extends BaseController
         }
 
         // Get properties for this partner via service
-        $propData = $propertyService->listProperties([
+        $propData = $propertyService->listPublicProperties([
             'account_id' => $id,
             'status'     => 'ACTIVE'
         ], 9);
