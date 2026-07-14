@@ -224,7 +224,9 @@ document.addEventListener('DOMContentLoaded', function() {
     let fetchTimeout = null;
     let currentPolygon = null;
     let firstLoadDone = false;
-    let fittedInitialMarkers = false;
+    let lastFetchUsedViewport = false;
+    let lastFetchWasInitial = false;
+    let isInitialFetch = true;
     let suppressNextMoveFetch = false;
     let drawAssetsPromise = null;
     let polygonDrawer = null;
@@ -299,11 +301,11 @@ document.addEventListener('DOMContentLoaded', function() {
         drawAssetsPromise = new Promise((resolve, reject) => {
             const css = document.createElement('link');
             css.rel = 'stylesheet';
-            css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css';
+            css.href = '<?= base_url('assets/js/leaflet-draw/leaflet.draw.css') ?>';
             document.head.appendChild(css);
 
             const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js';
+            script.src = '<?= base_url('assets/js/leaflet-draw/leaflet.draw.js') ?>';
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
@@ -328,8 +330,8 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>`;
     }
 
-    function updateBounds() {
-        if (currentPolygon) {
+    function updateBounds(useViewport) {
+        if (!useViewport || currentPolygon) {
             inputBounds.value = '';
             return;
         }
@@ -352,13 +354,19 @@ document.addEventListener('DOMContentLoaded', function() {
     function fetchMapData(options = {}) {
         const append = options.append === true;
         const onlyUpdateList = options.onlyUpdateList === true;
+        // Só aplica o bounds do viewport quando o próprio mapa foi movido (pan/zoom);
+        // troca de filtro de texto (cidade/tipo/preço) não deve ficar presa à área visível atual.
+        const useViewportBounds = options.viewportBounds === true;
 
         if (activeFetchController) {
             activeFetchController.abort();
         }
         activeFetchController = new AbortController();
 
-        updateBounds();
+        lastFetchUsedViewport = useViewportBounds;
+        lastFetchWasInitial = isInitialFetch;
+        isInitialFetch = false;
+        updateBounds(useViewportBounds);
         if (!append) {
             inputPage.value = '1';
             setSkeleton();
@@ -417,8 +425,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return marker;
         });
         markers.addLayers(nextMarkers);
-        if (!fittedInitialMarkers && items.length && (document.getElementById('filterCidade').value || cidadeParam)) {
-            fittedInitialMarkers = true;
+        // Resultado veio de um filtro de texto/negócio (não de pan/zoom, área desenhada, ou
+        // a carga inicial sem filtro): reenquadra o mapa nos imóveis encontrados em vez de
+        // deixar o viewport antigo/desalinhado.
+        if (!currentPolygon && !lastFetchUsedViewport && !lastFetchWasInitial && items.length) {
             const markerBounds = L.latLngBounds(items.map(item => [item.lat, item.lng]));
             if (markerBounds.isValid()) {
                 suppressNextMoveFetch = true;
@@ -456,11 +466,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function scheduleFetch() {
+    function scheduleFetch(options = {}) {
         clearTimeout(fetchTimeout);
         fetchTimeout = setTimeout(() => {
             inputPropertyIds.value = '';
-            fetchMapData();
+            fetchMapData(options);
         }, 360);
     }
 
@@ -490,11 +500,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (!firstLoadDone) {
             firstLoadDone = true;
-            fetchMapData();
+            fetchMapData({ viewportBounds: true });
             return;
         }
         if (inputPropertyIds.value) inputPropertyIds.value = '';
-        scheduleFetch();
+        scheduleFetch({ viewportBounds: true });
     });
 
     map.on('draw:created', function(event) {
@@ -617,7 +627,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 250);
             },
             () => {},
-            { timeout: 1500, maximumAge: 120000 }
+            { timeout: 8000, maximumAge: 120000 }
         );
     }
 

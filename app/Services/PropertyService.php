@@ -175,9 +175,7 @@ class PropertyService
             }
             
             // CACHE
-            cache()->delete('filter_cities');
-            cache()->delete('filter_neighborhoods');
-            cache()->delete('filter_types');
+            cache()->delete('search_filter_options');
 
             // RANKING (Async update score)
             $rankingService = service('rankingService');
