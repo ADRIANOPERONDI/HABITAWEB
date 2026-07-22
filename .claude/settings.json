@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(grep -n 'public function\\\\|area_total\\\\|area_construida\\\\|$rules\\\\|validate\\\\|->rules\\\\|'\\\\''area\\\\|save\\(\\\\|insert\\(\\\\|update\\(\\\\|buildData\\\\|prepareData\\\\|extractData\\\\|number_format\\\\|str_replace' app/Controllers/Admin/PropertyController.php)",
-      "Bash(grep -n 'function trySaveProperty\\\\|area_total\\\\|area_construida\\\\|number_format\\\\|str_replace\\\\|parseDecimal\\\\|parseCurrency\\\\|sanitize\\\\|$rules\\\\|validation\\\\|allowedFields\\\\|foreach' app/Services/PropertyService.php)"
+      "Bash(grep -n 'function trySaveProperty\\\\|area_total\\\\|area_construida\\\\|number_format\\\\|str_replace\\\\|parseDecimal\\\\|parseCurrency\\\\|sanitize\\\\|$rules\\\\|validation\\\\|allowedFields\\\\|foreach' app/Services/PropertyService.php)",
+      "Bash(cp /private/tmp/claude-501/-Users-cristiandasilva-Projetos-projetos-php-copia-zap/60cde361-9245-47fb-b90d-c1bd111aa07e/scratchpad/inspect_map.mjs /Users/cristiandasilva/Projetos/projetos_php/copia_zap/inspect_map_tmp.mjs)",
+      "Bash(node inspect_map_tmp.mjs)",
+      "Bash(rm -f /Users/cristiandasilva/Projetos/projetos_php/copia_zap/inspect_map_tmp.mjs)"
     ]
   }
 }
