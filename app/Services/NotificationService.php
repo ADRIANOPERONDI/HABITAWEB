@@ -32,24 +32,26 @@ class NotificationService
     {
         $email = \Config\Services::email();
 
-        // Carrega configurações dinâmicas de SMTP do banco
-        $config = [];
-        $config['SMTPHost']     = app_setting('mail.host', 'localhost');
-        $config['SMTPUser']     = app_setting('mail.user', '');
-        $config['SMTPPass']     = app_setting('mail.pass', '');
-        $config['SMTPPort']     = (int)app_setting('mail.port', 587);
-        $config['SMTPCrypto']   = app_setting('mail.crypto', 'tls');
-        $config['mailType']     = 'html';
-        $config['charset']      = 'utf-8';
-        $config['protocol']     = 'smtp';
-        $config['newline']      = "\r\n";
+        // O app roda na MESMA máquina do servidor de e-mail (Exim), então
+        // entregamos pelo binário sendmail local — sem handshake nem
+        // autenticação SMTP (que exigiria credenciais e podia falhar com 535).
+        // É o mesmo caminho que já entrega os e-mails do Shield/magic-link.
+        $mailPath = app_setting('mail.sendmail_path', '/usr/sbin/sendmail');
+
+        $config = [
+            'protocol' => 'sendmail',
+            'mailPath' => $mailPath,
+            'mailType' => 'html',
+            'charset'  => 'utf-8',
+            'newline'  => "\r\n",
+        ];
 
         $email->initialize($config);
 
-        // Verifica se o SMTP parece configurado (evita tentar conectar em smtp.example.com ou localhost sem servidor rodando)
-        // ANTES da fila: enfileirar e-mail que nunca poderá sair só esconderia o problema.
-        if (in_array($config['SMTPHost'], ['localhost', 'smtp.example.com', '']) || empty($config['SMTPUser'])) {
-            log_message('warning', 'SMTP não configurado. Pulei o envio de e-mail para ' . $to);
+        // Sem o binário de sendmail (ex.: ambiente de dev fora do servidor de
+        // e-mail), não há como entregar — não enfileira o que nunca sairia.
+        if (! is_executable($mailPath)) {
+            log_message('warning', 'sendmail indisponível (' . $mailPath . '). Pulei o envio de e-mail para ' . $to);
             return false;
         }
 
