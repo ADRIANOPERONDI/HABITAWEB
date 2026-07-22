@@ -49,16 +49,16 @@ class NotificationService
         $email->initialize($config);
 
         // Sem o binário de sendmail (ex.: ambiente de dev fora do servidor de
-        // e-mail), não há como entregar — não enfileira o que nunca sairia.
+        // e-mail), não há como entregar.
         if (! is_executable($mailPath)) {
             log_message('warning', 'sendmail indisponível (' . $mailPath . '). Pulei o envio de e-mail para ' . $to);
             return false;
         }
 
-        if (! $immediate && (new \App\Libraries\Queue\RedisEmailQueue())->push($to, $subject, $message)) {
-            return true; // aceito na fila; worker entrega
-        }
-
+        // Envio SÍNCRONO, direto pelo CI4/sendmail. A fila Redis foi removida:
+        // com sendmail local não há handshake lento, então enfileirar só
+        // adicionava um worker no caminho (ponto de falha) sem ganho. O
+        // parâmetro $immediate é mantido por compatibilidade dos chamadores.
         $fromEmail = app_setting('mail.from_email', 'noreply@portal.com');
         $fromName  = app_setting('mail.from_name', 'Habitaweb');
 
