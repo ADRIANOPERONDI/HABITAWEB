@@ -14,7 +14,7 @@ class PropertyModel extends Model
     protected $protectFields    = true;
     protected $allowedFields    = [
         'account_id', 'client_id', 'user_id_responsavel', 'tipo_negocio', 'tipo_imovel', 'titulo', 'descricao',
-        'preco', 'valor_condominio', 'iptu', 'area_total', 'area_construida', 'quartos', 'banheiros',
+        'preco', 'valor_condominio', 'iptu', 'area_total', 'area_construida', 'area_privativa', 'quartos', 'banheiros',
         'vagas', 'cep', 'estado', 'cidade', 'bairro', 'rua', 'numero', 'complemento', 'latitude',
         'longitude', 'status', 'visitas_count', 'leads_count', 'score_qualidade', 'publicado_em', 'atualizado_em',
         'last_validated_at', 'quality_warnings', 'moderation_status', 'auto_paused', 'auto_paused_reason',

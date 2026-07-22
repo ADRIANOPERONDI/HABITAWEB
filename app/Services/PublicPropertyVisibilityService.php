@@ -44,7 +44,8 @@ class PublicPropertyVisibilityService
 
         foreach ([
             'home_featured',
-            'home_sponsored_pool',
+            'home_map_sponsored_pool',
+            'home_map_nonpaid_pool',
             'home_filter_options',
             'search_filter_options',
             'overdue_account_ids_3',

@@ -60,70 +60,33 @@
     </form>
 </div>
 
-<?php if(!empty($sponsoredProperties)): ?>
-<!-- Sponsored Properties (Unificados) -->
-<section class="py-5 mt-4" style="background-color: #fdf8f0; border-top: 1px solid #ffeeba; border-bottom: 1px solid #ffeeba;">
-    <div class="container pb-2">
-        <div class="d-flex align-items-center mb-4 px-2">
-            <div class="bg-warning rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
-                <i class="fa-solid fa-crown text-white fs-5"></i>
+<?php if(!empty($mapPins)): ?>
+<!-- Mapa + lista de imóveis (réplica contida da tela de pesquisa) -->
+<section class="py-4 mt-4">
+    <div class="container">
+        <div class="d-flex align-items-center mb-3 px-2">
+            <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                <i class="fa-solid fa-map-location-dot text-white fs-5"></i>
             </div>
             <div>
-                <h2 class="section-title mb-0">Imóveis Patrocinados</h2>
-                <p class="section-subtitle mb-0">Destaques exclusivos da nossa rede</p>
+                <h2 class="section-title mb-0">Imóveis no mapa</h2>
+                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista</p>
             </div>
         </div>
-        
-        <div class="row g-4 p-2">
-            <?php foreach($sponsoredProperties as $property): ?>
-            <div class="col-md-6 col-lg-3">
-                <div class="card property-card h-100 animate-fade-in shadow-sm border-0 d-flex flex-column" style="border: 1px solid #ffeeba !important;">
-                    <a href="<?= site_url('imovel/' . $property->id) ?>" class="text-decoration-none h-100 d-flex flex-column">
-                        <div class="card-img-top-wrapper position-relative" style="height: 200px; overflow: hidden;">
-                             <div class="position-absolute top-0 start-0 m-2 z-3 d-flex flex-column gap-2">
-                                <span class="badge bg-warning text-dark shadow-sm rounded-pill px-3 py-2 fw-bold">
-                                    <i class="fa-solid fa-certificate me-1"></i> Patrocinado
-                                </span>
-                                <?php if($property->is_verified): ?>
-                                    <span class="badge bg-info text-white shadow-sm rounded-pill px-3 py-2 fw-bold" style="background-color: #0d6efd !important;">
-                                        <i class="fa-solid fa-check-double me-1"></i> Verificado
-                                    </span>
-                                <?php endif; ?>
-                             </div>
-                            
-                            <?php if($property->cover_image): ?>
-                                <img src="<?= media_variant_url($property->cover_image, 'card') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="<?= esc($property->titulo) ?>" loading="lazy" decoding="async" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
-                            <?php else: ?>
-                                <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="card-img-top w-100 h-100" style="object-fit: cover;" alt="Sem Foto" loading="lazy" decoding="async">
-                            <?php endif; ?>
-                        </div>
-                        <div class="card-body p-3 d-flex flex-column flex-grow-1 bg-white">
-                            <div class="d-flex justify-content-between align-items-start mb-1">
-                                <h6 class="fw-bold mb-0 text-dark text-truncate w-100"><?= esc($property->bairro) ?>, <?= esc($property->cidade) ?></h6>
-                            </div>
-                            <p class="text-muted x-small mb-2 text-truncate"><?= esc($property->titulo) ?></p>
 
-                            <div class="property-specs d-flex gap-2 mb-2 text-muted x-small border-bottom pb-2">
-                                <?php if($property->area_total): ?>
-                                    <span><i class="fa-solid fa-maximize"></i> <?= (int)$property->area_total ?>m²</span>
-                                <?php endif; ?>
-                                <?php if($property->quartos): ?>
-                                    <span><i class="fa-solid fa-bed"></i> <?= $property->quartos ?></span>
-                                <?php endif; ?>
-                            </div>
-                            
-                            <div class="mt-auto fw-bold text-primary">R$ <?= number_format($property->preco, 2, ',', '.') ?></div>
-                        </div>
-                    </a>
+        <div class="home-map-wrapper row g-3">
+            <div class="col-lg-7 order-lg-2">
+                <div id="homeMap"></div>
+            </div>
+            <div class="col-lg-5 order-lg-1">
+                <div id="homeMapList" class="home-map-list">
+                    <?= view('web/partials/_property_map_list', ['properties' => $mapProperties]) ?>
                 </div>
             </div>
-            <?php endforeach; ?>
         </div>
     </div>
 </section>
 <?php endif; ?>
-
-
 
 <!-- Featured Properties Section -->
 <section class="py-5 bg-white">
@@ -265,3 +228,105 @@
 </section>
 
 <?= $this->endSection() ?>
+
+<?php if(!empty($mapPins)): ?>
+<?= $this->section('styles') ?>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+<style>
+    #homeMap { height: 560px; border-radius: 1rem; overflow: hidden; z-index: 0; }
+    .home-map-list { height: 560px; overflow-y: auto; padding-right: 6px; }
+    .map-property-card.is-active { outline: 2px solid var(--bs-primary, #0d6efd); outline-offset: 2px; border-radius: 1rem; }
+    @media (max-width: 991.98px) {
+        #homeMap { height: 380px; }
+        .home-map-list { height: auto; max-height: 520px; margin-top: .5rem; }
+    }
+</style>
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const el = document.getElementById('homeMap');
+    if (!el || typeof L === 'undefined') return;
+
+    const pins = <?= json_encode($mapPins, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    if (!pins.length) return;
+
+    const map = L.map('homeMap', { zoomControl: true, scrollWheelZoom: false })
+        .setView([-14.235, -51.925], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const markers = L.markerClusterGroup({
+        showCoverageOnHover: false,
+        maxClusterRadius: 42,
+        spiderfyOnMaxZoom: true,
+        iconCreateFunction: function(cluster) {
+            const count = cluster.getChildCount();
+            const size = count > 100 ? 58 : (count > 40 ? 50 : 42);
+            const sizeClass = count > 100 ? 'xlarge' : (count > 40 ? 'large' : '');
+            return L.divIcon({
+                html: `<div class="premium-cluster-bubble ${sizeClass}">${count}</div>`,
+                className: 'premium-cluster-icon',
+                iconSize: L.point(size, size)
+            });
+        }
+    });
+
+    const markersById = {};
+
+    // Sincroniza pin <-> card (como na tela de pesquisa): destaca o pin e a
+    // ficha correspondente e rola a lista até ela.
+    function activateProperty(id) {
+        document.querySelectorAll('.price-marker-pill.active').forEach(e => e.classList.remove('active'));
+        document.querySelectorAll('.map-property-card.is-active').forEach(e => e.classList.remove('is-active'));
+
+        const pill = document.getElementById('marker-pill-' + id);
+        if (pill) pill.classList.add('active');
+
+        const card = document.getElementById('property-card-' + id);
+        if (card) {
+            card.classList.add('is-active');
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    const layers = pins.map(function(pin) {
+        const icon = L.divIcon({
+            className: 'custom-pin',
+            html: `<div class="price-marker-pill ${pin.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${pin.id}">R$ ${pin.price}</div>`,
+            iconSize: [84, 34],
+            iconAnchor: [42, 34]
+        });
+        const marker = L.marker([pin.lat, pin.lng], { icon });
+        markersById[pin.id] = marker;
+        marker.on('click', function() { activateProperty(pin.id); });
+        return marker;
+    });
+    markers.addLayers(layers);
+    map.addLayer(markers);
+
+    const bounds = L.latLngBounds(pins.map(p => [p.lat, p.lng]));
+    if (bounds.isValid()) {
+        map.fitBounds(bounds.pad(0.2), { maxZoom: 14 });
+    }
+    requestAnimationFrame(() => map.invalidateSize());
+
+    // Passar o mouse sobre uma ficha destaca o pin correspondente no mapa.
+    document.querySelectorAll('#homeMapList .map-property-card').forEach(function(card) {
+        card.addEventListener('mouseenter', function() {
+            const id = card.getAttribute('data-id');
+            document.querySelectorAll('.price-marker-pill.active').forEach(e => e.classList.remove('active'));
+            const pill = document.getElementById('marker-pill-' + id);
+            if (pill) pill.classList.add('active');
+        });
+    });
+});
+</script>
+<?= $this->endSection() ?>
+<?php endif; ?>

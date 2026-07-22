@@ -55,8 +55,8 @@ class PropertyService
 
             // 1. Sanitization (PT-BR -> Decimal)
             $numericFields = [
-                'preco', 'valor_condominio', 'iptu', 'renda_mensal_estimada', 'area_total', 
-                'area_construida', 'latitude', 'longitude', 'client_id', 'user_id_responsavel',
+                'preco', 'valor_condominio', 'iptu', 'renda_mensal_estimada', 'area_total',
+                'area_construida', 'area_privativa', 'latitude', 'longitude', 'client_id', 'user_id_responsavel',
                 'quartos', 'banheiros', 'vagas', 'suites', 'highlight_level'
             ];
             foreach ($numericFields as $field) {
@@ -410,6 +410,53 @@ class PropertyService
         $ids = array_column($properties, 'id');
         $medias = $mediaModel->whereIn('property_id', $ids)->findAll();
         
+        $mediaMap = [];
+        foreach ($medias as $media) {
+            if (!isset($mediaMap[$media->property_id]) || $media->principal) {
+                $mediaMap[$media->property_id] = $media->url;
+            }
+        }
+
+        foreach ($properties as $property) {
+            $property->cover_image = $mediaMap[$property->id] ?? null;
+        }
+
+        return $properties;
+    }
+
+    /**
+     * Imóveis SEM nenhum destaque pago (nem plano nem turbo), ordenados pelo
+     * score de qualidade — fallback do mapa da home quando não há nenhum
+     * destaque pago disponível (nunca mistura pago com não-pago).
+     */
+    public function getNonPaidProperties(int $limit = 60): array
+    {
+        $builder = $this->propertyModel->builder();
+        $builder->select('properties.*, accounts.is_verified as account_verified')
+                ->join('accounts', 'accounts.id = properties.account_id', 'left')
+                ->where('properties.status', 'ACTIVE')
+                ->where('properties.is_destaque', false)
+                ->groupStart()
+                    ->where('properties.highlight_level', 0)
+                    ->orWhere('properties.highlight_level', null)
+                ->groupEnd()
+                ->groupBy('properties.id')
+                ->groupBy('accounts.is_verified')
+                ->orderBy('properties.score_qualidade', 'DESC')
+                ->orderBy('properties.created_at', 'DESC');
+
+        $this->publicVisibility->apply($builder);
+
+        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class);
+
+        if (empty($properties)) {
+            return [];
+        }
+
+        $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
+        $ids = array_column($properties, 'id');
+        $medias = $mediaModel->whereIn('property_id', $ids)->findAll();
+
         $mediaMap = [];
         foreach ($medias as $media) {
             if (!isset($mediaMap[$media->property_id]) || $media->principal) {

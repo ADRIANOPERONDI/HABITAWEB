@@ -99,15 +99,9 @@ class MapSearchController extends BaseController
 
     private function formatShortPrice(float $price): string
     {
-        if ($price >= 1000000) {
-            return number_format($price / 1000000, $price >= 10000000 ? 0 : 1, ',', '.') . ' mi';
-        }
+        helper('format');
 
-        if ($price >= 1000) {
-            return number_format($price / 1000, 0, ',', '.') . ' mil';
-        }
-
-        return number_format($price, 0, ',', '.');
+        return short_price($price);
     }
 
     private function loadCardImages(array &$properties, int $limitPerProperty = 5): void

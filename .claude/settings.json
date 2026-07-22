@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -n 'public function\\\\|area_total\\\\|area_construida\\\\|$rules\\\\|validate\\\\|->rules\\\\|'\\\\''area\\\\|save\\(\\\\|insert\\(\\\\|update\\(\\\\|buildData\\\\|prepareData\\\\|extractData\\\\|number_format\\\\|str_replace' app/Controllers/Admin/PropertyController.php)",
+      "Bash(grep -n 'function trySaveProperty\\\\|area_total\\\\|area_construida\\\\|number_format\\\\|str_replace\\\\|parseDecimal\\\\|parseCurrency\\\\|sanitize\\\\|$rules\\\\|validation\\\\|allowedFields\\\\|foreach' app/Services/PropertyService.php)"
+    ]
+  }
+}

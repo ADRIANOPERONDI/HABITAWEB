@@ -224,8 +224,12 @@
                                     <input type="text" name="area_total" class="form-control input-premium double3" value="<?= number_format((float)old('area_total', $property->area_total ?? 0), 2, ',', '.') ?>" placeholder="0,00">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label-premium">Área Útil (m²)</label>
+                                    <label class="form-label-premium">Área Construída (m²)</label>
                                     <input type="text" name="area_construida" class="form-control input-premium double3" value="<?= number_format((float)old('area_construida', $property->area_construida ?? 0), 2, ',', '.') ?>" placeholder="0,00">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label-premium">Área Privativa (m²)</label>
+                                    <input type="text" name="area_privativa" class="form-control input-premium double3" value="<?= number_format((float)old('area_privativa', $property->area_privativa ?? 0), 2, ',', '.') ?>" placeholder="0,00">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label-premium">Valor Condomínio (R$)</label>
