@@ -119,4 +119,39 @@ class TenantFactory
 
         return $result['plain_key'];
     }
+
+    /**
+     * Mesma coisa, mas devolve também o id da chave — necessário quando o teste
+     * precisa emitir JWT amarrado à chave, ou revogá-la.
+     *
+     * @return array{plain_key: string, key_id: int}
+     */
+    public function createApiKeyWithId(int $accountId, int $userId, ?int $rateLimitPerHour = 1000): array
+    {
+        $result = (new ApiKeyModel())->generateKey($accountId, 'Chave de Teste', $userId, $rateLimitPerHour);
+
+        if (! $result['success']) {
+            throw new \RuntimeException('TenantFactory: falha ao gerar API key — ' . ($result['message'] ?? ''));
+        }
+
+        return ['plain_key' => $result['plain_key'], 'key_id' => (int) $result['key_id']];
+    }
+
+    /**
+     * Emite um par access/refresh JWT direto pelo JwtManager, sem passar pelo
+     * endpoint HTTP — útil quando o teste quer partir de um token já válido.
+     *
+     * @return array{access_token: string, refresh_token: string, key_id: int}
+     */
+    public function createJwt(int $accountId, int $userId, ?int $rateLimitPerHour = 1000): array
+    {
+        $key = $this->createApiKeyWithId($accountId, $userId, $rateLimitPerHour);
+        $jwt = new \App\Libraries\Auth\JwtManager();
+
+        return [
+            'access_token'  => $jwt->issueAccessToken($accountId, $userId, $key['key_id'])['token'],
+            'refresh_token' => $jwt->issueRefreshToken($accountId, $userId, $key['key_id'])['token'],
+            'key_id'        => $key['key_id'],
+        ];
+    }
 }

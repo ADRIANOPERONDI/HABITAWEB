@@ -76,6 +76,26 @@ class AccountService
     }
 
     /**
+     * Exclui (soft delete) uma conta.
+     *
+     * Api\V1\AccountController::delete() já chamava este método, mas ele nunca
+     * existiu — a chamada levantava um Error ("Call to undefined method"), então
+     * DELETE /api/v1/accounts/{id} respondia 500 em 100% dos casos.
+     *
+     * As subcontas não são apagadas em cascata: a FK de parent_account_id é
+     * ON DELETE SET NULL, então os corretores viram contas independentes em vez
+     * de sumirem junto com a imobiliária.
+     */
+    public function deleteAccount(int $id): bool
+    {
+        if (! $this->accountModel->find($id)) {
+            return false;
+        }
+
+        return (bool) $this->accountModel->delete($id);
+    }
+
+    /**
      * Busca contas com filtros e paginação.
      *
      * @param array $filters
@@ -99,6 +119,25 @@ class AccountService
                     ->like('nome', $filters['term'])
                     ->orLike('email', $filters['term'])
                     ->orLike('documento', $filters['term'])
+                    ->groupEnd();
+        }
+
+        // ESCOPO DE TENANT.
+        // Api\V1\AccountController::index() já montava 'id' e 'parent_id' para
+        // limitar o que cada conta enxerga, mas este método não conhecia
+        // nenhuma das duas chaves e as ignorava em silêncio — o resultado era
+        // um dump de TODAS as contas da plataforma (nome, e-mail, telefone e
+        // CPF/CNPJ) para qualquer credencial de API válida.
+        if (!empty($filters['id'])) {
+            $builder->where('id', (int) $filters['id']);
+        }
+
+        if (!empty($filters['parent_id'])) {
+            // A conta-mãe se vê e vê as subcontas dela.
+            $parentId = (int) $filters['parent_id'];
+            $builder->groupStart()
+                    ->where('id', $parentId)
+                    ->orWhere('parent_account_id', $parentId)
                     ->groupEnd();
         }
 

@@ -13,30 +13,26 @@ class ExportService
     /**
      * Exporta imóveis.
      */
+    /** Teto de linhas por exportação — evita estourar memória em conta grande. */
+    public const MAX_ROWS = 5000;
+
     public function exportProperties(?int $accountId, array $filters, string $format): array
     {
-        $model = model(PropertyModel::class);
-        $builder = $model;
-        if ($accountId) {
-            $builder->where('account_id', $accountId);
-        }
-        
-        // Aplicação de filtros básicos (conforme ExportController original)
-        if (!empty($filters['status'])) $builder->where('status', $filters['status']);
-        if (!empty($filters['tipo_negocio'])) $builder->where('tipo_negocio', $filters['tipo_negocio']);
-        
-        $data = $builder->findAll();
-        
-        $headers = ['ID', 'Título', 'Tipo', 'Negócio', 'Preço', 'Cidade', 'Bairro', 'Quartos', 'Área', 'Status', 'Criado em'];
+        $data = $this->queryProperties($accountId, $filters)->findAll(self::MAX_ROWS);
+
+        // external_id na primeira coluna: é a chave que o parceiro usa para
+        // casar o registro exportado com o dele na hora de reimportar.
+        $headers = ['external_id', 'ID', 'Título', 'Tipo', 'Negócio', 'Preço', 'Cidade', 'Bairro', 'Quartos', 'Área', 'Status', 'Criado em'];
         $rows = [];
-        
+
         foreach ($data as $p) {
             $rows[] = [
+                $p->external_id,
                 $p->id,
                 $p->titulo,
                 $p->tipo_imovel,
                 $p->tipo_negocio,
-                number_format($p->preco, 2, ',', '.'),
+                number_format((float) $p->preco, 2, ',', '.'),
                 $p->cidade,
                 $p->bairro,
                 $p->quartos,
@@ -47,6 +43,117 @@ class ExportService
         }
 
         return $this->generateFile($headers, $rows, $format, 'imoveis_export');
+    }
+
+    /**
+     * Exportação em JSON, para sincronização máquina-a-máquina.
+     *
+     * É a contrapartida do import: o parceiro puxa o que mudou no Habitaweb
+     * (?updated_since=...) e reconcilia com a base dele pelo external_id,
+     * fechando a via de mão dupla.
+     *
+     * @return array{properties: array, pagination: array}
+     */
+    public function exportPropertiesAsArray(int $accountId, array $filters = [], int $page = 1, int $perPage = 100): array
+    {
+        $perPage = max(1, min($perPage, 500));
+        $page    = max(1, $page);
+
+        // Um único builder para contagem e página: chamar queryProperties() duas
+        // vezes empilharia os mesmos WHEREs na instância compartilhada do model().
+        // countAllResults(false) preserva a query para o findAll() seguinte.
+        $builder = $this->queryProperties($accountId, $filters);
+        $total   = $builder->countAllResults(false);
+
+        $data = $builder->orderBy('id', 'ASC')->findAll($perPage, ($page - 1) * $perPage);
+
+        $mediaModel = model(\App\Models\PropertyMediaModel::class);
+        $properties = [];
+
+        foreach ($data as $p) {
+            $media = $mediaModel->where('property_id', $p->id)
+                                ->orderBy('principal', 'DESC')
+                                ->orderBy('ordem', 'ASC')
+                                ->findAll();
+
+            $properties[] = [
+                'external_id'        => $p->external_id,
+                'property_id'        => (int) $p->id,
+                'titulo'             => $p->titulo,
+                'descricao'          => $p->descricao,
+                'tipo_negocio'       => $p->tipo_negocio,
+                'tipo_imovel'        => $p->tipo_imovel,
+                'preco'              => (float) $p->preco,
+                'valor_condominio'   => $p->valor_condominio !== null ? (float) $p->valor_condominio : null,
+                'iptu'               => $p->iptu !== null ? (float) $p->iptu : null,
+                'area_total'         => $p->area_total !== null ? (float) $p->area_total : null,
+                'area_construida'    => $p->area_construida !== null ? (float) $p->area_construida : null,
+                'quartos'            => $p->quartos !== null ? (int) $p->quartos : null,
+                'banheiros'          => $p->banheiros !== null ? (int) $p->banheiros : null,
+                'suites'             => $p->suites !== null ? (int) $p->suites : null,
+                'vagas'              => $p->vagas !== null ? (int) $p->vagas : null,
+                'cep'                => $p->cep,
+                'estado'             => $p->estado,
+                'cidade'             => $p->cidade,
+                'bairro'             => $p->bairro,
+                'rua'                => $p->rua,
+                'numero'             => $p->numero,
+                'complemento'        => $p->complemento,
+                'latitude'           => $p->latitude !== null ? (float) $p->latitude : null,
+                'longitude'          => $p->longitude !== null ? (float) $p->longitude : null,
+                'status'             => $p->status,
+                'source'             => $p->source,
+                'external_synced_at' => $p->external_synced_at,
+                'created_at'         => (string) $p->created_at,
+                'updated_at'         => (string) $p->updated_at,
+                'images'             => array_map(static fn ($m) => [
+                    'id'         => (int) $m->id,
+                    'url'        => media_url($m->url),
+                    'ordem'      => (int) $m->ordem,
+                    'principal'  => (bool) $m->principal,
+                    'source_url' => $m->source_url,
+                ], $media),
+            ];
+        }
+
+        return [
+            'properties' => $properties,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => (int) max(1, ceil($total / $perPage)),
+            ],
+        ];
+    }
+
+    /**
+     * Monta o builder de imóveis já escopado por conta e filtros.
+     *
+     * Instância NOVA de propósito: model() devolve a instância compartilhada, e
+     * duas chamadas seguidas empilhariam os mesmos WHEREs na mesma query.
+     */
+    private function queryProperties(?int $accountId, array $filters): PropertyModel
+    {
+        $builder = new PropertyModel();
+
+        if ($accountId) {
+            $builder->where('account_id', $accountId);
+        }
+
+        if (!empty($filters['status'])) $builder->where('status', $filters['status']);
+        if (!empty($filters['tipo_negocio'])) $builder->where('tipo_negocio', $filters['tipo_negocio']);
+        if (!empty($filters['external_id'])) $builder->where('external_id', $filters['external_id']);
+
+        // Sincronização incremental: só o que mudou desde a última passada.
+        if (!empty($filters['updated_since'])) {
+            $since = strtotime((string) $filters['updated_since']);
+            if ($since !== false) {
+                $builder->where('updated_at >=', date('Y-m-d H:i:s', $since));
+            }
+        }
+
+        return $builder;
     }
 
     /**
@@ -62,7 +169,7 @@ class ExportService
         
         if (!empty($filters['status'])) $builder->where('status', $filters['status']);
         
-        $data = $builder->findAll();
+        $data = $builder->findAll(self::MAX_ROWS);
         
         $headers = ['ID', 'Visitante', 'E-mail', 'Telefone', 'Imóvel ID', 'Status', 'Origem', 'Criado em'];
         $rows = [];
@@ -94,7 +201,7 @@ class ExportService
             $builder->where('account_id', $accountId);
         }
         
-        $data = $builder->findAll();
+        $data = $builder->findAll(self::MAX_ROWS);
         
         $headers = ['ID', 'Nome', 'E-mail', 'Telefone', 'Documento', 'Tipo', 'Criado em'];
         $rows = [];

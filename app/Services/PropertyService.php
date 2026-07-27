@@ -11,11 +11,46 @@ use App\Services\CurationService;
 
 class PropertyService
 {
+    /**
+     * Campos que constam em PropertyModel::$allowedFields mas que o cliente
+     * NUNCA pode escrever diretamente: uns são produto pago (destaque/turbo),
+     * outros são sinal de confiança exibido ao comprador (selo verificado), e
+     * os contadores são métricas internas. Só fluxo interno (isStaff) escreve.
+     */
+    public const GUARDED_FIELDS = [
+        'is_destaque',
+        'highlight_level',
+        'highlight_expires_at',
+        'is_verified',
+        'verification_status',
+        'visitas_count',
+        'leads_count',
+        'score_qualidade',
+        'moderation_status',
+    ];
+
     protected PropertyModel $propertyModel;
     protected SubscriptionModel $subscriptionModel;
     protected PlanModel $planModel;
     protected CurationService $curationService;
     protected PublicPropertyVisibilityService $publicVisibility;
+
+    /**
+     * Baixador de imagens remotas. Injetável para que os testes possam exercer
+     * o pipeline de ingestão por URL sem depender de rede externa — a guarda de
+     * SSRF (correta) bloquearia até um servidor local de teste em 127.0.0.1.
+     */
+    protected ?\App\Libraries\Media\RemoteImageFetcher $imageFetcher = null;
+
+    public function setImageFetcher(\App\Libraries\Media\RemoteImageFetcher $fetcher): void
+    {
+        $this->imageFetcher = $fetcher;
+    }
+
+    protected function imageFetcher(): \App\Libraries\Media\RemoteImageFetcher
+    {
+        return $this->imageFetcher ??= new \App\Libraries\Media\RemoteImageFetcher();
+    }
 
     public function __construct()
     {
@@ -27,6 +62,82 @@ class PropertyService
     }
 
     /**
+     * Valida o payload de um imóvel ANTES de tentar persistir.
+     *
+     * PropertyModel::$validationRules só valida account_id — todas as demais
+     * colunas NOT NULL (titulo, cidade, bairro, tipo_negocio, tipo_imovel)
+     * dependiam da constraint do banco, o que devolvia ao parceiro um genérico
+     * "Falha na persistência dos dados." sem dizer qual campo faltou. Aqui a
+     * mensagem é por campo.
+     *
+     * ImportController já chamava PropertyService::validatePropertyData() — mas
+     * o método nunca existiu, então todo import com validate_only=true morria
+     * num Error não capturado (500).
+     *
+     * @param bool $isUpdate Em atualização, só valida o que veio no payload.
+     * @return array{valid: bool, errors: array<string, string>}
+     */
+    public function validatePropertyData(array $data, bool $isUpdate = false): array
+    {
+        $errors = [];
+
+        $required = ['titulo', 'tipo_negocio', 'tipo_imovel', 'preco', 'cidade', 'bairro'];
+
+        foreach ($required as $field) {
+            $missing = $isUpdate
+                ? (array_key_exists($field, $data) && ($data[$field] === null || trim((string) $data[$field]) === ''))
+                : (! isset($data[$field]) || trim((string) $data[$field]) === '');
+
+            if ($missing) {
+                $errors[$field] = "O campo '{$field}' é obrigatório.";
+            }
+        }
+
+        if (isset($data['titulo']) && mb_strlen(trim((string) $data['titulo'])) > 255) {
+            $errors['titulo'] = 'O título deve ter no máximo 255 caracteres.';
+        }
+
+        if (isset($data['tipo_negocio']) && $data['tipo_negocio'] !== '') {
+            $allowed = ['VENDA', 'ALUGUEL', 'TEMPORADA', 'VENDA_ALUGUEL'];
+            if (! in_array(strtoupper((string) $data['tipo_negocio']), $allowed, true)) {
+                $errors['tipo_negocio'] = 'tipo_negocio deve ser um de: ' . implode(', ', $allowed) . '.';
+            }
+        }
+
+        if (isset($data['preco']) && $data['preco'] !== '' && $data['preco'] !== null) {
+            $preco = is_string($data['preco'])
+                ? (float) str_replace(['.', ','], ['', '.'], trim($data['preco']))
+                : (float) $data['preco'];
+
+            if ($preco < 0) {
+                $errors['preco'] = 'O preço não pode ser negativo.';
+            }
+        }
+
+        if (isset($data['status']) && $data['status'] !== '') {
+            $allowed = ['DRAFT', 'ACTIVE', 'PAUSED', 'SOLD'];
+            if (! in_array(strtoupper((string) $data['status']), $allowed, true)) {
+                $errors['status'] = 'status deve ser um de: ' . implode(', ', $allowed) . '.';
+            }
+        }
+
+        if (isset($data['estado']) && $data['estado'] !== '' && mb_strlen(trim((string) $data['estado'])) !== 2) {
+            $errors['estado'] = 'estado deve ser a sigla de 2 letras da UF (ex.: SP).';
+        }
+
+        foreach (['latitude' => [-90, 90], 'longitude' => [-180, 180]] as $field => [$min, $max]) {
+            if (isset($data[$field]) && $data[$field] !== '' && $data[$field] !== null) {
+                $value = (float) str_replace(',', '.', (string) $data[$field]);
+                if ($value < $min || $value > $max) {
+                    $errors[$field] = "{$field} deve estar entre {$min} e {$max}.";
+                }
+            }
+        }
+
+        return ['valid' => $errors === [], 'errors' => $errors];
+    }
+
+    /**
      * Tenta salvar (criar ou atualizar) um imóvel.
      * Valida limites do plano se o usuário estiver ativando o imóvel.
      *
@@ -35,14 +146,13 @@ class PropertyService
      * @param bool $isStaff Se true, ignora limites de plano.
      * @return array
      */
-    public function trySaveProperty(array $data, ?int $id = null, bool $isStaff = false): array
+    public function trySaveProperty(array $data, ?int $id = null, bool $isStaff = false, bool $partialUpdate = false): array
     {
         try {
             // 0. Load or New
             $property = $id ? $this->propertyModel->find($id) : new Property();
 
             if ($id && !$property) {
-                log_message('emergency', '[PropertyService] Property not found for ID: ' . $id);
                 return [
                     'success' => false,
                     'data'    => null,
@@ -51,7 +161,18 @@ class PropertyService
                 ];
             }
 
-            log_message('emergency', '[PropertyService] Processing ID: ' . ($id ?? 'NEW'));
+            // 0b. CAMPOS PRIVILEGIADOS
+            // PropertyModel::$allowedFields inclui campos que valem dinheiro
+            // (destaque/turbo) ou confiança (selo verificado). Como nada os
+            // removia do payload, um POST /api/v1/properties com
+            // {"is_destaque":true,"highlight_level":3,"is_verified":true} dava
+            // posicionamento pago e selo de verificado de graça. Só fluxo
+            // interno (isStaff) pode escrevê-los.
+            if (!$isStaff) {
+                foreach (self::GUARDED_FIELDS as $guarded) {
+                    unset($data[$guarded]);
+                }
+            }
 
             // 1. Sanitization (PT-BR -> Decimal)
             $numericFields = [
@@ -74,23 +195,28 @@ class PropertyService
                 }
             }
 
-            // 2. Map Booleans (Explicitly handle missing checkboxes)
+            // 2. Map Booleans
+            // No formulário do admin, um checkbox desmarcado simplesmente não é
+            // enviado — por isso ausência precisa virar false ali.
+            // Já numa atualização parcial via API (PATCH/import), ausência
+            // significa "não mexa neste campo": forçar false apagaria
+            // mobiliado/aceita_pets/etc. de quem mandou só {"preco": 500000}.
             $booleanFields = [
-                'is_destaque', 'is_novo', 'is_exclusivo', 'aceita_pets', 'mobiliado', 
-                'semimobiliado', 'is_desocupado', 'is_locado', 'indicado_investidor', 
+                'is_destaque', 'is_novo', 'is_exclusivo', 'aceita_pets', 'mobiliado',
+                'semimobiliado', 'is_desocupado', 'is_locado', 'indicado_investidor',
                 'indicado_primeira_moradia', 'indicado_temporada'
             ];
+            $truthy = ['1', 1, true, 'true', 'TRUE', 'on', 'sim', 't'];
             foreach ($booleanFields as $field) {
-                // If not in $data, it was unchecked, so force false.
-                $data[$field] = isset($data[$field]) && ($data[$field] === '1' || $data[$field] === true || $data[$field] === 1);
+                if (array_key_exists($field, $data)) {
+                    $data[$field] = in_array($data[$field], $truthy, true) || $data[$field] === true;
+                } elseif (!$partialUpdate) {
+                    $data[$field] = false;
+                }
             }
 
             // 3. FILL ENTITY
             $property->fill($data);
-            
-            // Debug SEO: Verify if fill put them in attributes
-            $rawMeta = $property->toArray(); 
-            log_message('emergency', '[PropertyService] Entity attributes after fill - Meta Title: ' . ($property->meta_title ?? 'NULL'));
 
             // 4. PLAN LIMITS
             // Trava por linha (accounts.id) dentro de uma transação explícita para o
@@ -104,6 +230,24 @@ class PropertyService
             // porque o tempo de vida do lock é o da transação, não o da conexão.
             $planDb = \Config\Database::connect();
             $planLockActive = false;
+
+            // 4a. Teto de acumulação em rascunho.
+            // O limite do plano (limite_imoveis_ativos) só é avaliado quando o
+            // imóvel está ACTIVE — o que é semanticamente correto, mas deixava
+            // uma conta sem assinatura válida despejar milhares de rascunhos
+            // pelo import em lote, sem passar por checagem nenhuma. Aplicado só
+            // na CRIAÇÃO, para não travar edição do que já existe.
+            if ($id === null && !$isStaff && $property->status !== 'ACTIVE') {
+                $storageCheck = $this->checkDraftQuota((int) $property->account_id);
+                if (!$storageCheck['allowed']) {
+                    return [
+                        'success' => false,
+                        'data'    => $property,
+                        'errors'  => ['limit' => $storageCheck['message']],
+                        'message' => $storageCheck['message'],
+                    ];
+                }
+            }
 
             if ($property->status === 'ACTIVE' && !$isStaff) {
                 if ($planDb->DBDriver === 'Postgre') {
@@ -148,7 +292,7 @@ class PropertyService
                 if ($planLockActive) {
                     $planDb->transRollback();
                 }
-                log_message('emergency', '[PropertyService] SAVE ERROR: ' . json_encode($this->propertyModel->errors()));
+                log_message('error', '[PropertyService] SAVE ERROR: ' . json_encode($this->propertyModel->errors()));
                 return [
                     'success' => false,
                     'data'    => $property,
@@ -164,7 +308,6 @@ class PropertyService
             }
 
             $savedId = $id ?? $this->propertyModel->getInsertID();
-            log_message('emergency', '[PropertyService] Save success for ID: ' . $savedId);
 
             // 7. POST-SAVE SYNC (Features, Cache, Scores)
             // FEATURES
@@ -184,17 +327,18 @@ class PropertyService
             $rankingService->updateScore($savedId);
 
             return [
-                'success' => true,
-                'data'    => $this->propertyModel->find($savedId),
-                'errors'  => [],
-                'message' => 'Imóvel salvo com sucesso.',
+                'success'     => true,
+                'property_id' => (int) $savedId,
+                'data'        => $this->propertyModel->find($savedId),
+                'errors'      => [],
+                'message'     => 'Imóvel salvo com sucesso.',
             ];
 
         } catch (\Exception $e) {
             if (!empty($planLockActive)) {
                 $planDb->transRollback();
             }
-            log_message('emergency', '[PropertyService] EXCEPTION: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+            log_message('error', '[PropertyService] EXCEPTION: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
             return [
                 'success' => false,
                 'data'    => null,
@@ -217,6 +361,54 @@ class PropertyService
     /**
      * Verifica limites do plano. Retorna array ['allowed' => bool, 'message' => string]
      */
+    /**
+     * Teto de imóveis em rascunho/pausados por conta.
+     *
+     * Não substitui o limite do plano (que vale para imóveis ATIVOS): serve só
+     * para impedir que uma conta acumule indefinidamente registros não
+     * publicados via import em lote. Contas sem assinatura em dia ficam com um
+     * teto baixo.
+     *
+     * @return array{allowed: bool, message?: string}
+     */
+    public function checkDraftQuota(int $accountId): array
+    {
+        $subscription = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->whereIn('status', ['ACTIVE', 'TRIAL'])
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        $plan  = $subscription ? $this->planModel->find($subscription->plan_id) : null;
+        $limit = $plan->limite_imoveis_ativos ?? null;
+
+        // Sem assinatura ativa: teto baixo. Plano ilimitado: teto generoso.
+        // Caso normal: cinco vezes a cota de ativos, para caber preparação de
+        // catálogo antes da publicação.
+        if (!$subscription) {
+            $cap = 25;
+        } elseif ($limit === null) {
+            $cap = 100000;
+        } else {
+            $cap = max(50, ((int) $limit) * 5);
+        }
+
+        $count = $this->propertyModel
+            ->where('account_id', $accountId)
+            ->whereIn('status', ['DRAFT', 'PAUSED'])
+            ->countAllResults();
+
+        if ($count >= $cap) {
+            return [
+                'allowed' => false,
+                'message' => "Você atingiu o limite de {$cap} imóveis não publicados (rascunho/pausado). "
+                    . 'Publique ou remova alguns antes de importar mais.',
+            ];
+        }
+
+        return ['allowed' => true];
+    }
+
     public function checkPlanLimits(int $accountId, ?int $currentPropertyId = null, bool $isStaff = false): array
     {
         // 0. BYPASS FOR STAFF
@@ -279,7 +471,6 @@ class PropertyService
         }
         
         $count = $builder->countAllResults();
-        log_message('emergency', '[PropertyService] checkPlanLimits - Account: ' . $accountId . ' Count: ' . $count . ' Limit: ' . ($plan->limite_imoveis_ativos ?? 'Unlimited'));
 
         // --- NOTIFICAÇÃO DE LIMITE PRÓXIMO (90%, 95%, 100%) ---
         if ($count > 0 && $plan->limite_imoveis_ativos > 0) {
@@ -513,7 +704,13 @@ class PropertyService
         if (isset($filters['user_id_responsavel'])) {
             $builder->where('properties.user_id_responsavel', $filters['user_id_responsavel']);
         }
-        
+
+        // Busca pelo identificador do imóvel no sistema do parceiro. É como ele
+        // localiza um registro sincronizado sem precisar guardar o nosso id.
+        if (!empty($filters['external_id'])) {
+            $builder->where('properties.external_id', $filters['external_id']);
+        }
+
         // Novo: Filtro por Tipo de Conta (PF, IMOBILIARIA, CORRETOR)
         if (!empty($filters['account_type'])) {
             $builder->where('accounts.tipo_conta', $filters['account_type']);
@@ -982,7 +1179,6 @@ class PropertyService
 
         // 2. Busca Plano vinculado à assinatura
         $plan = $this->planModel->find($subscription->plan_id);
-        log_message('emergency', "[canMarkAsDestaque] Plan encontrado: " . ($plan ? "ID {$plan->id}, Nome: {$plan->nome}, Limite Turbo: " . ($plan->limite_turbo_mensal ?? 'null') : 'NENHUM'));
         
         if (!$plan) {
             return ['allowed' => false, 'message' => 'Erro interno: Plano não encontrado.'];
@@ -990,7 +1186,6 @@ class PropertyService
 
         // Se o plano não permite nenhum destaque
         if (($plan->limite_turbo_mensal ?? 0) <= 0) {
-             log_message('emergency', "[canMarkAsDestaque] Plano NÃO permite destaque. Limite: " . ($plan->limite_turbo_mensal ?? 0));
              return ['allowed' => false, 'message' => 'Seu plano atual não oferece selos de destaque promocionais.'];
         }
 
@@ -1004,8 +1199,6 @@ class PropertyService
         }
 
         $usedCount = $builder->countAllResults();
-        
-        log_message('emergency', "[canMarkAsDestaque] Destaques usados: {$usedCount} / {$plan->limite_turbo_mensal}");
 
         if ($usedCount >= $plan->limite_turbo_mensal) {
             return [
@@ -1023,8 +1216,6 @@ class PropertyService
             'remaining' => $plan->limite_turbo_mensal - $usedCount,
             'message' => "Você possui " . ($plan->limite_turbo_mensal - $usedCount) . " selos de destaque disponíveis."
         ];
-        
-        log_message('emergency', "[canMarkAsDestaque] RESULTADO FINAL: allowed=true, remaining=" . ($plan->limite_turbo_mensal - $usedCount));
         
         return $result;
     }
@@ -1179,6 +1370,15 @@ class PropertyService
             return ['success' => false, 'message' => 'Imóvel não encontrado.'];
         }
 
+        // 1b. Limite de fotos do plano.
+        // plans.limite_fotos_por_imovel existia, era exibido em três telas e
+        // nunca foi lido por nenhum caminho de upload — qualquer conta podia
+        // subir fotos ilimitadas independentemente do plano contratado.
+        $photoLimit = $this->checkPhotoLimit((int) $property->account_id, $propertyId);
+        if (!$photoLimit['allowed']) {
+            return ['success' => false, 'message' => $photoLimit['message'], 'code' => 'PHOTO_LIMIT_REACHED'];
+        }
+
         // 2. Validate File
         if (!$file->isValid() || $file->hasMoved()) {
             return ['success' => false, 'message' => 'Arquivo inválido ou já movido.'];
@@ -1228,49 +1428,189 @@ class PropertyService
             $newName = bin2hex(random_bytes(16)) . '.' . $mimeToExt[$realMime];
             $targetPath = 'uploads/properties/' . $propertyId . '/' . $newName;
 
-            // Variantes (thumbnails card/gallery) ANTES do put() do original —
-            // LocalStorage::put() consome (unlink) o arquivo de origem. Falha
-            // de variante não derruba o upload (o helper cai no original).
-            (new \App\Libraries\Media\ImageVariantGenerator())->generate($file->getTempName(), $targetPath);
+            // Remove EXIF (GPS, câmera, timestamp) ANTES de gerar variantes e
+            // publicar. Esta limpeza só existia no upload do painel admin; pela
+            // API as fotos do parceiro iam para o ar com a localização embutida.
+            \App\Libraries\Media\ImageSanitizer::stripMetadata($file->getTempName());
 
-            // Via storage abstrato (disco público): permite trocar disco local
-            // por S3/NFS sem tocar aqui — validação de conteúdo acima permanece
-            // no service, ANTES do put(), independente do backend.
-            $storage = service('publicStorage');
-            $publicUrl = $storage->put($targetPath, $file->getTempName());
-
-            // 4. Insert into DB
-            $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
-            
-            // Check if it's the first image (to set as Main)
-            $count = $mediaModel->countByProperty($propertyId);
-            $isMain = ($count === 0);
-
-            $mediaId = $mediaModel->insert([
-                'property_id' => $propertyId,
-                'tipo'        => 'imagem',
-                'url'         => $publicUrl,
-                'ordem'       => $count + 1,
-                'principal'   => $isMain,
-                'created_at'  => date('Y-m-d H:i:s')
-            ]);
-
-            // 5. Update Property Score (Async-ish)
-            service('rankingService')->updateScore($propertyId);
-
-            return [
-                'success' => true,
-                'media' => [
-                    'id' => $mediaId,
-                    'url' => $storage->getPublicUrl($publicUrl),
-                    'principal' => $isMain
-                ]
-            ];
+            return $this->persistMedia($propertyId, $file->getTempName(), $targetPath);
 
         } catch (\Exception $e) {
             log_message('error', 'Erro ao fazer upload de mídia: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Erro interno ao salvar arquivo.'];
         }
+    }
+
+    /**
+     * Adiciona uma imagem ao imóvel a partir de uma URL pública.
+     *
+     * É o caminho que torna a sincronização de catálogo viável: o parceiro
+     * manda as URLs que já usa no site dele, em vez de N uploads multipart.
+     * O download é feito pelo RemoteImageFetcher, que aplica as defesas de SSRF.
+     *
+     * @param array{ordem?: int, principal?: bool} $options
+     * @return array{success: bool, media?: array, skipped?: bool, message?: string}
+     */
+    public function addMediaFromUrl(string $url, int $propertyId, array $options = []): array
+    {
+        $property = $this->propertyModel->find($propertyId);
+        if (!$property) {
+            return ['success' => false, 'message' => 'Imóvel não encontrado.'];
+        }
+
+        $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
+        $urlHash    = hash('sha256', trim($url));
+
+        // Dedupe: reimportar o mesmo catálogo não deve rebaixar as mesmas fotos.
+        $existing = $mediaModel->where('property_id', $propertyId)
+                               ->where('source_url_hash', $urlHash)
+                               ->first();
+
+        if ($existing) {
+            return [
+                'success' => true,
+                'skipped' => true,
+                'media'   => [
+                    'id'        => (int) $existing->id,
+                    'url'       => media_url($existing->url),
+                    'principal' => (bool) $existing->principal,
+                ],
+            ];
+        }
+
+        $photoLimit = $this->checkPhotoLimit((int) $property->account_id, $propertyId);
+        if (!$photoLimit['allowed']) {
+            return ['success' => false, 'message' => $photoLimit['message'], 'code' => 'PHOTO_LIMIT_REACHED'];
+        }
+
+        $fetched = $this->imageFetcher()->fetch($url);
+
+        if (!$fetched['success']) {
+            return ['success' => false, 'message' => $fetched['message']];
+        }
+
+        try {
+            \App\Libraries\Media\ImageSanitizer::stripMetadata($fetched['path']);
+
+            $newName    = bin2hex(random_bytes(16)) . '.' . $fetched['extension'];
+            $targetPath = 'uploads/properties/' . $propertyId . '/' . $newName;
+
+            return $this->persistMedia($propertyId, $fetched['path'], $targetPath, [
+                'source_url' => trim($url),
+                'ordem'      => $options['ordem'] ?? null,
+                'principal'  => $options['principal'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            log_message('error', '[PropertyService] falha ao ingerir imagem por URL: ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Erro interno ao salvar a imagem baixada.'];
+        } finally {
+            // persistMedia consome o arquivo via put(); se algo falhou antes
+            // disso, o temporário ainda existe e precisa sair.
+            if (is_file($fetched['path'])) {
+                @unlink($fetched['path']);
+            }
+        }
+    }
+
+    /**
+     * Etapa final comum aos dois caminhos de ingestão (upload e URL):
+     * gera variantes, publica no storage e grava a linha em property_media.
+     *
+     * @param array{source_url?: string, ordem?: int|null, principal?: bool|null} $meta
+     */
+    private function persistMedia(int $propertyId, string $sourcePath, string $targetPath, array $meta = []): array
+    {
+        // Variantes (thumbnails card/gallery) ANTES do put() do original —
+        // LocalStorage::put() consome (unlink) o arquivo de origem. Falha
+        // de variante não derruba o upload (o helper cai no original).
+        (new \App\Libraries\Media\ImageVariantGenerator())->generate($sourcePath, $targetPath);
+
+        // Via storage abstrato (disco público): permite trocar disco local
+        // por S3/NFS sem tocar aqui — validação de conteúdo permanece no
+        // service, ANTES do put(), independente do backend.
+        $storage   = service('publicStorage');
+        $publicUrl = $storage->put($targetPath, $sourcePath);
+
+        $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
+
+        $count  = $mediaModel->countByProperty($propertyId);
+        $isMain = $meta['principal'] ?? ($count === 0);
+
+        $sourceUrl = $meta['source_url'] ?? null;
+
+        $mediaId = $mediaModel->insert([
+            'property_id'     => $propertyId,
+            // 'IMAGE' em vez de 'imagem': os três caminhos gravavam valores
+            // diferentes ('FOTO', 'IMAGE', 'imagem') para a mesma coisa.
+            'tipo'            => 'IMAGE',
+            'url'             => $publicUrl,
+            'ordem'           => $meta['ordem'] ?? ($count + 1),
+            'principal'       => $isMain,
+            'source_url'      => $sourceUrl,
+            'source_url_hash' => $sourceUrl ? hash('sha256', $sourceUrl) : null,
+            'created_at'      => date('Y-m-d H:i:s'),
+        ]);
+
+        // Garante exatamente uma capa. Sem isso, marcar principal=true num item
+        // do import deixaria duas fotos como capa ao mesmo tempo.
+        if ($isMain) {
+            $mediaModel->setMainMedia($propertyId, (int) $mediaId);
+        } else {
+            $mediaModel->sanitizeMain($propertyId);
+        }
+
+        service('rankingService')->updateScore($propertyId);
+
+        return [
+            'success' => true,
+            'skipped' => false,
+            'media'   => [
+                'id'        => (int) $mediaId,
+                'url'       => $storage->getPublicUrl($publicUrl),
+                'path'      => $publicUrl,
+                'principal' => (bool) $isMain,
+            ],
+        ];
+    }
+
+    /**
+     * Verifica o limite de fotos por imóvel do plano da conta.
+     *
+     * @return array{allowed: bool, message?: string, limit?: int|null, used?: int}
+     */
+    public function checkPhotoLimit(int $accountId, int $propertyId): array
+    {
+        $subscription = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->whereIn('status', ['ACTIVE', 'TRIAL'])
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        if (!$subscription) {
+            return ['allowed' => true]; // sem assinatura, quem barra é o AdminAuth/plan limit
+        }
+
+        $plan = $this->planModel->find($subscription->plan_id);
+
+        // NULL/0 = sem limite configurado.
+        if (!$plan || empty($plan->limite_fotos_por_imovel)) {
+            return ['allowed' => true];
+        }
+
+        $limit = (int) $plan->limite_fotos_por_imovel;
+        $used  = Factories::models(\App\Models\PropertyMediaModel::class)->countByProperty($propertyId);
+
+        if ($used >= $limit) {
+            return [
+                'allowed' => false,
+                'limit'   => $limit,
+                'used'    => $used,
+                'message' => "Este imóvel já atingiu o limite de {$limit} foto(s) do seu plano ({$plan->nome}). Faça upgrade para adicionar mais.",
+            ];
+        }
+
+        return ['allowed' => true, 'limit' => $limit, 'used' => $used];
     }
 
     /**

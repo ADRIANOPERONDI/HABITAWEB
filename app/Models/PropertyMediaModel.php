@@ -13,7 +13,9 @@ class PropertyMediaModel extends Model
     protected $useSoftDeletes   = true;
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'property_id', 'tipo', 'url', 'ordem', 'principal', 'created_at'
+        'property_id', 'tipo', 'url', 'ordem', 'principal', 'created_at',
+        // Origem da mídia quando ingerida por URL (dedupe de reimportação).
+        'source_url', 'source_url_hash'
     ];
 
     protected bool $allowEmptyInserts = false;
@@ -62,41 +64,55 @@ class PropertyMediaModel extends Model
     public function setMainMedia(int $propertyId, int $mediaId)
     {
         $this->db->transStart();
-        
+
         // Reset all
         $this->where('property_id', $propertyId)
              ->set(['principal' => false])
              ->update();
-             
+
         // Set new main
         $this->update($mediaId, ['principal' => true]);
-        
+
         $this->db->transComplete();
-        
+
         return $this->db->transStatus();
     }
 
     /**
-     * Garante que apenas a imagem mais antiga seja a principal (Correção de Race Condition).
+     * Garante que exatamente uma imagem seja a principal (Correção de Race Condition).
+     *
+     * Se já houver uma capa definida, ela é preservada; só quando não há
+     * nenhuma é que promovemos a mais antiga. A versão anterior desmarcava
+     * todas e promovia sempre a mais antiga, o que desfazia silenciosamente a
+     * capa escolhida pelo usuário a cada novo upload.
+     *
+     * Linhas soft-deleted são ignoradas — antes uma foto excluída podia ser
+     * promovida a capa e o imóvel ficava com uma capa que não existe mais.
      */
     public function sanitizeMain(int $propertyId)
     {
-        // 1. Desativar todas
+        $mainCount = $this->where('property_id', $propertyId)
+                          ->where('principal', true)
+                          ->countAllResults();
+
+        if ($mainCount === 1) {
+            return;
+        }
+
         $this->db->query(
-            "UPDATE property_media SET principal = false WHERE property_id = ?",
+            'UPDATE property_media SET principal = false WHERE property_id = ? AND deleted_at IS NULL',
             [$propertyId]
         );
-        
-        // 2. Ativar apenas a mais antiga
+
         $this->db->query(
-            "UPDATE property_media 
+            'UPDATE property_media
              SET principal = true
              WHERE id = (
-                 SELECT id FROM property_media 
-                 WHERE property_id = ? 
-                 ORDER BY id ASC 
+                 SELECT id FROM property_media
+                 WHERE property_id = ? AND deleted_at IS NULL
+                 ORDER BY ordem ASC, id ASC
                  LIMIT 1
-             )",
+             )',
             [$propertyId]
         );
     }

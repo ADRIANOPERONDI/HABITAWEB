@@ -25,7 +25,7 @@ class LeadController extends BaseController
         $accountId = $this->request->auth_account_id ?? null;
         
         if (!$accountId) {
-            return $this->failForbidden('Acesso restrito a contas autenticadas.');
+            return $this->respondForbidden('Acesso restrito a contas autenticadas.');
         }
 
         $filters = array_merge(
@@ -78,13 +78,13 @@ class LeadController extends BaseController
         $lead = $this->leadModel->find($id);
         
         if (!$lead) {
-            return $this->failNotFound('Lead não encontrado.');
+            return $this->respondNotFound('Lead não encontrado.');
         }
 
         // Validação de acesso
         $accountId = $this->request->auth_account_id ?? null;
         if (!$accountId || $lead->account_id_anunciante != $accountId) {
-            return $this->failForbidden('Acesso negado a este lead.');
+            return $this->respondForbidden('Acesso negado a este lead.');
         }
 
         return $this->respondSuccess(['lead' => $lead]);
@@ -96,7 +96,11 @@ class LeadController extends BaseController
      */
     public function create()
     {
-        $data = $this->request->getJSON(true);
+        $data = $this->getJsonBody();
+
+        if ($data === null) {
+            return $this->respondInvalidJson();
+        }
 
         // Validação básica
         if (empty($data['property_id']) || empty($data['nome_visitante']) || empty($data['email_visitante'])) {
@@ -104,7 +108,7 @@ class LeadController extends BaseController
         }
 
         if (!(new \App\Services\PublicPropertyVisibilityService())->isVisible((int) $data['property_id'])) {
-            return $this->respondError('Imóvel não encontrado.', 404);
+            return $this->respondNotFound('Imóvel não encontrado.');
         }
 
         // Pega account_id do imóvel
@@ -112,7 +116,7 @@ class LeadController extends BaseController
         $property = $propertyModel->find($data['property_id']);
 
         if (!$property) {
-            return $this->respondError('Imóvel não encontrado.', 404);
+            return $this->respondNotFound('Imóvel não encontrado.');
         }
 
         $data['account_id_anunciante'] = $property->account_id;
@@ -123,10 +127,10 @@ class LeadController extends BaseController
         $result = $this->leadService->trySaveLead($data);
 
         if ($result['success']) {
-            return $this->respondCreated($result);
+            return $this->respondSuccess($result, 'Lead registrado com sucesso.', 201);
         }
 
-        return $this->respondError($result['message'], 400, $result['errors'] ?? []);
+        return $this->respondError($result['message'], 422, $result['errors'] ?? [], self::ERR_VALIDATION);
     }
 
     /**
@@ -142,25 +146,75 @@ class LeadController extends BaseController
         $lead = $this->leadModel->find($id);
         
         if (!$lead) {
-            return $this->failNotFound('Lead não encontrado.');
+            return $this->respondNotFound('Lead não encontrado.');
         }
 
         // Validação de acesso
         $accountId = $this->request->auth_account_id ?? null;
         if (!$accountId || $lead->account_id_anunciante != $accountId) {
-            return $this->failForbidden('Acesso negado.');
+            return $this->respondForbidden('Acesso negado.');
         }
 
-        $data = $this->request->getJSON(true);
-        $data['id'] = $id;
+        $data = $this->getJsonBody();
 
-        $result = $this->leadService->trySaveLead($data, $id);
-
-        if ($result['success']) {
-            return $this->respondSuccess($result);
+        if ($data === null) {
+            return $this->respondInvalidJson();
         }
 
-        return $this->respondError($result['message'], 400, $result['errors'] ?? []);
+        // Antes chamava trySaveLead($data, $id), mas a assinatura do service é
+        // trySaveLead(array $data) — o $id era descartado em silêncio e o
+        // service exigia property_id, então o caso natural ("só mudar o status")
+        // devolvia 400. Pior: quando property_id vinha, o service reencontrava o
+        // lead por (property_id, email_visitante) e podia atualizar OUTRO
+        // registro que não o da URL. Aqui o update é direto no lead do path.
+        $allowed = ['status', 'nome_visitante', 'telefone_visitante', 'email_visitante',
+                    'mensagem', 'user_id_responsavel', 'closing_value', 'closing_notes'];
+
+        $updateData = array_intersect_key($data, array_flip($allowed));
+
+        if ($updateData === []) {
+            return $this->respondError(
+                'Nenhum campo atualizável foi enviado. Permitidos: ' . implode(', ', $allowed) . '.',
+                422,
+                [],
+                self::ERR_VALIDATION
+            );
+        }
+
+        if (isset($updateData['status'])) {
+            $statuses = [
+                LeadModel::STATUS_NOVO,
+                LeadModel::STATUS_ATENDIMENTO,
+                LeadModel::STATUS_CONCLUIDO,
+                LeadModel::STATUS_PERDIDO,
+            ];
+
+            $updateData['status'] = strtoupper((string) $updateData['status']);
+
+            if (! in_array($updateData['status'], $statuses, true)) {
+                return $this->respondError(
+                    'status deve ser um de: ' . implode(', ', $statuses) . '.',
+                    422,
+                    [],
+                    self::ERR_VALIDATION
+                );
+            }
+
+            if ($updateData['status'] === LeadModel::STATUS_CONCLUIDO && empty($lead->closed_at)) {
+                $updateData['closed_at'] = date('Y-m-d H:i:s');
+            }
+        }
+
+        if (! $this->leadModel->update($id, $updateData)) {
+            return $this->respondError(
+                'Erro ao atualizar lead.',
+                422,
+                $this->leadModel->errors(),
+                self::ERR_VALIDATION
+            );
+        }
+
+        return $this->respondSuccess(['lead' => $this->leadModel->find($id)], 'Lead atualizado com sucesso.');
     }
 
     /**
@@ -175,19 +229,19 @@ class LeadController extends BaseController
         $lead = $this->leadModel->find($id);
         
         if (!$lead) {
-            return $this->failNotFound('Lead não encontrado.');
+            return $this->respondNotFound('Lead não encontrado.');
         }
 
         // Validação de acesso
         $accountId = $this->request->auth_account_id ?? null;
         if (!$accountId || $lead->account_id_anunciante != $accountId) {
-            return $this->failForbidden('Acesso negado.');
+            return $this->respondForbidden('Acesso negado.');
         }
 
         if ($this->leadModel->delete($id)) {
-            return $this->respondSuccess(['message' => 'Lead deletado com sucesso.']);
+            return $this->respondSuccess(['lead_id' => (int) $id], 'Lead deletado com sucesso.');
         }
 
-        return $this->respondError('Erro ao deletar lead.', 500);
+        return $this->respondError('Erro ao deletar lead.', 500, [], self::ERR_INTERNAL);
     }
 }

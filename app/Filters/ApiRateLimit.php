@@ -46,7 +46,11 @@ class ApiRateLimit implements FilterInterface
         $windowStart = $cache->get($windowKey);
         if (!$windowStart || ($now - $windowStart) >= 3600) {
             $cache->save($windowKey, $now, 3600);
-            $cache->delete($cacheKey);
+            // Semeia o contador em 0 em vez de apagar a chave: increment() sobre
+            // uma chave inexistente tem comportamento diferente em cada handler
+            // (o de arquivo assume 0, o mock do CI4 emite "Undefined array key").
+            // Com a semente, todo handler parte de um inteiro conhecido.
+            $cache->save($cacheKey, 0, 3600);
             $windowStart = $now;
         }
 
@@ -94,8 +98,10 @@ class ApiRateLimit implements FilterInterface
      *  1. API Key (pk_...): bucket por chave, com o limite configurado na própria chave.
      *     Assim uma chave não escapa do limite trocando de IP, nem divide cota com
      *     outras contas atrás do mesmo IP.
-     *  2. Token Shield (Bearer não-pk_): bucket estável por hash do token.
-     *  3. Anônimo (rotas públicas): bucket por IP, limite baixo.
+     *  2. JWT: bucket da API Key que emitiu o token (claim key_id). Sem isso o
+     *     parceiro dobraria a cota simplesmente trocando a chave por um JWT.
+     *  3. Token Shield (Bearer não-pk_, não-JWT): bucket estável por hash do token.
+     *  4. Anônimo (rotas públicas): bucket por IP, limite baixo.
      *
      * @return array{0:string,1:int}
      */
@@ -104,18 +110,62 @@ class ApiRateLimit implements FilterInterface
         $authHeader = $request->getHeaderLine('Authorization');
 
         if (preg_match('/Bearer\s+(pk_\S+)/i', $authHeader, $m)) {
-            $apiKey = model(\App\Models\ApiKeyModel::class)->findByPlainKey($m[1]);
+            // resolveApiKey memoiza por request: sem isso a chave era verificada
+            // com bcrypt aqui e DE NOVO no ApiAuth, dobrando o custo de cada chamada.
+            $apiKey = ApiAuth::resolveApiKey($m[1]);
             if ($apiKey !== null) {
                 $limit = (int) ($apiKey->rate_limit_per_hour ?: 1000);
                 return ['key_' . $apiKey->id, $limit];
             }
             // Chave inválida: trata como anônimo (será barrado no api_auth de qualquer forma)
         } elseif (preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
+            $token = $m[1];
+
+            // JWT (header.payload.signature): herda o bucket e a cota da API Key
+            // de origem. A verificação de assinatura acontece no ApiAuth; aqui só
+            // precisamos do identificador, então uma leitura não confiável do
+            // payload basta — um key_id forjado só levaria o atacante a consumir
+            // a cota de outra chave, e ele seria barrado no ApiAuth logo em seguida.
+            if (substr_count($token, '.') === 2) {
+                $keyId = $this->peekJwtKeyId($token);
+
+                if ($keyId !== null) {
+                    $apiKey = model(\App\Models\ApiKeyModel::class)->find($keyId);
+                    $limit  = (int) (($apiKey->rate_limit_per_hour ?? 0) ?: 1000);
+
+                    return ['key_' . $keyId, $limit];
+                }
+            }
+
             // Token Shield: identidade estável por hash, sem precisar validar aqui.
-            return ['tok_' . sha1($m[1]), 5000];
+            return ['tok_' . sha1($token), 5000];
         }
 
         return ['ip_' . $request->getIPAddress(), 100];
+    }
+
+    /**
+     * Lê o claim key_id do payload de um JWT SEM verificar assinatura.
+     * Serve apenas para escolher o bucket de rate limit — nunca para autorizar.
+     */
+    private function peekJwtKeyId(string $token): ?int
+    {
+        $parts = explode('.', $token);
+
+        if (count($parts) !== 3) {
+            return null;
+        }
+
+        $payload = json_decode(
+            (string) base64_decode(strtr($parts[1], '-_', '+/'), false),
+            true
+        );
+
+        if (! is_array($payload) || empty($payload['key_id']) || ! is_numeric($payload['key_id'])) {
+            return null;
+        }
+
+        return (int) $payload['key_id'];
     }
 
     /**

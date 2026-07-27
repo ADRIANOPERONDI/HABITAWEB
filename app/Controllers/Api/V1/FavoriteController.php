@@ -2,48 +2,75 @@
 
 namespace App\Controllers\Api\V1;
 
-use CodeIgniter\RESTful\ResourceController;
-use CodeIgniter\API\ResponseTrait;
-
-class FavoriteController extends ResourceController
+/**
+ * Favoritar/desfavoritar um imóvel.
+ *
+ * Montado em duas rotas com credenciais diferentes:
+ *   - POST /favoritos/toggle   (site público, sessão + CSRF)
+ *   - POST /api/v1/favorites/toggle (API, Bearer)
+ *
+ * Por isso a identificação do usuário aceita as duas origens. Antes só existia
+ * auth()->loggedIn(), que depende de sessão — como o cliente de API manda
+ * Bearer e nenhum cookie, a rota da API respondia 401 em 100% das chamadas.
+ */
+class FavoriteController extends BaseController
 {
-    use ResponseTrait;
-
     public function toggle()
     {
-        // Apenas usuários logados por enquanto
-        if (!auth()->loggedIn()) {
-            return $this->failUnauthorized('Você precisa estar logado para favoritar.');
+        // auth_user_id é injetado pelo filtro api_auth; auth()->id() cobre a
+        // rota web com sessão.
+        $userId = $this->request->auth_user_id ?? (auth()->loggedIn() ? auth()->id() : null);
+
+        if (! $userId) {
+            return $this->respondError(
+                'Você precisa estar autenticado para favoritar.',
+                401,
+                [],
+                self::ERR_UNAUTHORIZED
+            );
         }
 
-        $userId = auth()->id();
-        $json = $this->request->getJSON();
-        $propertyId = $json->property_id ?? null;
+        $data = $this->getJsonBody();
 
-        if (!$propertyId) {
-            return $this->fail('Property ID is required');
+        if ($data === null) {
+            return $this->respondInvalidJson();
         }
 
-        if (!(new \App\Services\PublicPropertyVisibilityService())->isVisible((int) $propertyId)) {
-            return $this->failNotFound('Imóvel não encontrado.');
+        $propertyId = $data['property_id'] ?? null;
+
+        if (! $propertyId || ! is_numeric($propertyId)) {
+            return $this->respondError('property_id é obrigatório.', 422, [], self::ERR_VALIDATION);
         }
 
-        $model = model('App\Models\PropertyFavoriteModel');
+        $propertyId = (int) $propertyId;
+
+        if (! (new \App\Services\PublicPropertyVisibilityService())->isVisible($propertyId)) {
+            return $this->respondNotFound('Imóvel não encontrado.');
+        }
+
+        $model    = model('App\Models\PropertyFavoriteModel');
         $existing = $model->where('user_id', $userId)
                           ->where('property_id', $propertyId)
                           ->first();
 
         if ($existing) {
-            // Remove
             $model->delete($existing->id);
-            return $this->respond(['status' => 'removed', 'message' => 'Removido dos favoritos']);
-        } else {
-            // Adiciona
-            $model->insert([
-                'user_id' => $userId,
-                'property_id' => $propertyId
-            ]);
-            return $this->respondCreated(['status' => 'added', 'message' => 'Adicionado aos favoritos']);
+
+            return $this->respondSuccess(
+                ['status' => 'removed', 'property_id' => $propertyId],
+                'Removido dos favoritos.'
+            );
         }
+
+        $model->insert([
+            'user_id'     => $userId,
+            'property_id' => $propertyId,
+        ]);
+
+        return $this->respondSuccess(
+            ['status' => 'added', 'property_id' => $propertyId],
+            'Adicionado aos favoritos.',
+            201
+        );
     }
 }

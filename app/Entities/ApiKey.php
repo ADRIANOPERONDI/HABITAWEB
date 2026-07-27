@@ -6,7 +6,16 @@ use CodeIgniter\Entity\Entity;
 
 class ApiKey extends Entity
 {
-    protected $datamap = [];
+    /**
+     * A tabela guarda 'created_by_user_id', mas ApiAuth (e todo o código que
+     * consome auth_user_id) fala em 'user_id'. Sem este mapa, $apiKey->user_id
+     * devolvia null silenciosamente — o que fazia BaseController::isSuperAdmin()
+     * retornar false até para chaves de superadmin, e gravava user_id nulo nas
+     * denúncias de imóvel.
+     */
+    protected $datamap = [
+        'user_id' => 'created_by_user_id',
+    ];
     protected $dates   = ['created_at', 'updated_at', 'deleted_at', 'last_used_at', 'expires_at'];
     protected $casts   = [
         'id' => 'integer',

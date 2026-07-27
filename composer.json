@@ -15,6 +15,7 @@
         "codeigniter4/shield": "~1.2",
         "dompdf/dompdf": "~3.1",
         "ezyang/htmlpurifier": "^4.17",
+        "firebase/php-jwt": "^7.0",
         "league/flysystem": "^3.35",
         "league/flysystem-aws-s3-v3": "^3.35"
     },

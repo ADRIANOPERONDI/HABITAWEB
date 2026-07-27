@@ -16,13 +16,25 @@ class AccountModel extends Model
         'tipo_conta', 'nome', 'documento', 'email', 'telefone', 'whatsapp', 'creci', 'status', 'logo',
         'whatsapp_hub_config', 'whatsapp_messages_config',
         'is_verified', 'verification_status', 'id_front', 'id_back', 'selfie', 'verification_notes',
-        'liveness_data'
+        'liveness_data',
+        // Subconta (imobiliária -> corretor). Sem isto no allowedFields, o
+        // insert de subconta feito por Api\V1\AccountController::create()
+        // descartava o vínculo silenciosamente.
+        'parent_account_id'
     ];
 
     protected bool $allowEmptyInserts = false;
     protected bool $updateOnlyChanged = true;
 
-    protected array $casts = [];
+    /**
+     * O PostgreSQL devolve booleano como 'f'/'t', e a string 'f' é truthy em
+     * PHP — sem este cast, $account->is_verified era SEMPRE true e o selo de
+     * "parceiro verificado" aparecia para contas nunca verificadas
+     * (app/Views/web/home.php exibe $partner->is_verified).
+     */
+    protected array $casts = [
+        'is_verified' => 'boolean',
+    ];
     protected array $castHandlers = [];
 
     // Dates

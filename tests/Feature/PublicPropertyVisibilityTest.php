@@ -114,8 +114,12 @@ final class PublicPropertyVisibilityTest extends HabitawebTestCase
             'due_date'               => date('Y-m-d', strtotime('-10 days')),
         ]);
 
-        $this->expectException(\CodeIgniter\Exceptions\PageNotFoundException::class);
-        $this->get("imovel/{$id}");
+        // Agora existe um handler de 404 registrado (set404Override em
+        // app/Config/Routes.php, para servir JSON nas rotas de API), então o
+        // PageNotFoundException é tratado e vira uma resposta 404 de verdade em
+        // vez de escapar como exceção. O comportamento observável — imóvel
+        // bloqueado não é acessível publicamente — é o mesmo.
+        $this->get("imovel/{$id}")->assertStatus(404);
     }
 
     public function testPropertyFromDeletedAccountIsPubliclyHidden(): void

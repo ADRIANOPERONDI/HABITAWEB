@@ -25,7 +25,9 @@ class PropertyModel extends Model
         'is_exclusivo', 'aceita_pets', 'mobiliado', 'semimobiliado',
         'is_desocupado', 'is_locado', 'renda_mensal_estimada', 'condominio',
         'indicado_investidor', 'indicado_primeira_moradia', 'indicado_temporada',
-        'is_verified', 'verification_status'
+        'is_verified', 'verification_status',
+        // Sincronização com a plataforma do parceiro (ver PropertyImportService).
+        'external_id', 'source', 'external_synced_at'
     ];
 
     protected bool $allowEmptyInserts = false;
@@ -44,6 +46,13 @@ class PropertyModel extends Model
         'indicado_primeira_moradia' => 'boolean',
         'indicado_temporada'       => 'boolean',
         'auto_paused'              => 'boolean',
+        // is_verified estava declarado só em App\Entities\Property::$casts, que
+        // nunca chegou a funcionar (ver o castAs() removido de lá). Como o
+        // Postgres devolve booleano como 'f'/'t' e a string 'f' é truthy em PHP,
+        // $property->is_verified retornava TRUE para todo imóvel — e as views
+        // web/property_details.php e web/home.php exibiam o selo de "verificado"
+        // em imóveis que nunca foram verificados.
+        'is_verified'              => 'boolean',
     ];
     protected array $castHandlers = [];
 

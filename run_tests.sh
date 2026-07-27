@@ -6,6 +6,8 @@
 #   all          - unit + feature + e2e (exclui @group asaas-sandbox)
 #   unit         - Só tests/unit (smoke tests que não precisam de HTTP simulado)
 #   feature      - Só tests/Feature (API/IDOR, AdminAuth, cupom, upload, webhook...)
+#   api          - Só tests/Feature/Api (auth JWT, imóveis, imagens, import/export, isolamento)
+#   smoke        - Jornada do parceiro por HTTP real (exige `php spark serve`)
 #   e2e          - Só tests/E2E (cenários completos de assinatura)
 #   sandbox      - Testes @group asaas-sandbox (bate no Asaas sandbox real)
 #   coverage     - Todos os testes com relatório de cobertura
@@ -181,6 +183,8 @@ ${YELLOW}Opções:${NC}
   all          unit + feature + e2e (exclui @group asaas-sandbox)
   unit         Só tests/unit (smoke tests)
   feature      Só tests/Feature (API/IDOR, AdminAuth, cupom, upload, webhook...)
+  api          Só tests/Feature/Api (auth JWT, CRUD, imagens, import/export, multi-tenant)
+  smoke        Jornada completa do parceiro por HTTP REAL contra um servidor no ar
   e2e          Só tests/E2E (cenários completos de assinatura)
   sandbox      Testes @group asaas-sandbox (bate no Asaas sandbox real; precisa
                de credenciais em .env.testing — não roda no CI padrão)
@@ -194,6 +198,8 @@ ${YELLOW}Exemplos:${NC}
   ./run_tests.sh setup            # Cria o BD de teste antes da primeira execução
   ./run_tests.sh all              # Roda a suíte padrão (sem sandbox)
   ./run_tests.sh feature          # Só as suítes novas de feature
+  ./run_tests.sh api              # Só a superfície da API v1
+  ./run_tests.sh smoke            # Precisa de: php spark serve (noutro terminal)
   ./run_tests.sh sandbox          # Só os testes que dependem do Asaas sandbox
   ./run_tests.sh coverage         # Com cobertura
 
@@ -221,6 +227,20 @@ case "${1:-help}" in
         check_phpunit
         check_env
         run_tests "e2e"
+        ;;
+    api)
+        check_phpunit
+        check_env
+        print_header "SUÍTE DA API v1 (tests/Feature/Api)"
+        "$PHPUNIT" --testdox tests/Feature/Api
+        ;;
+    smoke)
+        # HTTP de verdade: exige um servidor no ar. Não é PHPUnit — é a jornada
+        # do parceiro ponta a ponta (auth, import, imagens, export, isolamento).
+        check_phpunit
+        SMOKE_URL="${2:-http://localhost:8080}"
+        print_header "SMOKE E2E DO PARCEIRO — $SMOKE_URL"
+        php "$PROJECT_DIR/tests/E2E/partner_smoke.php" --base-url="$SMOKE_URL"
         ;;
     sandbox)
         check_phpunit

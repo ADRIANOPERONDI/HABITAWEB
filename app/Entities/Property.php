@@ -26,24 +26,6 @@ class Property extends Entity
     ];
 
     /**
-     * PostgreSQL retorna booleans como 't'/'f'. O cast nativo do CI4 (bool)
-     * avalia 'f' como true. Sobrescrevemos para garantir o valor correto.
-     */
-    protected function castAs($value, string $attribute, string $method = 'get')
-    {
-        if ($attribute === 'boolean') {
-            if ($value === 'f' || $value === 'false' || $value === 0 || $value === '0') {
-                return false;
-            }
-            if ($value === 't' || $value === 'true' || $value === 1 || $value === '1') {
-                return true;
-            }
-        }
-
-        return parent::castAs($value, $attribute, $method);
-    }
-
-    /**
      * Retorna o Meta Título SEO ou gera um automático.
      */
     public function getMetaTitle(): string

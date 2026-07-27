@@ -2,45 +2,59 @@
 
 namespace App\Controllers\Api\V1;
 
+use App\Entities\Account;
 use App\Services\AccountService;
-use CodeIgniter\Config\Factories;
 
 class AccountController extends BaseController
 {
+    /** Campos que um não-superadmin pode alterar. */
+    private const UPDATABLE_FIELDS = [
+        'nome', 'email', 'telefone', 'whatsapp', 'creci', 'logo',
+        'whatsapp_hub_config', 'whatsapp_messages_config',
+    ];
+
     protected AccountService $accountService;
 
     public function __construct()
     {
-        $this->accountService = new AccountService(); // Ou via Factories se preferir injeção
+        $this->accountService = new AccountService();
     }
 
     /**
      * GET /api/v1/accounts
-     * Regras: 
-     * - Super Admin: Vê tudo.
-     * - Imobiliária: Vê apenas suas subcontas/corretores.
-     * - Outros: Vê apenas a si mesmo.
+     * Regras:
+     * - Super Admin: vê tudo.
+     * - Imobiliária: vê a si mesma e suas subcontas/corretores.
+     * - Outros: vê apenas a si mesmo.
      */
     public function index()
     {
-        $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->isSuperAdmin(); 
-        $accountType      = $this->request->auth_account_type;
-        
-        $filters = $this->request->getGet();
+        $currentAccountId = $this->currentAccountId();
 
-        if (!$isSuperAdmin) {
-            // Se for imobiliária, vê subcontas
-            if ($accountType === 'imobiliaria') {
+        if (! $currentAccountId) {
+            return $this->respondForbidden('Credencial não vinculada a uma conta.');
+        }
+
+        $isSuperAdmin = $this->isSuperAdmin();
+
+        // Só filtros de busca do cliente; o escopo é decidido pelo servidor logo abaixo.
+        $filters = array_intersect_key(
+            $this->request->getGet(),
+            array_flip(['tipo_conta', 'status', 'term', 'page'])
+        );
+
+        if (! $isSuperAdmin) {
+            // AccountService::listAccounts() antes ignorava 'id'/'parent_id' —
+            // o efeito era listar TODAS as contas da plataforma para qualquer
+            // chave válida. Agora o service entende as duas chaves.
+            if ($this->request->auth_account_type === 'imobiliaria') {
                 $filters['parent_id'] = $currentAccountId;
             } else {
-                // Caso contrário, vê apenas a si mesmo
                 $filters['id'] = $currentAccountId;
             }
         }
 
-        $result = $this->accountService->listAccounts($filters);
-        return $this->respondSuccess($result);
+        return $this->respondSuccess($this->accountService->listAccounts($filters));
     }
 
     /**
@@ -48,89 +62,110 @@ class AccountController extends BaseController
      */
     public function show($id = null)
     {
-        $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->isSuperAdmin();
+        $account = $this->findAccessibleAccount($id);
 
-        if (!$isSuperAdmin && $id != $currentAccountId) {
-            // Verificar se o ID pertence à imobiliária (se for subconta)
-            $account = $this->accountService->getAccountById($id);
-            if (!$account || $account->parent_account_id != $currentAccountId) {
-                return $this->failForbidden('Você não tem permissão para acessar esta conta');
-            }
-        } else {
-            $account = $this->accountService->getAccountById($id);
+        // instanceof, e não is_object(): findAccessibleAccount() devolve OU a
+        // entidade OU um objeto Response de erro — e um Response também é
+        // objeto, então is_object() deixava o 403 passar como se fosse a conta.
+        if (! $account instanceof Account) {
+            return $account;
         }
 
-        if (!$account) {
-            return $this->failNotFound('Conta não encontrada');
-        }
-        return $this->respondSuccess($account);
+        return $this->respondSuccess(['account' => $account]);
     }
 
     /**
      * POST /api/v1/accounts
-     * Permite que imobiliárias criem subcontas (corretores)
+     * Permite que imobiliárias criem subcontas (corretores).
      */
     public function create()
     {
-        $isSuperAdmin     = $this->isSuperAdmin();
-        $accountType      = $this->request->auth_account_type;
+        $currentAccountId = $this->currentAccountId();
 
-        if (!$isSuperAdmin && $accountType !== 'imobiliaria') {
-            return $this->failForbidden('Apenas imobiliárias podem criar subcontas via API');
+        if (! $currentAccountId) {
+            return $this->respondForbidden('Credencial não vinculada a uma conta.');
         }
 
-        $data = $this->request->getJSON(true);
-        
-        // Se for imobiliária, força o parent_id
-        if (!$isSuperAdmin) {
-            $data['parent_account_id'] = $this->request->auth_account_id;
-            $data['type'] = 'corretor'; 
+        $isSuperAdmin = $this->isSuperAdmin();
+        $accountType  = $this->request->auth_account_type;
+
+        // auth_account_type era sempre null (ApiAuth lia $account->type, coluna
+        // inexistente — o nome real é tipo_conta), então este 403 disparava para
+        // TODO mundo e o endpoint era inalcançável. Corrigido no filtro.
+        if (! $isSuperAdmin && $accountType !== 'imobiliaria') {
+            return $this->respondForbidden('Apenas imobiliárias podem criar subcontas via API.');
+        }
+
+        $data = $this->getJsonBody();
+
+        if ($data === null) {
+            return $this->respondInvalidJson();
+        }
+
+        if (empty($data['nome']) || empty($data['email'])) {
+            return $this->respondError('nome e email são obrigatórios.', 422, [], self::ERR_VALIDATION);
+        }
+
+        if (! $isSuperAdmin) {
+            $data['parent_account_id'] = $currentAccountId;
+            $data['tipo_conta']        = 'CORRETOR';
+            // Nunca deixar o cliente nascer verificado.
+            unset($data['is_verified'], $data['verification_status'], $data['status']);
         }
 
         $result = $this->accountService->trySaveAccount($data);
 
-        if ($result['success']) {
-            return $this->respondCreated($result);
+        if (! $result['success']) {
+            return $this->respondError($result['message'], 422, $result['errors'] ?? [], self::ERR_VALIDATION);
         }
 
-        return $this->respondError($result['message'], 400, $result['errors'] ?? []);
+        return $this->respondSuccess($result, 'Conta criada com sucesso.', 201);
     }
 
     /**
-     * PUT /api/v1/accounts/(:id)
+     * PUT|PATCH /api/v1/accounts/(:id)
      */
     public function update($id = null)
     {
-        $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->isSuperAdmin();
+        $account = $this->findAccessibleAccount($id);
 
-        if (!$isSuperAdmin && $id != $currentAccountId) {
-            // Verifica se é subconta da imobiliária
-            $account = $this->accountService->getAccountById($id);
-            if (!$account || $account->parent_account_id != $currentAccountId) {
-                return $this->failForbidden('Apenas imobiliárias podem editar suas subcontas');
-            }
+        // instanceof, e não is_object(): findAccessibleAccount() devolve OU a
+        // entidade OU um objeto Response de erro — e um Response também é
+        // objeto, então is_object() deixava o 403 passar como se fosse a conta.
+        if (! $account instanceof Account) {
+            return $account;
         }
 
-        $data = $this->request->getJSON(true);
+        $data = $this->getJsonBody();
 
-        // Lista branca de campos que um não-superadmin pode alterar na própria conta.
-        // NUNCA incluir campos de confiança/status (is_verified, verification_status,
-        // type, parent_account_id, status) — esses só mudam por fluxo interno/admin.
-        if (!$isSuperAdmin) {
-            $allowed = ['nome', 'email', 'telefone', 'whatsapp', 'creci', 'logo',
-                        'whatsapp_hub_config', 'whatsapp_messages_config'];
-            $data = array_intersect_key($data, array_flip($allowed));
+        if ($data === null) {
+            return $this->respondInvalidJson();
         }
 
-        $result = $this->accountService->trySaveAccount($data, $id);
-
-        if ($result['success']) {
-            return $this->respondSuccess($result);
+        // Lista branca de campos que um não-superadmin pode alterar. NUNCA
+        // incluir campos de confiança/status (is_verified, verification_status,
+        // tipo_conta, parent_account_id, status) — esses só mudam por fluxo
+        // interno/admin.
+        if (! $this->isSuperAdmin()) {
+            $data = array_intersect_key($data, array_flip(self::UPDATABLE_FIELDS));
         }
 
-        return $this->respondError($result['message'], 400, $result['errors'] ?? []);
+        if ($data === []) {
+            return $this->respondError(
+                'Nenhum campo atualizável foi enviado. Permitidos: ' . implode(', ', self::UPDATABLE_FIELDS) . '.',
+                422,
+                [],
+                self::ERR_VALIDATION
+            );
+        }
+
+        $result = $this->accountService->trySaveAccount($data, (int) $id);
+
+        if (! $result['success']) {
+            return $this->respondError($result['message'], 422, $result['errors'] ?? [], self::ERR_VALIDATION);
+        }
+
+        return $this->respondSuccess($result, 'Conta atualizada com sucesso.');
     }
 
     /**
@@ -138,26 +173,68 @@ class AccountController extends BaseController
      */
     public function delete($id = null)
     {
-        $currentAccountId = $this->request->auth_account_id;
-        $isSuperAdmin     = $this->isSuperAdmin();
+        $account = $this->findAccessibleAccount($id);
 
-        if (!$isSuperAdmin && $id != $currentAccountId) {
-            $account = $this->accountService->getAccountById($id);
-            if (!$account || $account->parent_account_id != $currentAccountId) {
-                return $this->failForbidden('Você não tem permissão para excluir esta conta');
-            }
+        // instanceof, e não is_object(): findAccessibleAccount() devolve OU a
+        // entidade OU um objeto Response de erro — e um Response também é
+        // objeto, então is_object() deixava o 403 passar como se fosse a conta.
+        if (! $account instanceof Account) {
+            return $account;
         }
 
-        // Não permite excluir a si mesmo via API por segurança (exige painel)
-        if ($id == $currentAccountId && !$isSuperAdmin) {
-             return $this->fail('Para excluir sua conta principal, utilize o painel administrativo.');
+        // Não permite excluir a própria conta principal via API (exige painel).
+        if ((int) $id === $this->currentAccountId() && ! $this->isSuperAdmin()) {
+            return $this->respondError(
+                'Para excluir sua conta principal, utilize o painel administrativo.',
+                403,
+                [],
+                self::ERR_FORBIDDEN
+            );
         }
 
-        $result = $this->accountService->deleteAccount($id);
-        if ($result) {
-            return $this->respondNoContent();
+        if ($this->accountService->deleteAccount((int) $id)) {
+            return $this->respondSuccess(['account_id' => (int) $id], 'Conta excluída com sucesso.');
         }
 
-        return $this->fail('Erro ao excluir conta');
+        return $this->respondError('Erro ao excluir conta.', 500, [], self::ERR_INTERNAL);
+    }
+
+    /**
+     * Carrega a conta garantindo que o chamador pode acessá-la: a própria conta,
+     * uma subconta sua, ou qualquer uma se for superadmin.
+     *
+     * @return object|\CodeIgniter\HTTP\ResponseInterface
+     */
+    private function findAccessibleAccount($id)
+    {
+        if (! $id) {
+            return $this->respondError('ID da conta é obrigatório.', 400, [], self::ERR_INVALID_PAYLOAD);
+        }
+
+        $currentAccountId = $this->currentAccountId();
+
+        if (! $currentAccountId) {
+            return $this->respondForbidden('Credencial não vinculada a uma conta.');
+        }
+
+        $account = $this->accountService->getAccountById((int) $id);
+
+        if (! $account) {
+            return $this->respondNotFound('Conta não encontrada.');
+        }
+
+        if ($this->isSuperAdmin() || (int) $id === $currentAccountId) {
+            return $account;
+        }
+
+        // Subconta da imobiliária autenticada? A coluna parent_account_id não
+        // existia no banco até a migração 2026-07-27-100200 — antes disso a
+        // comparação era sempre "null != $currentAccountId" e o recurso inteiro
+        // de subcontas era código morto.
+        if ((int) ($account->parent_account_id ?? 0) === $currentAccountId) {
+            return $account;
+        }
+
+        return $this->respondForbidden('Você não tem permissão para acessar esta conta.');
     }
 }

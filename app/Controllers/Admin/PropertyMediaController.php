@@ -7,12 +7,73 @@ use CodeIgniter\Files\File;
 
 class PropertyMediaController extends BaseController
 {
+    /**
+     * Confirma que o imóvel pertence à conta do usuário logado.
+     *
+     * O grupo de rotas só aplicava o filtro admin_auth, que verifica login mas
+     * não posse. Como estes três endpoints recebiam um id cru e nunca checavam
+     * account_id, qualquer usuário autenticado de QUALQUER conta podia subir,
+     * apagar ou trocar a capa das fotos de imóveis de outra conta (IDOR).
+     * Admin\PropertyController::update/delete já faziam essa checagem.
+     *
+     * @return true|\CodeIgniter\HTTP\ResponseInterface true se autorizado
+     */
+    private function authorizeProperty($propertyId)
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return $this->response->setStatusCode(401)->setJSON(['success' => false, 'error' => 'Não autenticado.']);
+        }
+
+        $property = model('App\Models\PropertyModel')->find((int) $propertyId);
+
+        if (! $property) {
+            return $this->response->setStatusCode(404)->setJSON(['success' => false, 'error' => 'Imóvel não encontrado.']);
+        }
+
+        // Superadmin/admin da plataforma acessam qualquer imóvel.
+        if ($user->inGroup('superadmin', 'admin')) {
+            return true;
+        }
+
+        if ((int) $property->account_id !== (int) ($user->account_id ?? 0)) {
+            log_message('warning', sprintf(
+                'IDOR attempt: user %d (account %s) tentou manipular mídia do imóvel %d (account %d)',
+                $user->id,
+                $user->account_id ?? 'null',
+                $propertyId,
+                $property->account_id
+            ));
+
+            return $this->response->setStatusCode(403)->setJSON(['success' => false, 'error' => 'Acesso negado a este imóvel.']);
+        }
+
+        return true;
+    }
+
     public function upload($propertyId)
     {
+        $authorized = $this->authorizeProperty($propertyId);
+        if ($authorized !== true) {
+            return $authorized;
+        }
+
         $file = $this->request->getFile('file');
-        
+
         if (! $file || ! $file->isValid()) {
             return $this->response->setJSON(['error' => 'Arquivo inválido.']);
+        }
+
+        // Limite de fotos por imóvel do plano (plans.limite_fotos_por_imovel).
+        $property   = model('App\Models\PropertyModel')->find((int) $propertyId);
+        $photoLimit = (new \App\Services\PropertyService())->checkPhotoLimit(
+            (int) $property->account_id,
+            (int) $propertyId
+        );
+
+        if (! $photoLimit['allowed']) {
+            return $this->response->setStatusCode(409)->setJSON(['error' => $photoLimit['message']]);
         }
 
         // FIXED: Enhanced validation to prevent malicious uploads
@@ -63,7 +124,8 @@ class PropertyMediaController extends BaseController
         // SECURITY: Remove EXIF metadata to prevent privacy leaks (GPS, camera info, ISO, timestamps).
         // No arquivo temporário, ANTES de entregar ao storage — com backend
         // remoto (S3) não existe caminho absoluto final para pós-processar.
-        $this->removeExifData($file->getTempName());
+        // Lógica compartilhada com o caminho da API (PropertyService::addMedia).
+        \App\Libraries\Media\ImageSanitizer::stripMetadata($file->getTempName());
 
         // Variantes (thumbnails card/gallery) antes do put() — o put() consome
         // o arquivo temporário de origem.
@@ -118,6 +180,11 @@ class PropertyMediaController extends BaseController
         $media = $mediaModel->find($id);
 
         if ($media) {
+            $authorized = $this->authorizeProperty($media->property_id);
+            if ($authorized !== true) {
+                return $authorized;
+            }
+
             // Remove arquivo físico via storage abstrato (original + variantes)
             service('publicStorage')->delete($media->url);
             (new \App\Libraries\Media\ImageVariantGenerator())->deleteVariants($media->url);
@@ -146,6 +213,11 @@ class PropertyMediaController extends BaseController
 
         $propertyId = $media->property_id;
 
+        $authorized = $this->authorizeProperty($propertyId);
+        if ($authorized !== true) {
+            return $authorized;
+        }
+
         // Set new main using atomic model method
         $mediaModel->setMainMedia($propertyId, $id);
 
@@ -155,78 +227,4 @@ class PropertyMediaController extends BaseController
 
         return $this->response->setJSON(['success' => true]);
     }
-
-    /**
-     * Remove EXIF metadata from image to prevent privacy leaks
-     * SECURITY: Prevents exposure of GPS location, camera model, ISO, timestamps, etc.
-     *
-     * @param string $imagePath Full path to the image file
-     * @return bool Success/Failure
-     */
-    private function removeExifData(string $imagePath): bool
-    {
-        try {
-            // Get image info using getimagesize (includes MIME type)
-            $imageInfo = @getimagesize($imagePath);
-            if (!$imageInfo) {
-                log_message('warning', "EXIF removal: Invalid image at {$imagePath}");
-                return false;
-            }
-
-            $mimeType = $imageInfo['mime'];
-
-            // Handle JPEG images (most likely to have EXIF)
-            if ($mimeType === 'image/jpeg') {
-                if (extension_loaded('imagick')) {
-                    // Preferred: Use ImageMagick if available (strips all metadata)
-                    $image = new \Imagick($imagePath);
-                    $image->stripImage(); // Remove all profiles/metadata
-                    $image->writeImage($imagePath);
-                    $image->destroy();
-                    return true;
-                } else {
-                    // Fallback: Use GD library to recompress without metadata
-                    $image = @imagecreatefromjpeg($imagePath);
-                    if ($image === false) {
-                        log_message('error', "EXIF removal: GD failed to load JPEG {$imagePath}");
-                        return false;
-                    }
-                    imagejpeg($image, $imagePath, 90); // Recompress at 90% quality
-                    imagedestroy($image);
-                    return true;
-                }
-            }
-
-            // Handle PNG images
-            elseif ($mimeType === 'image/png') {
-                $image = @imagecreatefrompng($imagePath);
-                if ($image === false) {
-                    log_message('error', "EXIF removal: GD failed to load PNG {$imagePath}");
-                    return false;
-                }
-                // Save without metadata (PNG from GD doesn't preserve EXIF)
-                imagepng($image, $imagePath, 9);
-                imagedestroy($image);
-                return true;
-            }
-
-            // Handle WebP images
-            elseif ($mimeType === 'image/webp') {
-                $image = @imagecreatefromwebp($imagePath);
-                if ($image === false) {
-                    log_message('error', "EXIF removal: GD failed to load WebP {$imagePath}");
-                    return false;
-                }
-                imagewebp($image, $imagePath, 90);
-                imagedestroy($image);
-                return true;
-            }
-
-            return false;
-        } catch (\Exception $e) {
-            log_message('error', "EXIF removal error: " . $e->getMessage());
-            return false;
-        }
-    }
 }
-

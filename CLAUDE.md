@@ -35,16 +35,25 @@ vendor/bin/phpunit --filter testMethodName  # run a single test
 vendor/bin/phpunit tests/unit/PaymentGatewayTest.php   # run a single file
 
 ./run_tests.sh setup      # create/prepare the test database
-./run_tests.sh all        # full suite
-./run_tests.sh security   # OWASP-style tests (tests/unit/SecurityTest.php)
-./run_tests.sh crud       # CRUD E2E flows (tests/unit/CRUDFlowTest.php)
-./run_tests.sh api        # REST API tests (tests/unit/APITest.php)
-./run_tests.sh image      # upload/image handling (tests/unit/ImageHandlingTest.php)
-./run_tests.sh payment    # gateway tests (tests/unit/PaymentGatewayTest.php)
-./run_tests.sh business   # plans/coupons/leads/pricing (tests/unit/BusinessLogicTest.php)
+./run_tests.sh all        # unit + feature + e2e
+./run_tests.sh unit       # tests/unit
+./run_tests.sh feature    # tests/Feature
+./run_tests.sh api        # tests/Feature/Api only (API v1 surface)
+./run_tests.sh e2e        # tests/E2E
+./run_tests.sh sandbox    # @group asaas-sandbox (hits the real Asaas sandbox)
 ./run_tests.sh coverage   # full suite + coverage report (build/logs)
+
+# Partner journey over REAL HTTP — needs a server running:
+php spark serve &
+./run_tests.sh smoke [http://localhost:8080]
 ```
 `tests/E2E/Scenarios/*` contains subscription lifecycle scenarios (signup, upgrade, grace period, cancellation/reactivation, failed-payment recovery) built on `tests/E2E/SubscriptionE2EBase.php`.
+
+`tests/E2E/partner_smoke.php` is **not** a PHPUnit test — it's a standalone script that boots CI4 only to seed a tenant, then drives the whole partner journey (auth → import → images → export → tenant isolation) through cURL against a live server. It covers what `FeatureTestTrait` cannot: webserver, real `Content-Type` headers, files on disk, rate-limit headers.
+
+Test helpers: `tests/_support/Factories/TenantFactory.php` (account + subscription + Shield user + API key/JWT) and `tests/_support/ApiTestTrait.php` (`makeApiTenant()`, `postJson()`, `resetApiState()`). Note `postJson()` sends a **raw** JSON body on purpose — `withBodyFormat('json')` also stuffs native PHP ints into `$_POST`, which no real HTTP request does and which makes the global `invalidchars` filter throw.
+
+Image fixtures live in `tests/_support/fixtures/images/` — including a JPEG with real GPS EXIF (proves the EXIF strip) and a PHP webshell renamed to `.jpg` (proves content-based MIME rejection).
 
 Composer also exposes `composer test` (plain `phpunit`).
 
@@ -65,7 +74,22 @@ Auth groups (`app/Config/AuthGroups.php`, Shield-based): `superadmin`, `admin`, 
 ### Request surfaces
 - **Public web** (`App\Controllers\Web\*`, `App\Controllers\Home`): property search/detail, lead capture, checkout, partner marketplace, favorites. Routes are SEO-friendly path segments (`imoveis/(:segment)/(:segment)/(:segment)`).
 - **Admin panel** (`App\Controllers\Admin\*`, prefix `/admin`): protected by the `admin_auth` filter (`App\Filters\AdminAuth`). This filter does more than login-check — it also enforces, per non-superadmin account: KYC verification approved, an ACTIVE subscription, and no invoice overdue >3 days (with a proactive gateway re-sync via `PaymentService::syncPendingPayments` before hard-blocking). A small allowlist of paths (checkout, logout, profile, subscription, api-keys, activation) stays reachable even when blocked, so the user can fix billing/KYC.
-- **REST API** (`App\Controllers\Api\V1\*`, prefix `/api/v1`): protected by `api_auth` filter (`App\Filters\ApiAuth`), which accepts either a custom API key (`pk_...` prefix, validated via `ApiKeyModel`) or a Shield token (`Authorization: Bearer ...`), and injects `auth_user_id` / `auth_account_id` / `auth_account_type` / `auth_type` onto the request object for downstream use. Also rate-limited per-account via `api_rate_limit` filter. Self-documenting at `/api/docs`.
+- **REST API** (`App\Controllers\Api\V1\*`, prefix `/api/v1`): protected by `api_auth` filter (`App\Filters\ApiAuth`), which accepts **three** credentials via `Authorization: Bearer ...` — a custom API key (`pk_...`, bcrypt-verified through `ApiKeyModel`), a **JWT** (3 dot-separated segments, verified by `App\Libraries\Auth\JwtManager`), or a Shield token. It injects `auth_user_id` / `auth_account_id` / `auth_account_type` / `auth_type` / `auth_api_key_id` onto the request. Rate-limited per-key via `api_rate_limit`; a JWT inherits the quota of the API key that minted it (claim `key_id`). Documented at `/api/docs` (Swagger UI, assets self-hosted in `public/assets/swagger/`).
+
+  **Response envelope.** Every V1 endpoint answers through `Api\V1\BaseController::respondSuccess()` / `respondError()` — one shape for success and one for errors, with a stable `error_code` (the `BaseController::ERR_*` constants) that clients program against instead of the Portuguese `message`. Never use the `ResponseTrait` helpers (`failNotFound`, `respondCreated`, …) in V1: they emit a different shape. Parse JSON bodies with `getJsonBody()`, not `getJSON()` — the latter throws an `HTTPException` with no HTTP code (renders as 500) on malformed input.
+
+  **Route ordering matters.** Specific routes must be registered *before* `$routes->resource(...)`, and every resource passes `'placeholder' => '(:num)'`. The router is first-match-wins, so a resource-registered `DELETE properties/(:any)` would otherwise swallow `DELETE properties/5/media/9`.
+
+### Partner catalog sync (two-way)
+`properties.external_id` is the partner's own identifier for a listing; `(account_id, external_id)` has a unique partial index and is the upsert key. `App\Services\PropertyImportService` drives `POST /api/v1/import/properties`, which content-negotiates between a JSON batch (≤200 items, images by URL) and a CSV upload, normalizes partner field aliases (`title`→`titulo`, `price`→`preco`, …) and returns a per-item `action` of `created|updated|error`. The return leg is `GET /api/v1/export/properties?format=json&updated_since=...`, whose output can be fed straight back into the import without duplicating anything. `App\Services\PropertyService::validatePropertyData()` is the shared field-level validator (the model itself only validates `account_id`).
+
+### Image ingestion
+Two entry points, one pipeline: multipart upload (`PropertyService::addMedia`) and URL ingestion (`PropertyService::addMediaFromUrl`, used by the import and `/media/batch`). Both go through `persistMedia()`, which strips EXIF via `App\Libraries\Media\ImageSanitizer`, generates the `card`/`gallery` variants, writes through the storage abstraction and enforces exactly one cover. Remote fetches go through `App\Libraries\Media\RemoteImageFetcher`, whose SSRF guard lives in `App\Libraries\Http\UrlGuard` (also used to validate webhook `target_url`). MIME is decided by file content, never by extension or client-declared type. `PropertyService` accepts an injected fetcher (`setImageFetcher()`) so tests can exercise URL ingestion without network.
+
+### Privileged fields
+`PropertyService::GUARDED_FIELDS` lists columns that are in `PropertyModel::$allowedFields` but must never be client-writable (`is_destaque`, `highlight_level`, `is_verified`, `score_qualidade`, counters…). They are stripped in `trySaveProperty()` whenever `$isStaff === false`. Add to this list rather than relying on controllers to filter.
+
+> Postgres returns booleans as `'t'`/`'f'`, and the string `'f'` is truthy in PHP. Any boolean column read through a model **must** be declared in that model's `$casts` — the *entity* `$casts` alone does not apply to model reads.
 - **Webhooks** (`App\Controllers\Webhook\WebhookController`, plus legacy `App\Controllers\Web\WebhookController` routes under `/asaas/webhook`, `/webhook/asaas`, `/webhook/(:segment)`): CSRF is disabled for `webhook/*` and `asaas/*` in `app/Config/Filters.php`.
 
 ### Payment gateways

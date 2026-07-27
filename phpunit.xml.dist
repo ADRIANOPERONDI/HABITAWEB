@@ -23,14 +23,15 @@
         </report>
     </coverage>
     <testsuites>
-        <!-- Suítes legadas (tests/unit/APITest, BusinessLogicTest, CRUDFlowTest,
-             ImageHandlingTest, HealthTest) — SecurityTest/PaymentGatewayTest ainda
-             quebradas (App\Test\TestCase não tem get/post/actingAs) até a Fase 1d. -->
+        <!-- Smoke tests que não sobem HTTP simulado (storage, health, config de
+             gateway). A antiga tests/unit/APITest foi removida; a cobertura real
+             da API vive em tests/Feature/Api. -->
         <testsuite name="unit">
             <directory>./tests/unit</directory>
         </testsuite>
-        <!-- Suítes reais novas: sobem o framework via Tests\Support\HabitawebTestCase
-             (FeatureTestTrait + DatabaseTestTrait + transação com rollback real). -->
+        <!-- Suítes que sobem o framework via Tests\Support\HabitawebTestCase
+             (FeatureTestTrait + DatabaseTestTrait + transação com rollback real).
+             tests/Feature/Api concentra a superfície da API v1. -->
         <testsuite name="feature">
             <directory>./tests/Feature</directory>
         </testsuite>

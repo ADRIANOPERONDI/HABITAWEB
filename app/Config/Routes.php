@@ -6,6 +6,14 @@ use CodeIgniter\Router\RouteCollection;
  * @var RouteCollection $routes
  */
 
+// Handler de 404: JSON para /api/*, página HTML para o restante do site.
+// Sem isto, um caminho inexistente sob /api/* devolvia a página HTML de erro do
+// framework, e o cliente do parceiro quebrava no parse em vez de tratar um 404.
+// Precisa ser a STRING 'Controller::method' — Router::get404Override() só
+// entende string ou callable, e um array [Classe::class, 'metodo'] com método
+// não estático não é callable, então seria silenciosamente ignorado.
+$routes->set404Override('\App\Controllers\Api\ErrorController::notFound');
+
 // ========== ROTAS PÚBLICAS ==========
 $routes->get('/', 'Home::index');
 // Rotas de Busca (SEO Friendly)
@@ -92,35 +100,54 @@ $routes->get('register', function() {
 });
 
 $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api\\V1'], function($routes) {
-    // --- ROTA PÚBLICA ---
+    // --- ROTAS PÚBLICAS ---
     $routes->post('leads', 'LeadController::create');
 
-    // --- ROTAS PROTEGIDAS (Requer API Key) ---
+    // Emissão/renovação de JWT. Públicas por natureza: o cliente troca a API Key
+    // (pk_...) por um access token curto. Protegidas apenas pelo api_rate_limit
+    // global de 'api/*'.
+    $routes->post('auth/token', 'AuthController::token');
+    $routes->post('auth/refresh', 'AuthController::refresh');
+    $routes->post('auth/revoke', 'AuthController::revoke');
+
+    // --- ROTAS PROTEGIDAS (Requer API Key ou JWT) ---
     $routes->group('', ['filter' => 'api_auth'], function($routes) {
-        
+
+        $routes->get('auth/me', 'AuthController::me');
+
         // Properties
-        $routes->resource('properties', ['controller' => 'PropertyController']);
+        // ATENÇÃO À ORDEM: as rotas específicas precisam ser registradas ANTES do
+        // resource(). O Router do CI4 é first-match-wins e o resource() registra
+        // 'DELETE properties/(:num)' — se viesse antes, um
+        // DELETE properties/5/media/9 casaria com ele e apagaria o IMÓVEL 5.
+        // O 'placeholder' => '(:num)' também evita 500 em ids não numéricos
+        // (getPropertyDetails(int $id) é tipado).
         $routes->post('properties/(:num)/media', 'PropertyController::uploadMedia/$1');
+        $routes->post('properties/(:num)/media/batch', 'PropertyController::uploadMediaBatch/$1');
+        $routes->get('properties/(:num)/media', 'PropertyController::listMedia/$1');
         $routes->delete('properties/(:num)/media/(:num)', 'PropertyController::deleteMedia/$1/$2');
         $routes->post('properties/(:num)/media/(:num)/main', 'PropertyController::setMainMedia/$1/$2');
         $routes->post('properties/(:num)/report', 'PropertyController::report/$1');
-        
+        // 'new'/'edit' são scaffolding de formulário HTML do resource() e respondem 501
+        // numa API JSON — removidos para não poluir a superfície pública.
+        $routes->resource('properties', ['controller' => 'PropertyController', 'placeholder' => '(:num)', 'except' => 'new,edit']);
+
         // Accounts (requer auth + admin logic inside controller/service)
-        $routes->resource('accounts', ['controller' => 'AccountController']);
-        
+        $routes->resource('accounts', ['controller' => 'AccountController', 'placeholder' => '(:num)', 'except' => 'new,edit']);
+
         // Leads (Listagem/Detalhes requer auth)
-        $routes->resource('leads', ['controller' => 'LeadController', 'except' => 'create']);
-        
+        $routes->resource('leads', ['controller' => 'LeadController', 'except' => 'create,new,edit', 'placeholder' => '(:num)']);
+
         // Webhooks Management
-        $routes->resource('webhooks', ['controller' => 'WebhookController']);
         $routes->post('webhooks/(:num)/test', 'WebhookController::test/$1');
-        
+        $routes->resource('webhooks', ['controller' => 'WebhookController', 'placeholder' => '(:num)', 'except' => 'new,edit']);
+
         // Export/Import
         $routes->get('export/properties', 'ExportController::properties');
         $routes->get('export/leads', 'ExportController::leads');
         $routes->get('export/clients', 'ExportController::clients');
         $routes->post('import/properties', 'ImportController::properties');
-        
+
         // Favorites
         $routes->post('favorites/toggle', 'FavoriteController::toggle');
     });

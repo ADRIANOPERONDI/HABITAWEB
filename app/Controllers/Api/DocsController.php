@@ -14,12 +14,29 @@ class DocsController extends BaseController
     public function json()
     {
         $path = FCPATH . 'openapi.json';
-        if (file_exists($path)) {
-            $json = file_get_contents($path);
-            return $this->response->setJSON(json_decode($json, true));
+
+        if (! is_file($path)) {
+            // Antes respondia com HTTP 200 e um corpo {"error": ...}, o que faz
+            // o Swagger UI (e qualquer gerador de client) tentar interpretar a
+            // falha como se fosse um spec válido.
+            return $this->response
+                ->setStatusCode(404)
+                ->setJSON(['error' => 'OpenAPI specification not found.']);
         }
 
-        return $this->response->setJSON(['error' => 'OpenAPI file not found']);
+        $decoded = json_decode((string) file_get_contents($path), true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            log_message('error', '[API Docs] openapi.json inválido: ' . json_last_error_msg());
+
+            return $this->response
+                ->setStatusCode(500)
+                ->setJSON(['error' => 'OpenAPI specification is malformed.']);
+        }
+
+        return $this->response
+            ->setHeader('Cache-Control', 'public, max-age=300')
+            ->setJSON($decoded);
     }
 
     /**

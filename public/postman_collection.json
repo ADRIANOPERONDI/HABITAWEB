@@ -1,221 +1,1618 @@
 {
-    "info": {
-        "_postman_id": "8c6c5d0a-aa27-46a1-b455-be334dd8baad",
-        "name": "Habitaweb API v1 - Full",
-        "description": "Coleção COMPLETA para Integração Comercial (Leads, Imóveis, Contas, Webhooks, Exportação).",
-        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-    },
-    "item": [
-        {
-            "name": "Imóveis",
-            "item": [
-                {
-                    "name": "Listar Imóveis",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "url": "{{baseUrl}}/properties"
-                    }
-                },
-                {
-                    "name": "Cadastrar Imóvel",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "POST",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"titulo\": \"Nova Propriedade API\",\n    \"tipo_imovel\": \"casa\",\n    \"tipo_negocio\": \"venda\",\n    \"preco\": 350000.00,\n    \"cidade\": \"São Paulo\",\n    \"bairro\": \"Centro\"\n}"
-                        },
-                        "url": "{{baseUrl}}/properties"
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Leads",
-            "item": [
-                {
-                    "name": "Listar Leads",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "url": "{{baseUrl}}/leads"
-                    }
-                },
-                {
-                    "name": "Criar Lead (Público)",
-                    "request": {
-                        "method": "POST",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"property_id\": 6,\n    \"nome_visitante\": \"João Carlos\",\n    \"email_visitante\": \"joao@exemplo.com\",\n    \"telefone_visitante\": \"11999998888\"\n}"
-                        },
-                        "url": "{{baseUrl}}/leads"
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Importação/Exportação",
-            "item": [
-                {
-                    "name": "Exportar Imóveis (CSV)",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "url": {
-                            "raw": "{{baseUrl}}/export/properties?format=csv",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "export",
-                                "properties"
-                            ],
-                            "query": [
-                                {
-                                    "key": "format",
-                                    "value": "csv"
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Exportar Leads (PDF)",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "url": {
-                            "raw": "{{baseUrl}}/export/leads?format=pdf",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "export",
-                                "leads"
-                            ],
-                            "query": [
-                                {
-                                    "key": "format",
-                                    "value": "pdf"
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "name": "Exportar Clientes (Excel)",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "url": {
-                            "raw": "{{baseUrl}}/export/clients?format=xls",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "export",
-                                "clients"
-                            ],
-                            "query": [
-                                {
-                                    "key": "format",
-                                    "value": "xls"
-                                }
-                            ]
-                        }
-                    }
-                }
-            ]
-        },
-        {
-            "name": "Webhooks",
-            "item": [
-                {
-                    "name": "Listar Webhooks",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{apiKey}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "GET",
-                        "url": "{{baseUrl}}/webhooks"
-                    }
-                }
-            ]
-        }
-    ],
-    "variable": [
-        {
-            "key": "baseUrl",
-            "value": "http://localhost:8080/api/v1",
-            "type": "string"
-        },
-        {
-            "key": "apiKey",
-            "value": "pk_test_...",
-            "type": "string"
-        }
+  "info": {
+    "name": "Habitaweb API v1",
+    "description": "Coleção oficial da API Habitaweb.\n\n## Como usar\n1. Defina a variável `base_url` (ex.: `http://localhost:8080`).\n2. Defina `api_key` com sua chave `pk_live_...` (Admin → API Keys).\n3. A autenticação da coleção já usa `{{api_key}}` como Bearer.\n\nPara testar o fluxo JWT, rode **Autenticação → Trocar API Key por um JWT**: o script de teste salva `access_token` e `refresh_token` automaticamente.\n\nGerada a partir de `public/openapi.json` — não edite à mão.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
     ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "pk_test_SUA_CHAVE_AQUI",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Autenticação",
+      "item": [
+        {
+          "name": "Trocar API Key por um JWT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "Emite um par access/refresh a partir da sua API Key.\n\nUse este fluxo quando o token for trafegar por um cliente menos confiável (app mobile, front-end): o access token vale 1 hora, então um vazamento tem janela curta. Para integração servidor-a-servidor você pode simplesmente mandar a própria API Key no header `Authorization` e pular este endpoint.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.access_token) {",
+                  "    pm.collectionVariables.set('access_token', body.data.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', body.data.refresh_token);",
+                  "    console.log('Tokens salvos nas variáveis da coleção.');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renovar o access token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "Rotaciona o par de tokens. O refresh token enviado é **revogado** no processo — reutilizá-lo devolve 401 (`TOKEN_REVOKED`), que é a defesa padrão contra roubo de refresh token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Revogar um refresh token (logout)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/revoke",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "revoke"
+              ]
+            },
+            "description": "Idempotente e sempre 200, para não revelar se o token existia. O access token já emitido continua válido até expirar (no máximo 1 hora) — é a contrapartida de um JWT stateless.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Diagnóstico da credencial",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Confirma qual conta a credencial representa, o plano vigente e o uso atual. É o endpoint recomendado para o parceiro validar a integração antes de sincronizar o catálogo."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Imóveis",
+      "item": [
+        {
+          "name": "Listar imóveis da sua conta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Padrão: ACTIVE. Use ALL para incluir rascunhos e pausados **da sua conta**."
+                },
+                {
+                  "key": "tipo_negocio",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tipo_imovel",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "cidade",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "bairro",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "estado",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "quartos",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "banheiros",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "vagas",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "min_price",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "max_price",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "external_id",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Localiza o imóvel pelo identificador da sua plataforma."
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Retorna **apenas** os imóveis da conta autenticada. O parâmetro `account_id` é ignorado (o escopo é imposto pelo servidor)."
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar um imóvel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties"
+              ]
+            },
+            "description": "Cria um imóvel na conta autenticada.\n\n**Imagens:** informe `images: [{url, ordem, principal}]` para cadastrar o imóvel e as fotos em uma única chamada — o servidor baixa cada URL, valida que é imagem de verdade, **remove os metadados EXIF (incluindo GPS)** e gera as variantes `card` (480px) e `gallery` (1280px). Alternativamente, use `POST /properties/{id}/media` depois.\n\nUma falha ao baixar uma foto **não** invalida o imóvel: ele é criado e o retorno detalha quais imagens falharam.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"CRM-1001\",\n  \"titulo\": \"Apartamento 3 dormitórios no Centro Histórico\",\n  \"descricao\": \"Apartamento reformado, andar alto, vista livre, uma quadra do mercado público.\",\n  \"tipo_negocio\": \"VENDA\",\n  \"tipo_imovel\": \"apartamento\",\n  \"preco\": 749000,\n  \"valor_condominio\": 780.5,\n  \"iptu\": 210,\n  \"cep\": \"90020-070\",\n  \"estado\": \"RS\",\n  \"cidade\": \"Porto Alegre\",\n  \"bairro\": \"Centro Histórico\",\n  \"rua\": \"Rua dos Andradas\",\n  \"numero\": \"1234\",\n  \"quartos\": 3,\n  \"banheiros\": 2,\n  \"suites\": 1,\n  \"vagas\": 1,\n  \"area_total\": 98.5,\n  \"area_construida\": 92,\n  \"latitude\": -30.0277,\n  \"longitude\": -51.2287,\n  \"status\": \"ACTIVE\",\n  \"mobiliado\": false,\n  \"aceita_pets\": true,\n  \"images\": [\n    {\n      \"url\": \"https://cdn.seusite.com.br/imoveis/1001/sala.jpg\",\n      \"ordem\": 1,\n      \"principal\": true\n    },\n    {\n      \"url\": \"https://cdn.seusite.com.br/imoveis/1001/cozinha.jpg\",\n      \"ordem\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhar um imóvel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel no Habitaweb."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar um imóvel (parcial)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel no Habitaweb."
+                }
+              ]
+            },
+            "description": "Atualização **parcial**: campos ausentes ficam como estão. `account_id` no corpo é ignorado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preco\": 699000,\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar um imóvel (alias de PUT)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel no Habitaweb."
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_id\": \"CRM-1001\",\n  \"titulo\": \"Apartamento 3 dormitórios no Centro Histórico\",\n  \"descricao\": \"Apartamento reformado, andar alto, vista livre, uma quadra do mercado público.\",\n  \"tipo_negocio\": \"VENDA\",\n  \"tipo_imovel\": \"apartamento\",\n  \"preco\": 749000,\n  \"valor_condominio\": 780.5,\n  \"iptu\": 210,\n  \"cep\": \"90020-070\",\n  \"estado\": \"RS\",\n  \"cidade\": \"Porto Alegre\",\n  \"bairro\": \"Centro Histórico\",\n  \"rua\": \"Rua dos Andradas\",\n  \"numero\": \"1234\",\n  \"quartos\": 3,\n  \"banheiros\": 2,\n  \"suites\": 1,\n  \"vagas\": 1,\n  \"area_total\": 98.5,\n  \"area_construida\": 92,\n  \"latitude\": -30.0277,\n  \"longitude\": -51.2287,\n  \"status\": \"ACTIVE\",\n  \"mobiliado\": false,\n  \"aceita_pets\": true,\n  \"images\": [\n    {\n      \"url\": \"https://cdn.seusite.com.br/imoveis/1001/sala.jpg\",\n      \"ordem\": 1,\n      \"principal\": true\n    },\n    {\n      \"url\": \"https://cdn.seusite.com.br/imoveis/1001/cozinha.jpg\",\n      \"ordem\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remover um imóvel",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel no Habitaweb."
+                }
+              ]
+            },
+            "description": "Exclusão lógica (soft delete): o imóvel sai do portal e da API, mas o histórico é preservado."
+          },
+          "response": []
+        },
+        {
+          "name": "Denunciar um imóvel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}/report",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}",
+                "report"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel."
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Imagens",
+      "item": [
+        {
+          "name": "Listar as imagens do imóvel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}/media",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}",
+                "media"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Adicionar uma imagem (upload OU por URL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}/media",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}",
+                "media"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel."
+                }
+              ]
+            },
+            "description": "Aceita duas formas, escolhidas pelo `Content-Type`:\n\n1. **`multipart/form-data`** com o arquivo no campo `file`;\n2. **`application/json`** com `{\"url\": \"https://...\"}` — o servidor baixa a imagem.\n\nEm ambos: JPG/PNG/WebP, até 5 MB (upload) ou 10 MB (URL), entre 100 e 12000 px. O tipo é verificado pelo **conteúdo real** do arquivo, não pela extensão nem pelo `Content-Type` declarado. Os metadados EXIF são removidos antes da publicação.\n\nA primeira imagem do imóvel vira a capa automaticamente. Ingerir a mesma URL duas vezes no mesmo imóvel não duplica a foto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://cdn.seusite.com.br/imoveis/1001/sala.jpg\",\n  \"principal\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Adicionar várias imagens por URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}/media/batch",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}",
+                "media",
+                "batch"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel."
+                }
+              ]
+            },
+            "description": "Ingere até 20 imagens numa chamada. Responde **207** quando parte falha, com o detalhe por item.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"images\": [\n    {\n      \"url\": \"https://cdn.seusite.com.br/1.jpg\",\n      \"ordem\": 1,\n      \"principal\": true\n    },\n    {\n      \"url\": \"https://cdn.seusite.com.br/2.jpg\",\n      \"ordem\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remover uma imagem",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}/media/{media_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}",
+                "media",
+                "{media_id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel."
+                },
+                {
+                  "key": "media_id",
+                  "value": "1",
+                  "description": "ID da imagem."
+                }
+              ]
+            },
+            "description": "Remove o registro, o arquivo original e as variantes. Se era a capa, a próxima imagem é promovida automaticamente."
+          },
+          "response": []
+        },
+        {
+          "name": "Definir a imagem de capa",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/properties/{id}/media/{media_id}/main",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "properties",
+                "{id}",
+                "media",
+                "{media_id}",
+                "main"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do imóvel."
+                },
+                {
+                  "key": "media_id",
+                  "value": "1",
+                  "description": "ID da imagem."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sincronização",
+      "item": [
+        {
+          "name": "Importar/sincronizar o catálogo do parceiro",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/import/properties",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "import",
+                "properties"
+              ]
+            },
+            "description": "**Este é o endpoint da via de mão dupla.** Envie os imóveis já cadastrados na sua plataforma e eles entram no Habitaweb sem retrabalho.\n\n### external_id: a chave de tudo\nInforme em cada item o `external_id` — o identificador do imóvel **no seu sistema**. O Habitaweb faz *upsert* por `(sua conta, external_id)`:\n\n- external_id novo → `action: \"created\"`\n- external_id já sincronizado → `action: \"updated\"`\n\nOu seja: **reenviar o catálogo inteiro todo dia é seguro** — nada é duplicado. Sem `external_id` cada envio cria registros novos.\n\n### Dois formatos\n- `Content-Type: application/json` → até 200 imóveis por chamada, com imagens por URL (recomendado);\n- `Content-Type: multipart/form-data` → arquivo CSV no campo `file`, até 1000 linhas. Colunas mínimas: `titulo, tipo_negocio, tipo_imovel, preco, cidade, bairro` (`external_id` é opcional mas recomendado). Cabeçalho é case-insensitive.\n\n### Nomes de campo alternativos\nPara evitar reescrever seu payload, também aceitamos: `title`, `description`, `price`, `city`, `neighborhood`, `state`, `bedrooms`, `bathrooms`, `parking`, `total_area`, `operation`, `property_type`, `reference`, `photos`/`images`, entre outros.\n\n### Simulação\nEnvie `validate_only: true` para validar o lote sem gravar nada — o retorno traz `would_create`/`would_update` por item.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": [\n    {\n      \"external_id\": \"CRM-1001\",\n      \"titulo\": \"Apartamento 3 dormitórios no Centro Histórico\",\n      \"descricao\": \"Apartamento reformado, andar alto, vista livre, uma quadra do mercado público.\",\n      \"tipo_negocio\": \"VENDA\",\n      \"tipo_imovel\": \"apartamento\",\n      \"preco\": 749000,\n      \"valor_condominio\": 780.5,\n      \"iptu\": 210,\n      \"cep\": \"90020-070\",\n      \"estado\": \"RS\",\n      \"cidade\": \"Porto Alegre\",\n      \"bairro\": \"Centro Histórico\",\n      \"rua\": \"Rua dos Andradas\",\n      \"numero\": \"1234\",\n      \"quartos\": 3,\n      \"banheiros\": 2,\n      \"suites\": 1,\n      \"vagas\": 1,\n      \"area_total\": 98.5,\n      \"area_construida\": 92,\n      \"latitude\": -30.0277,\n      \"longitude\": -51.2287,\n      \"status\": \"ACTIVE\",\n      \"mobiliado\": false,\n      \"aceita_pets\": true,\n      \"images\": [\n        {\n          \"url\": \"https://cdn.seusite.com.br/imoveis/1001/sala.jpg\",\n          \"ordem\": 1,\n          \"principal\": true\n        },\n        {\n          \"url\": \"https://cdn.seusite.com.br/imoveis/1001/cozinha.jpg\",\n          \"ordem\": 2\n        }\n      ]\n    },\n    {\n      \"external_id\": \"CRM-1002\",\n      \"titulo\": \"Casa com pátio no Ipiranga\",\n      \"tipo_negocio\": \"VENDA\",\n      \"tipo_imovel\": \"casa\",\n      \"preco\": 1200000,\n      \"cidade\": \"Porto Alegre\",\n      \"bairro\": \"Ipiranga\",\n      \"estado\": \"RS\",\n      \"quartos\": 4,\n      \"images\": [\n        {\n          \"url\": \"https://cdn.seusite.com.br/imoveis/1002/fachada.jpg\",\n          \"principal\": true\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar seus imóveis (a volta da mão dupla)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export/properties",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "export",
+                "properties"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "",
+                  "disabled": true,
+                  "description": "`json` devolve o envelope paginado; os demais devolvem um arquivo para download."
+                },
+                {
+                  "key": "updated_since",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Só imóveis alterados a partir desta data/hora (ISO 8601)."
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "tipo_negocio",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "external_id",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "per_page",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Contrapartida do import: puxe o estado atual dos seus imóveis no Habitaweb e reconcilie com a sua base pelo `external_id`.\n\nCom `format=json` a resposta é paginada e inclui as imagens. Combine com `updated_since` para sincronização incremental — só o que mudou desde a última passada. O resultado pode ser reenviado ao `/import/properties` sem duplicar nada."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Leads",
+      "item": [
+        {
+          "name": "Exportar leads em arquivo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export/leads",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "export",
+                "leads"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Listar leads recebidos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads"
+              ],
+              "query": [
+                {
+                  "key": "property_id",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "data_inicio",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "data_fim",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar um lead (público)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads"
+              ]
+            },
+            "description": "**Endpoint público** — não exige autenticação. Serve para formulários de contato em sites externos que anunciam um imóvel do Habitaweb. Sujeito a rate limit por IP (100 req/h).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": 77,\n  \"nome_visitante\": \"Maria Silva\",\n  \"email_visitante\": \"maria@example.com\",\n  \"telefone_visitante\": \"51999998888\",\n  \"mensagem\": \"Tenho interesse em agendar uma visita.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhar um lead",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do lead."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar um lead",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do lead."
+                }
+              ]
+            },
+            "description": "Tipicamente usado para mover o lead no funil. Ao marcar `CONCLUIDO`, `closed_at` é preenchido automaticamente.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"EM_ATENDIMENTO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar um lead (alias de PUT)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do lead."
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remover um lead",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/leads/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do lead."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Clientes",
+      "item": [
+        {
+          "name": "Exportar clients em arquivo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/export/clients",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "export",
+                "clients"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Contas",
+      "item": [
+        {
+          "name": "Listar contas visíveis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts"
+              ],
+              "query": [
+                {
+                  "key": "tipo_conta",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                },
+                {
+                  "key": "term",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Busca por nome, e-mail ou documento."
+                },
+                {
+                  "key": "page",
+                  "value": "",
+                  "disabled": true,
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Uma conta comum vê apenas a si mesma. Uma imobiliária vê também suas subcontas (corretores)."
+          },
+          "response": []
+        },
+        {
+          "name": "Criar subconta (corretor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts"
+              ]
+            },
+            "description": "Disponível apenas para contas do tipo `IMOBILIARIA`. A subconta nasce vinculada via `parent_account_id` e nunca verificada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"João Corretor\",\n  \"email\": \"joao@imobiliaria.com.br\",\n  \"creci\": \"12345-F\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhar uma conta",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID da conta."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar uma conta",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID da conta."
+                }
+              ]
+            },
+            "description": "Campos alteráveis: `nome`, `email`, `telefone`, `whatsapp`, `creci`, `logo`, `whatsapp_hub_config`, `whatsapp_messages_config`. Campos de confiança/status são ignorados.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefone\": \"5133334444\",\n  \"whatsapp\": \"51999998888\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar uma conta (alias de PUT)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID da conta."
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remover uma subconta",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/accounts/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID da conta."
+                }
+              ]
+            },
+            "description": "Não é possível excluir a própria conta principal pela API."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Listar webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Cadastrar um webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks"
+              ]
+            },
+            "description": "O Habitaweb passa a notificar sua URL quando o evento ocorrer. A `target_url` precisa ser pública — endereços de rede interna são recusados.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Novos leads\",\n  \"event\": \"lead.created\",\n  \"target_url\": \"https://seusite.com.br/webhooks/habitaweb\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detalhar um webhook",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do webhook."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar um webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do webhook."
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar um webhook (alias de PUT)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do webhook."
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remover um webhook",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/{id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{id}"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do webhook."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Disparar um evento de teste",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/{id}/test",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{id}",
+                "test"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1",
+                  "description": "ID do webhook."
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Favoritos",
+      "item": [
+        {
+          "name": "Favoritar/desfavoritar um imóvel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/favorites/toggle",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "favorites",
+                "toggle"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"property_id\": 77\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
 }
