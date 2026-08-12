@@ -2,6 +2,7 @@
 
 namespace App\Libraries\Integrations;
 
+use App\Libraries\Integrations\Dto\CatalogItem;
 use App\Libraries\Integrations\Dto\ExternalProperty;
 use App\Libraries\Integrations\Dto\SyncCursor;
 use App\Libraries\Integrations\Dto\TestResult;
@@ -44,10 +45,13 @@ interface IntegrationProviderInterface
      * passa fácil de mil imóveis com dezenas de imagens cada, e materializar
      * tudo em memória antes de gravar o primeiro estoura o limite do PHP.
      *
+     * Os itens vêm SEM o detalhe carregado (ver CatalogItem): assim o sync
+     * decide, pelo `externalUpdatedAt`, quais valem uma segunda requisição.
+     *
      * Cabe ao conector parar de paginar quando o cursor indicar que já chegou
      * em conteúdo antigo.
      *
-     * @return iterable<ExternalProperty>
+     * @return iterable<CatalogItem>
      */
     public function fetchCatalog(SyncCursor $cursor, array $settings = []): iterable;
 

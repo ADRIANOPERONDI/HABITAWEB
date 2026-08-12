@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": 269,
+      "descricao": "Área total edif - m²",
+      "ordem": 1,
+      "valor": 0,
+      "idTipoCaracteristica": 3,
+      "idGrupo": 1,
+      "descricaoGrupo": "Físicas",
+      "maxValue": 50,
+      "minValue": 0
+    },
+    {
+      "id": 249,
+      "descricao": "Dormitório(s)",
+      "ordem": 2,
+      "valor": 0,
+      "idTipoCaracteristica": 3,
+      "idGrupo": 1,
+      "descricaoGrupo": "Físicas",
+      "minValue": 0,
+      "maxValue": 1
+    },
+    {
+      "id": 264,
+      "descricao": "Vaga de garagem",
+      "ordem": 7,
+      "valor": 0,
+      "idTipoCaracteristica": 3,
+      "idGrupo": 1,
+      "descricaoGrupo": "Físicas",
+      "minValue": 0,
+      "maxValue": 1
+    }
+  ]
+}

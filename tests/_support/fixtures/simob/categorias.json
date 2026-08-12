@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": 232,
+      "descricao": "Apartamento"
+    },
+    {
+      "id": 240,
+      "descricao": "Sala comercial "
+    }
+  ]
+}
