@@ -196,6 +196,7 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     
     $routes->resource('promotions', ['controller' => 'PromotionController']);
     $routes->resource('leads', ['controller' => 'LeadsController']);
+    $routes->post('leads/(:num)/reenviar-crm', 'LeadsController::retryCrm/$1');
     $routes->post('leads/(:num)/update-status', 'LeadsController::updateStatus/$1');
     $routes->post('leads/(:num)/update', 'LeadsController::update/$1');
     $routes->resource('team', ['controller' => 'TeamController']); // New route

@@ -52,6 +52,77 @@ class LeadsController extends BaseController
             'isAdmin' => $isAdmin,
             'filters' => $filters,
             'stats' => $service->getLeadStats($filters),
+            // Estado do envio ao CRM da plataforma integrada, indexado por lead.
+            // Vem de uma consulta só para a página inteira — buscar por lead
+            // dentro do laço da view seria N+1.
+            'crmStatus' => $this->crmStatusFor($data['leads']),
+        ]);
+    }
+
+    /**
+     * Estado do envio ao CRM externo, por lead.
+     *
+     * @return array<int, \App\Entities\IntegrationOutboxItem>
+     */
+    private function crmStatusFor(array $leads): array
+    {
+        $ids = array_filter(array_map(static fn ($lead) => (int) ($lead->id ?? 0), $leads));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $rows = model(\App\Models\IntegrationOutboxModel::class)
+            ->where('event', \App\Models\IntegrationOutboxModel::EVENT_LEAD_CREATED)
+            ->whereIn('reference_id', $ids)
+            ->orderBy('id', 'ASC')
+            ->findAll();
+
+        $indexed = [];
+
+        foreach ($rows as $row) {
+            $indexed[(int) $row->reference_id] = $row;
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * POST: reenvia ao CRM um lead cujo envio falhou.
+     *
+     * Confere a posse pelo lead, e não pelo item da fila: assim um id de outbox
+     * de outro tenant não é reenviável nem por engano.
+     */
+    public function retryCrm(int $leadId)
+    {
+        $lead = model(\App\Models\LeadModel::class)->find($leadId);
+        $user = auth()->user();
+
+        if ($lead === null) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Lead não encontrado.']);
+        }
+
+        if (! $this->isGlobalAdmin($user) && (int) $lead->account_id_anunciante !== (int) $user->account_id) {
+            return $this->response->setStatusCode(403)
+                ->setJSON(['success' => false, 'message' => 'Acesso negado a este lead.']);
+        }
+
+        $outboxService = new \App\Services\IntegrationOutboxService();
+        $item          = $outboxService->leadStatus($leadId);
+
+        if ($item === null) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Este lead não tem envio ao CRM registrado.',
+            ]);
+        }
+
+        $outboxService->retry((int) $item->id);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Reenvio agendado. O lead será entregue no próximo ciclo.',
         ]);
     }
 

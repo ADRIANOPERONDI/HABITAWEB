@@ -175,6 +175,28 @@
                                     <div>
                                         <div class="fw-bold text-dark"><?= esc($lead->nome_visitante) ?></div>
                                         <div class="small text-muted" style="font-size: 0.7rem;"><?= esc($lead->email_visitante) ?></div>
+
+                                        <?php
+                                            // Só aparece em lead de imóvel vindo de integração; para os
+                                            // demais não existe item na fila e a linha fica limpa.
+                                            $crm = ($crmStatus ?? [])[(int) $lead->id] ?? null;
+                                        ?>
+                                        <?php if ($crm !== null): ?>
+                                            <div class="mt-1">
+                                                <span class="badge bg-<?= $crm->badge() ?>" style="font-size: 0.65rem;">
+                                                    <i class="fa-solid fa-plug me-1"></i><?= esc($crm->label()) ?>
+                                                </span>
+                                                <?php if ($crm->isFailed()): ?>
+                                                    <button type="button"
+                                                            class="btn btn-link btn-sm p-0 ms-1 text-decoration-none btn-retry-crm"
+                                                            style="font-size: 0.65rem;"
+                                                            data-lead="<?= (int) $lead->id ?>"
+                                                            title="<?= esc((string) $crm->last_error, 'attr') ?>">
+                                                        reenviar
+                                                    </button>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </td>
@@ -553,6 +575,27 @@ $(document).ready(function() {
                 btn.prop('disabled', false).text('Salvar Alterações');
             }
         });
+    });
+
+    // Reenvio ao CRM da plataforma integrada. O CSRF vai automático pelo
+    // $.ajaxSetup do Layouts/master.
+    $(document).on('click', '.btn-retry-crm', function () {
+        const btn    = $(this);
+        const leadId = btn.data('lead');
+
+        btn.prop('disabled', true).text('reenviando...');
+
+        $.post('<?= site_url('admin/leads') ?>/' + leadId + '/reenviar-crm')
+            .done(function (res) {
+                Swal.fire(res.success ? 'Pronto' : 'Erro', res.message, res.success ? 'success' : 'error');
+                if (res.success) { setTimeout(() => location.reload(), 1200); }
+            })
+            .fail(function () {
+                Swal.fire('Erro', 'Não foi possível agendar o reenvio.', 'error');
+            })
+            .always(function () {
+                btn.prop('disabled', false).text('reenviar');
+            });
     });
 });
 </script>

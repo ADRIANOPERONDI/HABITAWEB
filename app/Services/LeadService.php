@@ -141,6 +141,19 @@ class LeadService
                 } catch (\Throwable $e) {
                     log_message('error', 'Erro ao disparar webhook de lead: ' . $e->getMessage());
                 }
+
+                // Devolve o lead ao CRM da plataforma de origem, se o imóvel
+                // veio de uma integração. Vai para a outbox em vez de sair
+                // agora: se o servidor da imobiliária estiver fora, o lead não
+                // pode se perder nem travar o formulário do visitante
+                // esperando timeout. O try/catch é redundante com o do próprio
+                // service, e é de propósito — nada aqui pode derrubar um lead
+                // que já está salvo.
+                try {
+                    (new \App\Services\IntegrationOutboxService())->enqueueLead($savedLead);
+                } catch (\Throwable $e) {
+                    log_message('error', 'Erro ao enfileirar lead para integração: ' . $e->getMessage());
+                }
             }
 
             return [

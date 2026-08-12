@@ -19,6 +19,8 @@ use App\Services\IntegrationService;
 use App\Services\IntegrationSyncService;
 use CodeIgniter\Test\DatabaseTestTrait;
 use Tests\Support\Factories\TenantFactory;
+use Tests\Support\Integrations\FakeConnector;
+use Tests\Support\Integrations\FakeIntegrationService;
 use Tests\Support\HabitawebTestCase;
 
 /**
@@ -380,84 +382,5 @@ final class IntegrationSyncTest extends HabitawebTestCase
 
         $this->assertSame(0, $result->created);
         $this->assertStringContainsString('em andamento', $result->errorSummary());
-    }
-}
-
-/** Devolve sempre o mesmo conector, no lugar do registry real. */
-final class FakeIntegrationService extends IntegrationService
-{
-    public function __construct(private IntegrationProviderInterface $connector)
-    {
-        parent::__construct();
-    }
-
-    public function makeConnector(AccountIntegration $integration): IntegrationProviderInterface
-    {
-        return $this->connector;
-    }
-}
-
-/** Conector roteirizado: devolve o catálogo dado, sem rede. */
-final class FakeConnector implements IntegrationProviderInterface
-{
-    public int $resolveCalls = 0;
-
-    /** @param list<ExternalProperty|null> $catalogo */
-    public function __construct(public array $catalogo = [], private ?\Throwable $erro = null)
-    {
-    }
-
-    public function configure(array $config): void
-    {
-    }
-
-    public function validateConfig(): TestResult
-    {
-        return TestResult::ok('ok');
-    }
-
-    public function fetchCatalog(SyncCursor $cursor, array $settings = []): iterable
-    {
-        if ($this->erro !== null) {
-            throw $this->erro;
-        }
-
-        foreach ($this->catalogo as $i => $property) {
-            yield new CatalogItem(
-                externalId: $property?->externalId ?? "vazio{$i}",
-                externalCode: $property?->externalCode ?? "vazio{$i}",
-                externalUpdatedAt: $property?->externalUpdatedAt,
-                resolver: function () use ($property) {
-                    $this->resolveCalls++;
-
-                    return $property;
-                },
-            );
-        }
-    }
-
-    public function fetchPropertyDetail(string $externalId): ?ExternalProperty
-    {
-        return null;
-    }
-
-    public function discoverMappings(): array
-    {
-        return [];
-    }
-
-    public function pushLead(array $lead): TestResult
-    {
-        return TestResult::ok('ok');
-    }
-
-    public function capabilities(): array
-    {
-        return [self::CAP_IMPORT_PROPERTIES, self::CAP_PUSH_LEADS];
-    }
-
-    public function supports(string $capability): bool
-    {
-        return in_array($capability, $this->capabilities(), true);
     }
 }
