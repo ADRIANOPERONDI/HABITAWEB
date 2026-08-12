@@ -119,8 +119,66 @@ Two entry points, one pipeline: multipart upload (`PropertyService::addMedia`) a
 ### Property scoring
 `App\Services\Scoring\ScorerFactory::make($propertyType)` returns a `PropertyScorerInterface` implementation chosen by property type — `LandScorer` (terreno/lote), `CommercialScorer` (comercial/sala/loja), `WarehouseScorer` (galpão), defaulting to `ResidentialScorer` (apartamento/casa/cobertura/sobrado, and unknown types). Used by curation/verification and the admin "calculate score" endpoint.
 
+### Integrations with external platforms (`app/Libraries/Integrations`)
+
+A per-tenant connector layer that pulls a real-estate agency's catalog from the
+system it already uses, and pushes captured leads back into that system's CRM.
+The first (and so far only) connector is **Simob** (Flexpro Sistemas).
+
+**Direction is dictated by the external API, not by preference.** Simob's API is
+read-only for properties — there is no endpoint to create or update a listing
+there. So: properties flow *Simob → Habitaweb*, leads flow *Habitaweb → Simob*
+(via `/crm_interesse/create`). Do not promise two-way property sync.
+
+- `IntegrationProviderInterface` + `AbstractProvider` — the contract. Resolved at
+  runtime from `integration_providers.class_name` by `IntegrationRegistry`, the
+  same dispatch pattern as `PaymentGateways`. A new connector is a class plus one
+  DB row; no controller, service or view changes.
+- `Http/IntegrationHttpClient` — the only place that talks to the network.
+  Timeout, exponential backoff on 429/5xx (and *only* those — 4xx is not
+  retryable), `UrlGuard` on the tenant-supplied base URL, and logging that never
+  includes token, headers or response body.
+- `Simob/` — `SimobClient` (raw endpoints), `SimobPropertyMapper`,
+  `SimobLeadMapper`, `SimobVocabulary` (auto-guessing for the per-tenant mapping).
+
+**Three Simob-specific traps**, each with a dedicated test:
+1. **No JSON bodies.** Every POST is `multipart/form-data` with a single field
+   `data` holding a JSON string. `['json' => $payload]` fails.
+2. **Category and characteristic IDs are per-agency** ("Dormitório(s)" is id 41 at
+   one agency, 249 at another), so the field mapping lives in
+   `integration_mappings`, scoped per tenant, seeded by fuzzy name matching and
+   confirmed by the tenant in the panel.
+3. **No `updated_since` filter.** Incremental sync works by ordering
+   `atualizacao desc` and stopping when the page's last item predates the last
+   sync.
+
+**Services:** `IntegrationService` (credentials, test connection, mappings),
+`IntegrationSyncService` (catalog run), `IntegrationOutboxService` (leads out),
+`IntegrationCommissionService` (charge per closed lead).
+
+**Commands:** `integration:sync` (cron, every 30 min) and `integration:outbox`
+(cron, every minute). Both documented in `GUIA_ESCALABILIDADE_PRODUCAO.md` §3.4.
+
+**Tenant panel:** `/admin/integracoes`. Routes take only the *connector code* —
+the account always comes from `auth()->user()`, never from the URL, so there is
+no id to tamper with.
+
+> Imported properties are **read-only mirrors**. `IntegrationService::MANAGED_FIELDS`
+> lists the columns the sync overwrites; `PropertyController::update` strips them
+> server-side for any property that has a `property_external_refs` row. The
+> `readonly` in the form is convenience, not the barrier.
+
+> Integration credentials use **reversible** encryption (`Services::encrypter()`,
+> the `PaymentGatewayConfigModel` pattern) — unlike `api_keys.key_hash`, which is
+> bcrypt. An inbound key only needs verifying; an outbound token must be replayed
+> on every call.
+
+> Integration properties are linked through `property_external_refs`, **not**
+> `properties.external_id`. That column is single-valued and already the upsert
+> key for the partner import; a tenant using both paths would collide.
+
 ### Other domain services (`app/Services`)
-`AccountService`, `ClientService`, `CurationService` (property moderation/reports), `DashboardService`, `ExportService`, `FinancialService`, `FraudService`, `KYCService`, `LeadService`, `NotificationService`, `PromotionService` (property boosting/"turbo"/promotion packages), `PropertyService`, `RankingService`, `WebhookService`.
+`AccountService`, `ClientService`, `CurationService` (property moderation/reports), `DashboardService`, `ExportService`, `FinancialService`, `FraudService`, `IntegrationService`, `IntegrationSyncService`, `IntegrationOutboxService`, `IntegrationCommissionService`, `KYCService`, `LeadService`, `NotificationService`, `PromotionService` (property boosting/"turbo"/promotion packages), `PropertyService`, `RankingService`, `WebhookService`.
 
 ### Entities vs Models
 `app/Entities/*` are CodeIgniter Entity classes (typed property access/mutation) paired 1:1 with `app/Models/*` (query builder + validation + business rule helpers, e.g. `PaymentTransactionModel::isAccountBlockedByOverdue()`).
