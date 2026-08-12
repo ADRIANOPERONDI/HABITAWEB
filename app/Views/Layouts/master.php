@@ -276,6 +276,16 @@
             </a>
 
             <?php if (auth()->user()->inGroup('superadmin')): ?>
+            <a href="<?= site_url('admin/comissoes') ?>" class="nav-link <?= strpos(uri_string(), 'admin/comissoes') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Comissões
+            </a>
+            <?php else: ?>
+            <a href="<?= site_url('admin/minhas-comissoes') ?>" class="nav-link <?= strpos(uri_string(), 'minhas-comissoes') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Minhas comissões
+            </a>
+            <?php endif; ?>
+
+            <?php if (auth()->user()->inGroup('superadmin')): ?>
              <a href="<?= site_url('admin/settings') ?>" class="nav-link <?= strpos(uri_string(), 'settings') !== false ? 'active' : '' ?>">
                 <i class="fa-solid fa-cogs"></i> Configurações
             </a>

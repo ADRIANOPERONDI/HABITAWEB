@@ -351,7 +351,21 @@ class LeadService
                 'new_status' => $newStatus,
                 'timestamp'  => date('Y-m-d H:i:s')
             ]);
-            
+
+            // Apura a comissão quando o negócio fecha num imóvel vindo de
+            // integração. Roda depois do save, com o lead já recarregado para
+            // ter closed_at e closing_value gravados. O service engole os
+            // próprios erros — o corretor não pode ficar impedido de fechar um
+            // negócio porque a apuração de comissão falhou.
+            if ($newStatus === LeadModel::STATUS_CONCLUIDO) {
+                try {
+                    (new \App\Services\IntegrationCommissionService())
+                        ->onLeadClosed($this->leadModel->find($leadId));
+                } catch (\Throwable $e) {
+                    log_message('error', 'Erro ao apurar comissão do lead ' . $leadId . ': ' . $e->getMessage());
+                }
+            }
+
             return true;
         }
 
