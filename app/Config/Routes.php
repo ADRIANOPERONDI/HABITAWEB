@@ -255,6 +255,7 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     // first-match-wins e 'integracoes/(:segment)' engoliria 'integracoes/simob/testar'.
     $routes->get('integracoes', 'IntegrationsController::index');
     $routes->post('integracoes/(:segment)/testar', 'IntegrationsController::test/$1');
+    $routes->post('integracoes/(:segment)/sincronizar', 'IntegrationsController::syncNow/$1');
     $routes->post('integracoes/(:segment)/toggle', 'IntegrationsController::toggle/$1');
     $routes->post('integracoes/(:segment)/redescobrir', 'IntegrationsController::rediscover/$1');
     $routes->post('integracoes/(:segment)/desconectar', 'IntegrationsController::disconnect/$1');

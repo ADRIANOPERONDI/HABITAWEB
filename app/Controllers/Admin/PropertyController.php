@@ -210,7 +210,27 @@ class PropertyController extends BaseController
             unset($data['account_id']);
         }
 
+        // Imóvel espelhado de uma plataforma externa é read-only nos campos que
+        // o sync sobrescreve. A checagem é aqui, no servidor: o `disabled` do
+        // formulário é conveniência visual, não barreira — qualquer POST direto
+        // passaria por cima dele, e a edição seria perdida na próxima rodada de
+        // qualquer forma, o que é pior que recusar agora.
+        $managedFields = [];
+        if ((new \App\Services\IntegrationService())->isManagedProperty((int) $id)) {
+            foreach (\App\Services\IntegrationService::MANAGED_FIELDS as $field) {
+                if (array_key_exists($field, $data)) {
+                    $managedFields[] = $field;
+                    unset($data[$field]);
+                }
+            }
+        }
+
         $result = $this->propertyService->trySaveProperty($data, $id, $isAdmin);
+
+        if ($managedFields !== [] && $result['success']) {
+            $result['message'] = 'Alterações salvas. Os campos sincronizados com a integração foram ignorados — '
+                . 'altere-os no sistema de origem.';
+        }
         log_message('emergency', '[PropertyController] Result from Service: ' . json_encode($result));
 
         if ($this->request->isAJAX()) {

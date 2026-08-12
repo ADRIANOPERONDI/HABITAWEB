@@ -18,7 +18,7 @@ class PropertyExternalRefModel extends Model
     protected $returnType       = \App\Entities\PropertyExternalRef::class;
     protected $allowedFields    = [
         'property_id', 'account_id', 'provider_code', 'external_id', 'external_code',
-        'external_updated_at', 'payload_hash', 'last_synced_at',
+        'external_updated_at', 'payload_hash', 'last_synced_at', 'last_sync_run_id',
     ];
 
     protected $useTimestamps = true;
@@ -65,21 +65,25 @@ class PropertyExternalRefModel extends Model
     }
 
     /**
-     * IDs de imóveis que não foram tocados na rodada corrente.
+     * IDs de imóveis que a rodada corrente NÃO visitou.
      *
      * São os que sumiram do catálogo da origem — viram PAUSED, nunca deletados:
      * podem ter leads e histórico atrelados.
      *
+     * A comparação é pelo id da rodada, e não por last_synced_at: a coluna de
+     * data tem precisão de segundo, então duas rodadas dentro do mesmo segundo
+     * não seriam distinguidas e nenhum sumiço seria detectado.
+     *
      * @return int[]
      */
-    public function staleProperties(int $accountId, string $providerCode, string $runStartedAt): array
+    public function staleProperties(int $accountId, string $providerCode, int $runId): array
     {
         $rows = $this->select('property_id')
             ->where('account_id', $accountId)
             ->where('provider_code', $providerCode)
             ->groupStart()
-                ->where('last_synced_at <', $runStartedAt)
-                ->orWhere('last_synced_at', null)
+                ->where('last_sync_run_id !=', $runId)
+                ->orWhere('last_sync_run_id', null)
             ->groupEnd()
             ->findAll();
 

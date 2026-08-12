@@ -24,6 +24,26 @@ use App\Models\PropertyExternalRefModel;
  */
 class IntegrationService
 {
+    /**
+     * Campos que o sync sobrescreve — a origem é a fonte da verdade.
+     *
+     * Editar qualquer um destes no admin é trabalho perdido: a próxima rodada
+     * devolve o valor da plataforma externa. Por isso são bloqueados no
+     * servidor (PropertyController::update) e travados na tela.
+     *
+     * Fica de fora, e continua editável, tudo que a origem não fornece:
+     * destaque, meta tags, campos de curadoria, responsável e cliente.
+     */
+    public const MANAGED_FIELDS = [
+        'titulo', 'descricao', 'tipo_negocio', 'tipo_imovel', 'preco', 'status',
+        'rua', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep',
+        'latitude', 'longitude',
+        'quartos', 'suites', 'banheiros', 'vagas',
+        'area_total', 'area_construida', 'area_privativa',
+        'valor_condominio', 'iptu',
+        'mobiliado', 'semimobiliado', 'aceita_pets', 'is_desocupado', 'is_exclusivo',
+    ];
+
     public function __construct(
         private ?AccountIntegrationModel $integrationModel = null,
         private ?AccountIntegrationConfigModel $configModel = null,
@@ -225,6 +245,8 @@ class IntegrationService
      */
     public function testConnection(AccountIntegration $integration): TestResult
     {
+        $connector = null;
+
         try {
             $connector = $this->makeConnector($integration);
             $result    = $connector->validateConfig();
@@ -237,7 +259,7 @@ class IntegrationService
 
         $this->integrationModel->markTested((int) $integration->id, $result->success, $result->message);
 
-        if ($result->success) {
+        if ($result->success && $connector !== null) {
             try {
                 $this->seedMappings($integration, $connector);
             } catch (\Throwable $e) {

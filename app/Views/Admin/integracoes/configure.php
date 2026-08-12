@@ -141,6 +141,11 @@
                 <i class="fa-solid fa-plug-circle-check me-1"></i> Testar conexão
             </button>
 
+            <button type="button" class="btn btn-outline-success w-100 mb-2" id="btnSincronizar"
+                <?= $integration->isConnected() ? '' : 'disabled' ?>>
+                <i class="fa-solid fa-rotate me-1"></i> Sincronizar agora
+            </button>
+
             <button type="button" class="btn btn-outline-secondary w-100 mb-2" id="btnToggle"
                 <?= $integration->isConnected() || $integration->is_active ? '' : 'disabled' ?>>
                 <i class="fa-solid fa-clock me-1"></i>
@@ -228,6 +233,21 @@
 
     $('#btnTestar').on('click', function () {
         executar(base + '/testar', 'Falando com o <?= esc($provider->name, 'js') ?>...');
+    });
+
+    $('#btnSincronizar').on('click', function () {
+        Swal.fire({
+            icon: 'question',
+            title: 'Sincronizar agora?',
+            text: 'Pode levar alguns minutos em catálogos grandes.',
+            showCancelButton: true,
+            confirmButtonText: 'Sincronizar',
+            cancelButtonText: 'Cancelar',
+        }).then(function (res) {
+            if (res.isConfirmed) {
+                executar(base + '/sincronizar', 'Sincronizando o catálogo...');
+            }
+        });
     });
 
     $('#btnToggle').on('click', function () {

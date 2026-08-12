@@ -238,6 +238,24 @@ Sem esse cron, as visitas continuam sendo contadas (ficam no Redis), mas a
 coluna `visitas_count` para de refletir no painel até o próximo flush. Se o
 Redis cair, o app volta sozinho a gravar visitas direto no banco (fallback).
 
+**Integrações com plataformas externas (Simob e afins)** — também só na
+instância worker:
+
+```cron
+*/30 * * * * cd /var/www/habitaweb && php spark integration:sync >> writable/logs/integration-sync.log 2>&1
+```
+
+O comando percorre as integrações ativas, mais antigas primeiro, e é seguro
+rodar concorrentemente por engano: cada integração tem uma trava em cache
+durante a rodada. Meia hora é folgado de propósito — a sincronização é
+incremental (só busca o detalhe de quem mudou de data na origem), então o custo
+de uma rodada sem novidade é de poucas requisições.
+
+Cada execução fica registrada em `integration_sync_runs` e aparece para o
+tenant em `/admin/integracoes/<conector>/execucoes`. Se a credencial de um
+tenant for recusada, aquela integração é desligada sozinha e marcada com o
+erro — as demais continuam rodando normalmente.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL

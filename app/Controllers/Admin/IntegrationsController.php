@@ -22,6 +22,9 @@ class IntegrationsController extends BaseController
 {
     private IntegrationService $service;
 
+    /** Intervalo mínimo entre dois "Sincronizar agora" do mesmo tenant. */
+    private const MANUAL_SYNC_COOLDOWN = 300;
+
     public function __construct()
     {
         $this->service = new IntegrationService();
@@ -141,6 +144,50 @@ class IntegrationsController extends BaseController
         // Um 5xx aqui faria o jQuery cair no handler de erro genérico e
         // esconder a mensagem que explica o problema ao tenant.
         return $this->response->setJSON($result->toArray());
+    }
+
+    /** POST (AJAX): sincroniza agora, com trava de intervalo. */
+    public function syncNow(string $code)
+    {
+        $integration = $this->resolve($code);
+
+        if ($integration === null) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Integração não encontrada.']);
+        }
+
+        if (! $integration->isConnected()) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Teste a conexão antes de sincronizar.',
+            ]);
+        }
+
+        // Sync manual é caro: centenas de chamadas à origem e download de
+        // imagens. Sem trava, clicar repetido derruba o servidor do tenant.
+        $cacheKey = "integration_manual_sync_{$integration->id}";
+
+        if (cache($cacheKey) !== null) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Uma sincronização manual foi disparada há pouco. Aguarde alguns minutos.',
+            ]);
+        }
+
+        cache()->save($cacheKey, time(), self::MANUAL_SYNC_COOLDOWN);
+
+        $result = (new \App\Services\IntegrationSyncService())->run(
+            $integration,
+            IntegrationSyncRunModel::TRIGGER_MANUAL
+        );
+
+        audit_log('integration.synced', ['provider' => $code, 'trigger' => 'manual']);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Sincronização concluída: ' . $result->humanSummary(),
+            'details' => $result->toCounters(),
+        ]);
     }
 
     /** POST (AJAX): liga/desliga o sync automático. */
