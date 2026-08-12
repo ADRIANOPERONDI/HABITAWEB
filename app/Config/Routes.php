@@ -248,6 +248,22 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('api-keys/(:num)/toggle', 'ApiKeysController::toggle/$1');
     $routes->delete('api-keys/(:num)', 'ApiKeysController::delete/$1');
 
+    // Integrações com plataformas externas (por tenant).
+    // A conta NUNCA vem da URL: o segmento é o código do conector, e o
+    // account_id sai de auth()->user() dentro do controller.
+    // As rotas específicas vêm ANTES da genérica de configurar — o router é
+    // first-match-wins e 'integracoes/(:segment)' engoliria 'integracoes/simob/testar'.
+    $routes->get('integracoes', 'IntegrationsController::index');
+    $routes->post('integracoes/(:segment)/testar', 'IntegrationsController::test/$1');
+    $routes->post('integracoes/(:segment)/toggle', 'IntegrationsController::toggle/$1');
+    $routes->post('integracoes/(:segment)/redescobrir', 'IntegrationsController::rediscover/$1');
+    $routes->post('integracoes/(:segment)/desconectar', 'IntegrationsController::disconnect/$1');
+    $routes->get('integracoes/(:segment)/mapeamentos', 'IntegrationsController::mappings/$1');
+    $routes->post('integracoes/(:segment)/mapeamentos', 'IntegrationsController::saveMappings/$1');
+    $routes->get('integracoes/(:segment)/execucoes', 'IntegrationsController::runs/$1');
+    $routes->get('integracoes/(:segment)', 'IntegrationsController::configure/$1');
+    $routes->post('integracoes/(:segment)', 'IntegrationsController::save/$1');
+
     // Plans Management (Super Admin)
     $routes->get('plans', 'PlansController::index', ['filter' => 'group:superadmin']);
     $routes->get('plans/create', 'PlansController::create', ['filter' => 'group:superadmin']);

@@ -271,6 +271,10 @@
                 <i class="fa-solid fa-key"></i> Chaves de API
             </a>
 
+            <a href="<?= site_url('admin/integracoes') ?>" class="nav-link <?= strpos(uri_string(), 'integracoes') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-plug"></i> Integrações
+            </a>
+
             <?php if (auth()->user()->inGroup('superadmin')): ?>
              <a href="<?= site_url('admin/settings') ?>" class="nav-link <?= strpos(uri_string(), 'settings') !== false ? 'active' : '' ?>">
                 <i class="fa-solid fa-cogs"></i> Configurações
