@@ -8,6 +8,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The working directory is `copia_zap` but the app/product name throughout code, DB, and docs is **Habitaweb**.
 
+## Fluxo de trabalho obrigatório (branches e commits)
+
+**Toda e qualquer alteração** neste repositório — feature, correção, refactor, ajuste
+de migration, mudança de doc — é feita numa **branch nova**, nunca direto na `main`.
+
+1. Antes de começar, criar a branch a partir da `main` atualizada:
+   `git checkout main && git pull && git checkout -b <tipo>/<escopo>`
+   Tipos em uso: `feature/`, `fix/`, `refactor/`, `chore/`, `docs/`.
+2. **Cada etapa do trabalho recebe o seu próprio commit**, feito assim que a etapa
+   fecha e com a suíte de testes passando. Não acumular várias etapas num commit só
+   — o objetivo é poder voltar versão etapa a etapa (`git revert <sha>` de uma etapa
+   isolada, sem arrastar as outras junto).
+3. Mensagem de commit: `<tipo>(<escopo>): <o que mudou>`, uma linha, imperativo, em
+   português. Ex.: `feat(integracoes): tabela de credenciais por tenant`.
+   Nada de "Ajustes".
+4. Migration nova = commit próprio, separado do código que a consome.
+5. Merge na `main` só via PR, depois de `vendor/bin/phpunit` verde.
+
+Claude Code deve criar a branch **antes** da primeira edição e commitar ao fim de
+cada etapa, sem esperar ser lembrado.
+
 ## Commands
 
 ### Running the app
