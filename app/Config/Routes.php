@@ -279,14 +279,11 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
         $routes->delete('regras/(:num)', 'CommissionsController::deleteRule/$1');
     });
 
-    // Plans Management (Super Admin)
-    $routes->get('plans', 'PlansController::index', ['filter' => 'group:superadmin']);
-    $routes->get('plans/create', 'PlansController::create', ['filter' => 'group:superadmin']);
-    $routes->post('plans/store', 'PlansController::store', ['filter' => 'group:superadmin']);
-    $routes->get('plans/(:num)/edit', 'PlansController::edit/$1', ['filter' => 'group:superadmin']);
-    $routes->post('plans/(:num)/update', 'PlansController::update/$1', ['filter' => 'group:superadmin']);
-    $routes->post('plans/(:num)/toggle', 'PlansController::toggle/$1', ['filter' => 'group:superadmin']);
-    $routes->post('plans/(:num)/delete', 'PlansController::delete/$1', ['filter' => 'group:superadmin']);
+    // Plans Management: ver o $routes->resource('plans', ...) acima, servido por
+    // PlanController. Havia aqui um segundo conjunto de rotas apontando para um
+    // PlansController que gravava limite_imoveis, destacar_imoveis, fotos_por_imovel
+    // e descricao — nenhuma dessas colunas existe em `plans`, então toda edição por
+    // esse caminho era perdida (ou estourava em SQL). Removido.
 
     // Coupons Management (Super Admin + Admin)
     $routes->get('coupons', 'CouponsController::index', ['filter' => 'group:superadmin,admin']);

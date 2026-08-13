@@ -8,48 +8,36 @@ class RankingService
 {
     /**
      * Calcula o Score de Qualidade (0 a 100) para um imóvel.
-     * Critérios:
+     *
+     * Critérios (delegados a CurationService::calculateDetailedScore):
      * - Fotos: +10 pontos por foto (max 50)
      * - Descrição: +10 se > 200 caracteres
      * - Endereço completo (Rua + Num): +10
      * - Características: +5 por item (max 20)
-     * - Plano: Pro (+10), Gold (+20) - (Simulado por enquanto)
+     *
+     * Este score mede SÓ a qualidade do anúncio, nunca quanto o anunciante pagou.
+     *
+     * Havia aqui um bloco que somava +200 a +1000 por promoção ativa. Era errado
+     * em dois níveis. Primeiro quebrava a escala: o valor é gravado em
+     * `properties.score_qualidade`, exibido como nota 0–100 no painel e na
+     * curadoria — um imóvel promovido aparecia com 1043. Segundo, e pior, as
+     * fórmulas de ordenação usam o score como MULTIPLICADOR (`score/100`): com
+     * 1043 o imóvel multiplicava a própria relevância por 10, em vez do fator
+     * ≤ 1 que a fórmula pressupõe. Ou seja, o boost não somava exposição, ele
+     * multiplicava — e o efeito era invisível para quem lesse só a fórmula.
+     *
+     * A exposição paga vive em `highlight_level`/`highlight_expires_at`, que as
+     * consultas já consideram via App\Libraries\Search\HighlightSql.
      */
     public function calculateScore(Property $property): int
     {
         $mediaModel = model('App\Models\PropertyMediaModel');
         $mediaCount = $mediaModel->countByProperty($property->id);
-        
+
         $curationService = new \App\Services\CurationService();
         $result = $curationService->calculateDetailedScore($property, $mediaCount);
-        $score = $result['score'];
 
-        // 6. Promoções Ativas (Boosters de Ranking)
-        $promotionModel = model('App\Models\PromotionModel');
-        $activePromos = $promotionModel->where('property_id', $property->id)
-                                       ->where('ativo', true)
-                                       ->where('data_inicio <=', date('Y-m-d H:i:s'))
-                                       ->where('data_fim >=', date('Y-m-d H:i:s'))
-                                       ->findAll();
-
-        foreach ($activePromos as $promo) {
-            switch ($promo->tipo_promocao) {
-                case 'SUPER_DESTAQUE':
-                    $score += 1000;
-                    break;
-                case 'DESTAQUE':
-                    $score += 500;
-                    break;
-                case 'VITRINE':
-                    $score += 200;
-                    break;
-                case 'URGENTE':
-                    $score += 100;
-                    break;
-            }
-        }
-
-        return $score;
+        return $result['score'];
     }
 
     /**
