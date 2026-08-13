@@ -225,15 +225,21 @@ class WebhookService
             $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
         }
 
-        // 6. Handle Promotions (Turbo) if tagged
-        if (isset($transaction['metadata'])) {
+        // 6. Ativa turbinada, se esta transação for de fato uma compra de turbo.
+        //
+        // Antes daqui só se conferia se o metadata TINHA promo_key + property_id
+        // — qualquer transação cujo metadata trouxesse esses campos por
+        // coincidência ativaria turbo. Agora exige type === 'TURBO' explícito.
+        if (($transaction['type'] ?? null) === 'TURBO' && isset($transaction['metadata'])) {
             $meta = is_string($transaction['metadata']) ? json_decode($transaction['metadata'], true) : (array) $transaction['metadata'];
             $promoKey = $meta['promo_key'] ?? $meta['package_key'] ?? null;
+
             if ($promoKey && isset($meta['property_id'])) {
-                $promotionService = service('promotionService'); // Assuming this service exists as per AsaasWebhook
-                if ($promotionService) {
-                    $promotionService->activatePaidPromotion($meta['property_id'], $promoKey);
-                }
+                service('turboService')->activatePaid(
+                    (int) $meta['property_id'],
+                    (string) $promoKey,
+                    (int) $transaction['id']
+                );
             }
         }
 

@@ -66,6 +66,15 @@ class Services extends BaseService
         return new \App\Services\PromotionService();
     }
 
+    public static function turboService($getShared = true)
+    {
+        if ($getShared) {
+            return static::getSharedInstance('turboService');
+        }
+
+        return new \App\Services\TurboService();
+    }
+
     public static function webhookService($getShared = true)
     {
         if ($getShared) {

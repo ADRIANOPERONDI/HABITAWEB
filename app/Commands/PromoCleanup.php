@@ -16,9 +16,9 @@ class PromoCleanup extends BaseCommand
         CLI::write('Iniciando verificação de promoções expiradas...', 'yellow');
 
         try {
-            $service = service('promotionService');
+            $service = service('turboService');
             $service->deactivateExpired();
-            
+
             CLI::write('Verificação concluída com sucesso!', 'green');
         } catch (\Exception $e) {
             CLI::error('Erro ao processar limpeza: ' . $e->getMessage());
