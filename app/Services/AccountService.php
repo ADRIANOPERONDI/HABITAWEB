@@ -164,17 +164,39 @@ class AccountService
     }
 
     /**
-     * Retorna parceiros em destaque (com logo) para a home.
+     * Retorna parceiros em destaque ("Imobiliárias em destaque") para a home
+     * — a vitrine EXPOSICAO_VITRINE da proposta comercial (Ouro/Diamante).
+     *
+     * Antes, "destaque" era só ter logo cadastrado: sem relação com plano,
+     * sem checagem de assinatura, sem custo — a antítese do que a proposta
+     * pede ("imobiliárias em destaque" como benefício vendido). Passa a
+     * exigir a feature `exposicao.vitrine` do plano vigente e reusa o mesmo
+     * bloqueio por atraso que já protege a busca pública de imóvel
+     * (`getOverdueAccountIdsCached`, 3 dias) — não faz sentido vitrinar quem
+     * está impedido de aparecer na busca.
      */
     public function getFeaturedPartners(int $limit = 12): array
     {
-        return $this->accountModel
+        $blockedAccountIds = Factories::models(\App\Models\PaymentTransactionModel::class)
+            ->getOverdueAccountIdsCached(3);
+
+        $builder = $this->accountModel
             ->select('accounts.*')
-            ->where('logo !=', null)
-            ->where('status', 'ACTIVE')
+            ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'inner')
+            ->join('plans', 'plans.id = subscriptions.plan_id', 'inner')
+            ->where('accounts.status', 'ACTIVE')
             ->where('accounts.nome !=', 'Administrador')
-            ->orderBy('tipo_conta', 'ASC')
-            ->findAll($limit);
+            ->where("(plans.features->>'exposicao.vitrine')::boolean IS TRUE", null, false)
+            ->groupBy('accounts.id')
+            ->groupBy('plans.exposure_weight')
+            ->orderBy('plans.exposure_weight', 'DESC')
+            ->orderBy('accounts.nome', 'ASC');
+
+        if ($blockedAccountIds !== []) {
+            $builder->whereNotIn('accounts.id', $blockedAccountIds);
+        }
+
+        return $builder->findAll($limit);
     }
 
     /**
