@@ -514,32 +514,43 @@ class PropertyService
     /**
      * Retorna imóveis em destaque (Recentes + Ativos) com imagem de capa.
      */
+    /**
+     * Prateleira "Destaques Recomendados" da home — lane B pura (Fase 2), não
+     * um ranking de todo mundo com desempate por preço de plano.
+     *
+     * Elegibilidade idêntica à do slot patrocinado da busca
+     * (`HighlightSql::sponsorshipEligible`): curadoria editorial da Habitaweb
+     * (`is_destaque`) OU turbo vigente com a feature `exposicao.busca` do
+     * plano. Uma imobiliária Prata que compra turbinada avulsa aparece na
+     * PRÓPRIA página do imóvel como "Patrocinado", mas não entra nesta
+     * prateleira — que é justamente o espaço institucional que a proposta
+     * reserva para Ouro/Diamante ("maior exposição... imóveis destacados").
+     *
+     * Sem eligível suficiente, a prateleira mostra menos itens (a view já
+     * trata `empty($featuredProperties)` com "Novos imóveis em breve.") — não
+     * é preenchida com imóveis orgânicos só para não ficar vazia.
+     */
     public function getFeaturedProperties(int $limit = 6): array
     {
-        // Use Builder to allow Joins
         $builder = $this->propertyModel->builder();
         $builder->select('properties.*, accounts.is_verified as account_verified')
                 ->where('properties.status', 'ACTIVE');
 
-        // Joins para buscar dados do Plano + Assinatura (WEIGHTED SORT)
         $builder->join('accounts', 'accounts.id = properties.account_id', 'left')
                 ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
                 ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
+                ->where(\App\Libraries\Search\HighlightSql::sponsorshipEligible(), null, false)
                 ->groupBy('properties.id')
                 ->groupBy('accounts.is_verified')
-                ->groupBy('plans.preco_mensal'); // Required for ORDER BY in Postgres
+                ->groupBy('plans.exposure_weight');
 
         $this->publicVisibility->apply($builder);
 
-        // Formula: (PlanPrice + (IsDestaque * 100) + (TurboLevel * 100)) * (Score / 100)
-        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (CASE WHEN properties.is_destaque = true THEN 100 ELSE 0 END) + ("
-                 . \App\Libraries\Search\HighlightSql::effectiveLevel()
-                 . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
-        
-        $builder->orderBy($sqlSort, 'DESC', false)
+        $builder->orderBy(\App\Libraries\Search\HighlightSql::sponsorshipWeight(), 'DESC', false)
+                ->orderBy('properties.score_qualidade', 'DESC')
                 ->orderBy('properties.created_at', 'DESC');
-                
-        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class); // Get results as Entities
+
+        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class);
 
         if (empty($properties)) {
             return [];
@@ -671,17 +682,12 @@ class PropertyService
 
         $builder = $this->propertyModel->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
                                        ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
-                                       ->join('accounts', 'accounts.id = properties.account_id', 'left');
-
-        // Joins para buscar dados do Plano + Assinatura
-        $builder->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
-                ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
-                ->groupBy('properties.id')
-                ->groupBy('accounts.tipo_conta')  
-                ->groupBy('accounts.nome')       
-                ->groupBy('accounts.logo')       
-                ->groupBy('accounts.is_verified')
-                ->groupBy('plans.preco_mensal');
+                                       ->join('accounts', 'accounts.id = properties.account_id', 'left')
+                                       ->groupBy('properties.id')
+                                       ->groupBy('accounts.tipo_conta')
+                                       ->groupBy('accounts.nome')
+                                       ->groupBy('accounts.logo')
+                                       ->groupBy('accounts.is_verified');
 
         if ($publicOnly) {
             $this->publicVisibility->apply($builder);
@@ -724,16 +730,18 @@ class PropertyService
 
         $this->applySearchFilters($builder, $filters);
 
-        // Ordenação Ponderada
-        // Formula: (PlanPrice + (TurboLevel * 100)) * (Score / 100)
-        // 1. COALESCE(plans.preco_mensal, 0): Valor do plano base (0 se Free)
-        // 2. (properties.highlight_level * 100): Turbo adiciona "valor virtual" (Lvl 1 = +100, Lvl 2 = +200)
-        // 3. * (properties.score_qualidade / 100): Score age como multiplicador de eficiência (0.0 a 1.0)
-        // Alta qualidade aproveita 100% do investimento. Baixa qualidade desperdiça.
-        
-        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (" . \App\Libraries\Search\HighlightSql::effectiveLevel() . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
-        
-        $builder->orderBy($sqlSort, 'DESC', false)
+        // Ranking puramente orgânico: só qualidade do anúncio, nunca quanto o
+        // anunciante paga. A fórmula antiga usava plans.preco_mensal como peso
+        // — Diamante (R$2.490) media 2,5x o de Prata (R$990) em TODA busca,
+        // exatamente o que a proposta comercial exige não fazer. Exposição
+        // paga agora é posição (slot), não multiplicador de relevância — ver
+        // App\Services\Search\SponsoredPlacementService.
+        //
+        // Efeito colateral: os joins subscriptions/plans e o groupBy que a
+        // fórmula antiga exigia (obrigatório no Postgres com GROUP BY) saem
+        // desta consulta. Só a lane patrocinada (getSponsoredCandidates, LIMIT
+        // pequeno) ainda precisa deles.
+        $builder->orderBy('properties.score_qualidade', 'DESC')
                 ->orderBy('properties.created_at', 'DESC');
 
         $results = $builder->paginate($perPage);
@@ -785,6 +793,18 @@ class PropertyService
         $total = $pager->getTotal();
         $currentPage = max(1, $page);
 
+        // Slots patrocinados: só na página 1 e só quando o visitante não
+        // escolheu uma ordenação explícita (price_asc/price_desc/recent) —
+        // quem pede "mais barato primeiro" está dizendo que não quer
+        // patrocinado furando a fila. O total/pager continua refletindo só a
+        // lane orgânica: o slot reordena o que já ia aparecer, não infla
+        // "quantos imóveis correspondem à busca".
+        $sort = $filters['sort'] ?? 'relevance';
+        if ($currentPage === 1 && $sort === 'relevance') {
+            $candidatos = $this->getSponsoredCandidates($filters, \App\Services\Search\SponsoredPlacementService::SLOT_COUNT);
+            $properties = (new \App\Services\Search\SponsoredPlacementService())->merge($properties, $candidatos, $currentPage);
+        }
+
         return [
             'properties' => $properties,
             'pager'      => $pager,
@@ -796,18 +816,25 @@ class PropertyService
         ];
     }
 
+    /**
+     * Query base da busca pública (mapa e lista) — SEM os joins de plano.
+     *
+     * A fórmula antiga de ordenação usava `plans.preco_mensal`, o que obrigava
+     * TODA busca a fazer LEFT JOIN em `subscriptions`+`plans` e GROUP BY
+     * (exigência do Postgres para o ORDER BY agregado). O ranking orgânico não
+     * usa mais preço de plano nenhum — só a lane patrocinada
+     * (`getSponsoredCandidates`, `LIMIT` pequeno) ainda precisa desses dados,
+     * então só ela paga o custo do join.
+     */
     private function buildPublicMapSearchQuery(array $filters = [], bool $withCover = false)
     {
         $builder = $this->propertyModel
             ->join('accounts', 'accounts.id = properties.account_id', 'left')
-            ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
-            ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
             ->groupBy('properties.id')
             ->groupBy('accounts.tipo_conta')
             ->groupBy('accounts.nome')
             ->groupBy('accounts.logo')
-            ->groupBy('accounts.is_verified')
-            ->groupBy('plans.preco_mensal');
+            ->groupBy('accounts.is_verified');
 
         if ($withCover) {
             $builder
@@ -820,6 +847,9 @@ class PropertyService
 
         $this->applySearchFilters($builder, $filters);
 
+        // Ranking orgânico puro — ver o comentário equivalente em
+        // listProperties(). price_asc/price_desc/recent são escolha explícita
+        // do usuário e continuam sem tocar em destaque nenhum.
         $sort = $filters['sort'] ?? 'relevance';
         if ($sort === 'price_asc') {
             $builder->orderBy('properties.preco', 'ASC');
@@ -828,12 +858,52 @@ class PropertyService
         } elseif ($sort === 'recent') {
             $builder->orderBy('properties.created_at', 'DESC');
         } else {
-            $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (" . \App\Libraries\Search\HighlightSql::effectiveLevel() . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
-            $builder->orderBy($sqlSort, 'DESC', false)
+            $builder->orderBy('properties.score_qualidade', 'DESC')
                 ->orderBy('properties.created_at', 'DESC');
         }
 
         return $builder;
+    }
+
+    /**
+     * Candidatos elegíveis a slot patrocinado para ESTE MESMO filtro de busca
+     * — a lane B da Fase 2.
+     *
+     * Usa `applySearchFilters()`, o MESMO ponto de montagem do `WHERE` da lane
+     * orgânica (`buildPublicMapSearchQuery`): é isso que garante que um
+     * patrocinado nunca aparece fora do que o visitante pediu. A elegibilidade
+     * em si (`HighlightSql::sponsorshipEligible`) é decidida à parte, e é
+     * restritiva de propósito — turbo comprado sozinho não basta, precisa da
+     * feature `exposicao.busca` do plano (ver o comentário da própria função).
+     */
+    public function getSponsoredCandidates(array $filters, int $limit): array
+    {
+        if ($limit <= 0) {
+            return [];
+        }
+
+        $builder = $this->propertyModel
+            ->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
+            ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
+            ->select('(SELECT COUNT(*) FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL) as media_count')
+            ->join('accounts', 'accounts.id = properties.account_id', 'left')
+            ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
+            ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
+            ->where(\App\Libraries\Search\HighlightSql::sponsorshipEligible(), null, false)
+            ->groupBy('properties.id')
+            ->groupBy('accounts.tipo_conta')
+            ->groupBy('accounts.nome')
+            ->groupBy('accounts.logo')
+            ->groupBy('accounts.is_verified')
+            ->groupBy('plans.exposure_weight');
+
+        $this->publicVisibility->apply($builder);
+        $this->applySearchFilters($builder, $filters);
+
+        $builder->orderBy(\App\Libraries\Search\HighlightSql::sponsorshipWeight(), 'DESC', false)
+                ->orderBy('properties.score_qualidade', 'DESC');
+
+        return $builder->get($limit)->getResult(\App\Entities\Property::class);
     }
 
     private function normalizeMapFilters(array $filters): array
