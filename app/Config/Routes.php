@@ -271,10 +271,12 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     // tem o extrato somente-leitura, e por isso 'minhas-cobrancas' fica fora
     // do grupo restrito.
     $routes->get('minhas-cobrancas', 'ChargesController::mine');
+    $routes->post('minhas-cobrancas/(:num)/contestar', 'ChargesController::contest/$1');
     $routes->group('cobrancas', ['filter' => 'group:superadmin'], function ($routes) {
         $routes->get('/', 'ChargesController::index');
         $routes->post('aprovar', 'ChargesController::approve');
         $routes->post('(:num)/cancelar', 'ChargesController::cancel/$1');
+        $routes->post('(:num)/resolver-disputa', 'ChargesController::resolveDispute/$1');
         $routes->get('regras', 'ChargesController::rules');
         $routes->post('regras', 'ChargesController::saveRule');
         $routes->delete('regras/(:num)', 'ChargesController::deleteRule/$1');

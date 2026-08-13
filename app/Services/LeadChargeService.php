@@ -29,11 +29,13 @@ class LeadChargeService
         private ?LeadChargeRuleModel $rules = null,
         private ?PropertyExternalRefModel $refModel = null,
         private ?PropertyModel $propertyModel = null,
+        private ?LeadQualityService $quality = null,
     ) {
         $this->charges       ??= model(LeadChargeModel::class);
         $this->rules         ??= model(LeadChargeRuleModel::class);
         $this->refModel      ??= model(PropertyExternalRefModel::class);
         $this->propertyModel ??= model(PropertyModel::class);
+        $this->quality       ??= new LeadQualityService();
     }
 
     /**
@@ -96,6 +98,26 @@ class LeadChargeService
         // de regra até o cliente decidir a intenção do visitante.
         $tipoNegocio = (string) ($lead->tipo_negocio ?? '');
         $tipoNegocio = $tipoNegocio === 'VENDA_ALUGUEL' ? 'ALUGUEL' : ($tipoNegocio ?: null);
+
+        // Checagem de qualidade ANTES de calcular quanto cobrar: um lead
+        // reprovado nasce WAIVED e nunca chega perto de uma regra de preço.
+        $flags = $this->quality->scan($lead);
+
+        if ($flags !== []) {
+            return (int) $this->charges->insert([
+                'account_id'       => $accountId,
+                'provider_code'    => $providerCode,
+                'lead_id'          => $leadId,
+                'property_id'      => $propertyId > 0 ? $propertyId : null,
+                'tipo_negocio'     => $tipoNegocio,
+                'origem'           => LeadChargeModel::ORIGEM_LEAD_RECEBIDO,
+                'periodo'          => date('Y-m-01'),
+                'base_value'       => 0,
+                'commission_value' => 0,
+                'status'           => LeadChargeModel::STATUS_WAIVED,
+                'waived_reason'    => implode(', ', $flags),
+            ], true);
+        }
 
         $rule = $this->rules->resolveFor($accountId, $providerCode, $tipoNegocio);
 
@@ -234,6 +256,72 @@ class LeadChargeService
             LeadChargeModel::STATUS_CANCELLED,
             $reason === null ? [] : ['notes' => mb_substr($reason, 0, 1000)]
         );
+    }
+
+    /**
+     * O tenant contesta uma cobrança PENDING dentro do prazo. Some do ciclo
+     * de aprovação automática até o superadmin resolver.
+     */
+    public function contest(int $chargeId, int $accountId, string $reason): bool
+    {
+        $charge = $this->charges->find($chargeId);
+
+        if ($charge === null || (int) $charge->account_id !== $accountId || ! $charge->isContestable()) {
+            return false;
+        }
+
+        return $this->charges->markStatus($chargeId, LeadChargeModel::STATUS_DISPUTED, [
+            'dispute_reason' => mb_substr($reason, 0, 1000),
+        ]);
+    }
+
+    /**
+     * O superadmin resolve uma disputa. Procedente = a contestação tinha
+     * razão, a cobrança nunca acontece (WAIVED). Improcedente = a cobrança
+     * volta para APPROVED e segue para o próximo fechamento de ciclo — não
+     * volta para PENDING, porque o prazo de contestação já foi dado.
+     */
+    public function resolveDispute(int $chargeId, bool $procedente, ?string $notes = null): bool
+    {
+        $charge = $this->charges->find($chargeId);
+
+        if ($charge === null || $charge->status !== LeadChargeModel::STATUS_DISPUTED) {
+            return false;
+        }
+
+        $extra = ['dispute_resolved_at' => date('Y-m-d H:i:s')];
+
+        if ($notes !== null) {
+            $extra['notes'] = mb_substr($notes, 0, 1000);
+        }
+
+        if ($procedente) {
+            $extra['waived_reason'] = 'Disputa procedente: ' . ($notes ?? $charge->dispute_reason ?? '');
+
+            return $this->charges->markStatus($chargeId, LeadChargeModel::STATUS_WAIVED, $extra);
+        }
+
+        return $this->charges->markStatus($chargeId, LeadChargeModel::STATUS_APPROVED, $extra);
+    }
+
+    /**
+     * Aprovação automática: tudo que passou do prazo de contestação sem ser
+     * contestado vira APPROVED. Cron diário (`leads:aprovar-cobrancas`) — sem
+     * isto, `markInvoiced()` nunca teria o que faturar.
+     *
+     * @return int quantas foram aprovadas
+     */
+    public function approveExpired(): int
+    {
+        $n = 0;
+
+        foreach ($this->charges->pendingPastDeadline() as $charge) {
+            if ($this->charges->markStatus((int) $charge->id, LeadChargeModel::STATUS_APPROVED)) {
+                $n++;
+            }
+        }
+
+        return $n;
     }
 
     /** @return int quantas foram aprovadas */

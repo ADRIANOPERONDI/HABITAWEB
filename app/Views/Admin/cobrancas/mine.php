@@ -49,6 +49,7 @@
                         <th>Negócio</th>
                         <th class="text-end">Valor</th>
                         <th>Situação</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -64,6 +65,12 @@
                             <td><span class="badge bg-light text-dark"><?= esc((string) $c->tipo_negocio) ?></span></td>
                             <td class="text-end fw-bold"><?= $brl($c->commission_value) ?></td>
                             <td><span class="badge bg-<?= $c->statusBadge() ?>"><?= esc($c->statusLabel()) ?></span></td>
+                            <td class="text-end">
+                                <?php if ($c->isContestable()): ?>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-contestar"
+                                            data-id="<?= (int) $c->id ?>">contestar</button>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -74,4 +81,33 @@
     <?php endif; ?>
 </div>
 
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+$(document).on('click', '.btn-contestar', function () {
+    const id = $(this).data('id');
+
+    Swal.fire({
+        icon: 'question',
+        title: 'Contestar esta cobrança?',
+        input: 'text',
+        inputLabel: 'Motivo',
+        inputPlaceholder: 'ex.: lead não é meu, número errado, etc.',
+        showCancelButton: true,
+        confirmButtonText: 'Enviar contestação',
+        cancelButtonText: 'Voltar',
+        inputValidator: (value) => !value ? 'Informe o motivo.' : undefined,
+    }).then(function (res) {
+        if (!res.isConfirmed) { return; }
+
+        $.post('<?= site_url('admin/minhas-cobrancas') ?>/' + id + '/contestar', { reason: res.value })
+            .done(function (r) {
+                Swal.fire(r.success ? 'Pronto' : 'Erro', r.message, r.success ? 'success' : 'error')
+                    .then(() => { if (r.success) location.reload(); });
+            })
+            .fail(() => Swal.fire('Erro', 'Falha ao contestar.', 'error'));
+    });
+});
+</script>
 <?= $this->endSection() ?>

@@ -273,6 +273,19 @@ calcula o nível efetivo com `App\Libraries\Search\HighlightSql`, que trata
 destaque vencido como nível 0. Se este cron parar, ninguém recebe exposição
 indevida — apenas as colunas denormalizadas ficam desatualizadas até ele voltar.
 
+**Cobrança por lead recebido (Fase 3)** — aprovação automática do que passou
+da janela de contestação, diária:
+
+```cron
+0 3 * * * cd /var/www/habitaweb && php spark leads:aprovar-cobrancas
+```
+
+Roda de madrugada, depois que o dia inteiro de contestações já aconteceu.
+Cada cobrança nasce PENDING com `contest_deadline` = recebimento + 7 dias; o
+comando promove para APPROVED só quem passou do prazo sem o tenant contestar
+via `/admin/minhas-cobrancas`. Sem este cron, cobrança nenhuma chega a
+APPROVED e o fechamento de ciclo mensal não teria o que faturar.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL

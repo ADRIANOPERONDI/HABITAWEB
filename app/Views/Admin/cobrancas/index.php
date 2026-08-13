@@ -119,7 +119,13 @@
                             <td class="text-end fw-bold"><?= $brl($c->commission_value) ?></td>
                             <td><span class="badge bg-<?= $c->statusBadge() ?>"><?= esc($c->statusLabel()) ?></span></td>
                             <td class="text-end">
-                                <?php if ($c->isEditable()): ?>
+                                <?php if ($c->status === \App\Models\LeadChargeModel::STATUS_DISPUTED): ?>
+                                    <span class="small text-muted d-block mb-1"><?= esc((string) $c->dispute_reason) ?></span>
+                                    <button type="button" class="btn btn-link btn-sm text-success p-0 me-2 btn-disputa"
+                                            data-id="<?= (int) $c->id ?>" data-procedente="1">procedente</button>
+                                    <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-disputa"
+                                            data-id="<?= (int) $c->id ?>" data-procedente="0">improcedente</button>
+                                <?php elseif ($c->isEditable()): ?>
                                     <button type="button" class="btn btn-link btn-sm text-danger p-0 btn-cancelar"
                                             data-id="<?= (int) $c->id ?>">cancelar</button>
                                 <?php endif; ?>
@@ -196,6 +202,35 @@ $(function () {
                         .then(() => { if (r.success) location.reload(); });
                 })
                 .fail(() => Swal.fire('Erro', 'Falha ao cancelar.', 'error'));
+        });
+    });
+
+    $(document).on('click', '.btn-disputa', function () {
+        const id = $(this).data('id');
+        const procedente = $(this).data('procedente');
+        const titulo = procedente ? 'Marcar disputa como procedente?' : 'Marcar disputa como improcedente?';
+        const texto = procedente
+            ? 'A cobrança vira isentada — o tenant não paga.'
+            : 'A cobrança volta a valer e entra no próximo fechamento.';
+
+        Swal.fire({
+            icon: 'question',
+            title: titulo,
+            text: texto,
+            input: 'text',
+            inputLabel: 'Observação (opcional)',
+            showCancelButton: true,
+            confirmButtonText: 'Confirmar',
+            cancelButtonText: 'Voltar',
+        }).then(function (res) {
+            if (!res.isConfirmed) { return; }
+
+            $.post('<?= site_url('admin/cobrancas') ?>/' + id + '/resolver-disputa', { procedente: procedente, notes: res.value || '' })
+                .done(function (r) {
+                    Swal.fire(r.success ? 'Pronto' : 'Erro', r.message, r.success ? 'success' : 'error')
+                        .then(() => { if (r.success) location.reload(); });
+                })
+                .fail(() => Swal.fire('Erro', 'Falha ao resolver disputa.', 'error'));
         });
     });
 });

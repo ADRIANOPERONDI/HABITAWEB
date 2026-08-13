@@ -173,4 +173,42 @@ class ChargesController extends BaseController
             'totals'      => $this->service->totalsByStatus(['account_id' => $accountId]),
         ]);
     }
+
+    /** POST (AJAX): o tenant contesta uma cobrança própria ainda dentro do prazo. */
+    public function contest(int $id)
+    {
+        $accountId = (int) (auth()->user()->account_id ?? 0);
+        $reason    = (string) $this->request->getPost('reason');
+
+        if ($accountId === 0 || trim($reason) === '') {
+            return $this->response->setJSON(['success' => false, 'message' => 'Informe o motivo da contestação.']);
+        }
+
+        $ok = $this->service->contest($id, $accountId, $reason);
+
+        audit_log('lead_charge.contested', ['id' => $id, 'account_id' => $accountId, 'ok' => $ok]);
+
+        return $this->response->setJSON([
+            'success' => $ok,
+            'message' => $ok
+                ? 'Contestação registrada. Um responsável vai analisar.'
+                : 'Não foi possível contestar — a cobrança já pode ter sido aprovada.',
+        ]);
+    }
+
+    /** POST (AJAX, superadmin): resolve uma disputa. */
+    public function resolveDispute(int $id)
+    {
+        $procedente = (bool) $this->request->getPost('procedente');
+        $notes      = (string) $this->request->getPost('notes');
+
+        $ok = $this->service->resolveDispute($id, $procedente, $notes !== '' ? $notes : null);
+
+        audit_log('lead_charge.dispute_resolved', ['id' => $id, 'procedente' => $procedente, 'ok' => $ok]);
+
+        return $this->response->setJSON([
+            'success' => $ok,
+            'message' => $ok ? 'Disputa resolvida.' : 'Não foi possível resolver — a cobrança não está em disputa.',
+        ]);
+    }
 }
