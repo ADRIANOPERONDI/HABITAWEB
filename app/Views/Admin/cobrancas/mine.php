@@ -20,6 +20,27 @@
     fatura depois de aprovados — automaticamente, se você não contestar dentro do prazo.
 </p>
 
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="kpi">
+            <div class="text-muted small">Período em aberto</div>
+            <div class="valor"><?= esc(\CodeIgniter\I18n\Time::parse($periodo)->format('M/Y')) ?></div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi">
+            <div class="text-muted small">Projetado no período</div>
+            <div class="valor"><?= $brl($projetado) ?></div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi">
+            <div class="text-muted small">Crédito disponível</div>
+            <div class="valor"><?= $brl($creditoAtual) ?></div>
+        </div>
+    </div>
+</div>
+
 <?php if ($totals !== []): ?>
     <div class="row g-3 mb-4">
         <?php foreach ($totals as $status => $t): ?>

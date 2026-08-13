@@ -297,6 +297,23 @@ Idempotente (índice único parcial em `lead_credit_ledger`): rodar de novo no
 mesmo mês não duplica a concessão. Precisa rodar **antes** de
 `leads:fechar-ciclo` consumir o crédito do mês.
 
+**Fechamento de ciclo de lead** — dia 1, depois da concessão de crédito:
+
+```cron
+15 3 1 * * cd /var/www/habitaweb && php spark leads:fechar-ciclo >> writable/logs/leads-fechar-ciclo.log 2>&1
+```
+
+Fecha o **mês anterior** (default do comando): soma as cobranças APPROVED por
+conta, abate o crédito do próprio período, cobra o restante no gateway e
+marca tudo INVOICED — o gatilho que finalmente dá um chamador para
+`LeadChargeService::markInvoiced()`. Sem gateway configurado, a conta fica
+como está (ainda APPROVED) para a próxima execução tentar de novo — nunca
+fatura sem cobrança real por trás. `--dry-run` lista o que fecharia sem
+gravar nada; rode-o manualmente antes de confiar no cron pela primeira vez.
+O retorno do pagamento fecha o ciclo pelo webhook do gateway
+(`payment_transactions.type = 'LEAD_INVOICE'` → `markPaidByTransaction`),
+mesmo caminho que já existe para turbinada paga.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL

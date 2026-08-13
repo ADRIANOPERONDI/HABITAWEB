@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Models\LeadChargeModel;
 use App\Models\LeadChargeRuleModel;
 use App\Services\LeadChargeService;
+use App\Services\LeadCreditService;
 
 /**
  * Cobranças por lead.
@@ -156,21 +157,28 @@ class ChargesController extends BaseController
     {
         $user      = auth()->user();
         $accountId = (int) ($user->account_id ?? 0);
+        $periodo   = date('Y-m-01');
 
         if ($accountId === 0) {
             return view('Admin/cobrancas/mine', [
-                'commissions' => [],
-                'pager'       => \Config\Services::pager(),
-                'totals'      => [],
+                'commissions'  => [],
+                'pager'        => \Config\Services::pager(),
+                'totals'       => [],
+                'periodo'      => $periodo,
+                'projetado'    => 0.0,
+                'creditoAtual' => 0.0,
             ]);
         }
 
         $data = $this->service->statementFor($accountId);
 
         return view('Admin/cobrancas/mine', [
-            'commissions' => $data['items'],
-            'pager'       => $data['pager'],
-            'totals'      => $this->service->totalsByStatus(['account_id' => $accountId]),
+            'commissions'  => $data['items'],
+            'pager'        => $data['pager'],
+            'totals'       => $this->service->totalsByStatus(['account_id' => $accountId]),
+            'periodo'      => $periodo,
+            'projetado'    => model(LeadChargeModel::class)->projectedTotalFor($accountId, $periodo),
+            'creditoAtual' => (new LeadCreditService())->balanceFor($accountId, $periodo),
         ]);
     }
 

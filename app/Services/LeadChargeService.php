@@ -347,7 +347,7 @@ class LeadChargeService
      *
      * @param int[] $chargeIds
      */
-    public function markInvoiced(array $chargeIds, ?int $paymentTransactionId = null, float $creditAppliedTotal = 0.0): int
+    public function markInvoiced(array $chargeIds, ?int $paymentTransactionId = null): int
     {
         $n = 0;
 
@@ -384,6 +384,150 @@ class LeadChargeService
         }
 
         return count($pendentes);
+    }
+
+    /**
+     * Fecha o ciclo de um período para uma conta: soma as APPROVED, abate o
+     * crédito disponível daquele mesmo período, cobra o restante no gateway
+     * (se houver) e marca tudo INVOICED. Expira a sobra de crédito no mesmo
+     * instante — ela não pode vazar para pagar o mês seguinte.
+     *
+     * Chamado pelo comando `leads:fechar-ciclo`, um account_id por vez. Aceita
+     * `PaymentService`/`LeadCreditService` injetados para que os testes
+     * consigam apontar para um gateway fake sem tocar rede.
+     *
+     * @return array{status: string, total: float, credit_applied: float, charged: float, payment_transaction_id: ?int, charge_ids: int[]}
+     */
+    public function closeCycleForAccount(
+        int $accountId,
+        string $periodo,
+        ?PaymentService $paymentService = null,
+        ?LeadCreditService $creditService = null
+    ): array {
+        $charges = $this->charges->approvedForPeriod($accountId, $periodo);
+
+        if ($charges === []) {
+            return [
+                'status' => 'nothing', 'total' => 0.0, 'credit_applied' => 0.0,
+                'charged' => 0.0, 'payment_transaction_id' => null, 'charge_ids' => [],
+            ];
+        }
+
+        $chargeIds = array_map(static fn ($c) => (int) $c->id, $charges);
+        $total     = round(array_sum(array_map(static fn ($c) => (float) $c->commission_value, $charges)), 2);
+
+        $creditService ??= new LeadCreditService();
+        $creditApplied = $creditService->consume($accountId, $periodo, $total, 'lead_charges_cycle');
+
+        $this->distribuirCreditoPorCobranca($charges, $creditApplied);
+
+        $restante = round($total - $creditApplied, 2);
+
+        if ($restante <= 0) {
+            $this->markInvoiced($chargeIds, null);
+            $creditService->expireRemaining($accountId, $periodo);
+
+            return [
+                'status' => 'invoiced_free', 'total' => $total, 'credit_applied' => $creditApplied,
+                'charged' => 0.0, 'payment_transaction_id' => null, 'charge_ids' => $chargeIds,
+            ];
+        }
+
+        $paymentService ??= new PaymentService();
+        $gateway = $paymentService->getActiveGateway();
+
+        if ($gateway === null) {
+            // Nada é marcado: fica APPROVED, tentável de novo na próxima
+            // execução do comando. Melhor um dia de atraso do que faturar sem
+            // cobrança nenhuma no gateway.
+            return [
+                'status' => 'gateway_indisponivel', 'total' => $total, 'credit_applied' => $creditApplied,
+                'charged' => $restante, 'payment_transaction_id' => null, 'charge_ids' => $chargeIds,
+            ];
+        }
+
+        $transactionId = $this->cobrarNoGateway($accountId, $periodo, $restante, $gateway);
+
+        $this->markInvoiced($chargeIds, $transactionId);
+        $creditService->expireRemaining($accountId, $periodo);
+
+        return [
+            'status' => 'invoiced_charged', 'total' => $total, 'credit_applied' => $creditApplied,
+            'charged' => $restante, 'payment_transaction_id' => $transactionId, 'charge_ids' => $chargeIds,
+        ];
+    }
+
+    /** Distribui o crédito consumido entre as cobranças, primeira-a-primeira, só para auditoria. */
+    private function distribuirCreditoPorCobranca(array $charges, float $creditoDisponivel): void
+    {
+        foreach ($charges as $charge) {
+            if ($creditoDisponivel <= 0) {
+                break;
+            }
+
+            $aplicado = min((float) $charge->commission_value, $creditoDisponivel);
+            $creditoDisponivel -= $aplicado;
+
+            $this->charges->update((int) $charge->id, ['credit_applied' => $aplicado]);
+        }
+    }
+
+    /**
+     * Resolve o cliente no gateway e cria a cobrança. Mesmo caminho de
+     * `PromotionService::applyPackage`: se a assinatura já tem cliente no
+     * gateway, reusa; senão cria na hora — não depende de
+     * `PaymentService::getOrCreateCustomer()`, que devolve null quando existe
+     * assinatura mas sem `asaas_customer_id` (caso das contas em rampa
+     * gratuita da Fase 6, que ainda não têm nenhuma cobrança de assinatura).
+     *
+     * @return int id da payment_transactions criada
+     */
+    private function cobrarNoGateway(int $accountId, string $periodo, float $amount, \App\PaymentGateways\GatewayInterface $gateway): int
+    {
+        $accountModel = model(\App\Models\AccountModel::class);
+        $account      = $accountModel->find($accountId);
+
+        $subscription = model(\App\Models\SubscriptionModel::class)
+            ->where('account_id', $accountId)
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        $customerId = $subscription->asaas_customer_id ?? null;
+
+        if (empty($customerId)) {
+            $customerId = $gateway->createCustomer([
+                'name'               => $account->nome,
+                'email'              => $account->email,
+                'document'           => preg_replace('/\D/', '', (string) ($account->documento ?? '')),
+                'phone'              => preg_replace('/\D/', '', (string) ($account->whatsapp ?? $account->telefone ?? '')),
+                'external_reference' => (string) $accountId,
+            ]);
+        }
+
+        $description = "Cobrança de leads recebidos — competência {$periodo}";
+
+        $payment = $gateway->createPayment((string) $customerId, $amount, [
+            'billing_type'       => 'UNDEFINED',
+            'description'        => $description,
+            'external_reference' => "LEAD_INVOICE_{$accountId}_{$periodo}",
+            'due_date'           => date('Y-m-d', strtotime('+3 days')),
+        ]);
+
+        $transactionModel = model(\App\Models\PaymentTransactionModel::class);
+
+        return (int) $transactionModel->insert([
+            'account_id'             => $accountId,
+            'gateway'                => $gateway->getCode(),
+            'gateway_transaction_id' => $payment['payment_id'] ?? null,
+            'amount'                 => $amount,
+            'currency'               => 'BRL',
+            'status'                 => 'PENDING',
+            'payment_method'         => 'UNDEFINED',
+            'type'                   => 'LEAD_INVOICE',
+            'description'            => $description,
+            'invoice_url'            => $payment['payment_url'] ?? null,
+            'metadata'               => json_encode(['account_id' => $accountId, 'periodo' => $periodo]),
+        ], true);
     }
 
     // ------------------------------------------------------------- consultas

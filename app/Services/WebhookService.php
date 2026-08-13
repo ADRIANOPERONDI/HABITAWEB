@@ -243,6 +243,14 @@ class WebhookService
             }
         }
 
+        // 7. Fecha o ciclo de cobrança de lead, se esta transação for uma
+        // fatura de leads (Fase 3). Mesma disciplina do bloco de TURBO acima:
+        // gate explícito em type === 'LEAD_INVOICE', não em coincidência de
+        // metadata.
+        if (($transaction['type'] ?? null) === 'LEAD_INVOICE') {
+            (new \App\Services\LeadChargeService())->markPaidByTransaction((int) $transaction['id']);
+        }
+
         return true;
     }
 

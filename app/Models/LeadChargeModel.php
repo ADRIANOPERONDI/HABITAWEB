@@ -130,6 +130,34 @@ class LeadChargeModel extends Model
         return array_map(static fn ($r) => (int) $r['account_id'], $rows);
     }
 
+    /** Contas com cobrança aprovada esperando faturamento num período específico. */
+    public function accountsWithApprovedForPeriod(string $periodo): array
+    {
+        $rows = $this->builder()
+            ->select('account_id')
+            ->where('status', self::STATUS_APPROVED)
+            ->where('periodo', $periodo)
+            ->groupBy('account_id')
+            ->get()
+            ->getResultArray();
+
+        return array_map(static fn ($r) => (int) $r['account_id'], $rows);
+    }
+
+    /** Soma PENDING + APPROVED de uma conta no período — o "valor projetado" do extrato do tenant. */
+    public function projectedTotalFor(int $accountId, string $periodo): float
+    {
+        $row = $this->builder()
+            ->select('COALESCE(SUM(commission_value), 0) as total')
+            ->where('account_id', $accountId)
+            ->where('periodo', $periodo)
+            ->whereIn('status', [self::STATUS_PENDING, self::STATUS_APPROVED])
+            ->get()
+            ->getRow();
+
+        return round((float) ($row->total ?? 0), 2);
+    }
+
     /** PENDING cujo prazo de contestação já passou — candidatas à aprovação automática. */
     public function pendingPastDeadline(?string $onDate = null): array
     {

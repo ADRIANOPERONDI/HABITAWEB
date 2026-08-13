@@ -89,8 +89,14 @@ class LeadService
 
             $request = service('request');
             $lead->ip_address = $request->getIPAddress();
-            $lead->user_agent = (string) $request->getUserAgent();
             $lead->referrer   = mb_substr((string) $request->getHeaderLine('Referer'), 0, 500) ?: null;
+
+            // getUserAgent() só existe em IncomingRequest — um script de
+            // console (spark, smoke) que crie lead direto pelo service recebe
+            // um CLIRequest, sem esse método.
+            $lead->user_agent = $request instanceof \CodeIgniter\HTTP\IncomingRequest
+                ? (string) $request->getUserAgent()
+                : null;
         }
 
         if (empty($lead->status)) {
