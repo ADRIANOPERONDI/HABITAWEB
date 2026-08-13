@@ -13,7 +13,8 @@ class PromotionModel extends Model
     protected $useSoftDeletes   = false;
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'property_id', 'tipo_promocao', 'data_inicio', 'data_fim', 'ativo'
+        'property_id', 'tipo_promocao', 'data_inicio', 'data_fim', 'ativo',
+        'account_id', 'origem', 'periodo', 'payment_transaction_id', 'promotion_package_id'
     ];
 
     // Dates
