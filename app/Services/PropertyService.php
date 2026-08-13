@@ -715,50 +715,6 @@ class PropertyService
             $builder->where('accounts.tipo_conta', $filters['account_type']);
         }
 
-        if (!empty($filters['tipo_imovel'])) {
-            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
-        }
-        
-        if (!empty($filters['tipo_negocio'])) {
-            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
-        }
-
-        if (!empty($filters['quartos'])) {
-            $builder->where('properties.quartos >=', $filters['quartos']);
-        }
-
-        if (!empty($filters['banheiros'])) {
-            $builder->where('properties.banheiros >=', $filters['banheiros']);
-        }
-
-        if (!empty($filters['vagas'])) {
-            $builder->where('properties.vagas >=', $filters['vagas']);
-        }
-        
-        if (!empty($filters['property_ids'])) {
-            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
-            $ids = array_map('intval', $ids);
-            if (!empty($ids)) {
-                $builder->whereIn('properties.id', $ids);
-            }
-        }
-        
-        // Cidade/bairro: match EXATO indexável em vez do LIKE '%..%' anterior —
-        // que além de forçar seq scan era sensível a caso/acento (slug de URL
-        // SEO nunca casava com "São Paulo"). resolveLocationName normaliza
-        // slug/sem-acento para o nome exato do banco; sem resolução, cai no
-        // LOWER() = (coberto pelo índice funcional idx_properties_status_lower_city_neighborhood).
-        $this->applyLocationFilter($builder, $filters, 'cidade');
-        $this->applyLocationFilter($builder, $filters, 'bairro');
-
-        if (isset($filters['min_price'])) {
-            $builder->where('properties.preco >=', $filters['min_price']);
-        }
-        
-        if (isset($filters['max_price'])) {
-            $builder->where('properties.preco <=', $filters['max_price']);
-        }
-        
         if (isset($filters['promoted_only']) && $filters['promoted_only'] === true) {
              $builder->groupStart()
                      ->where('properties.is_destaque', true)
@@ -766,47 +722,7 @@ class PropertyService
                      ->groupEnd();
         }
 
-        // --- Spatial Filters ---
-        if (!empty($filters['bounds'])) {
-            // bounds format: "southWestLng,southWestLat,northEastLng,northEastLat"
-            $coords = explode(',', $filters['bounds']);
-            if (count($coords) === 4) {
-                $swLng = (float)$coords[0];
-                $swLat = (float)$coords[1];
-                $neLng = (float)$coords[2];
-                $neLat = (float)$coords[3];
-                
-                // Calcular mínimo e máximo para garantir a ordem correta independente do hemisfério e direção do arrasto
-                $minLng = min($swLng, $neLng);
-                $maxLng = max($swLng, $neLng);
-                $minLat = min($swLat, $neLat);
-                $maxLat = max($swLat, $neLat);
-                
-                $builder->where('properties.longitude >=', $minLng)
-                        ->where('properties.longitude <=', $maxLng)
-                        ->where('properties.latitude >=', $minLat)
-                        ->where('properties.latitude <=', $maxLat);
-            }
-        }
-
-        if (!empty($filters['polygon'])) {
-            // polygon format: JSON string of array of coordinates [[lng, lat], [lng, lat], ...] or GeoJSON
-            $polyData = json_decode($filters['polygon'], true);
-            if (is_array($polyData)) {
-                $points = [];
-                // Handle basic array of [lng, lat]
-                foreach ($polyData as $pt) {
-                    if (is_array($pt) && count($pt) >= 2) {
-                        $points[] = sprintf('(%F,%F)', (float)$pt[0], (float)$pt[1]);
-                    }
-                }
-                if (count($points) >= 3) {
-                    $polyString = '(' . implode(',', $points) . ')';
-                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '{$polyString}'", null, false);
-                }
-            }
-        }
-        // -----------------------
+        $this->applySearchFilters($builder, $filters);
 
         // Ordenação Ponderada
         // Formula: (PlanPrice + (TurboLevel * 100)) * (Score / 100)
@@ -902,76 +818,7 @@ class PropertyService
 
         $this->publicVisibility->apply($builder);
 
-        if (!empty($filters['tipo_imovel'])) {
-            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
-        }
-
-        if (!empty($filters['tipo_negocio'])) {
-            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
-        }
-
-        if (!empty($filters['quartos'])) {
-            $builder->where('properties.quartos >=', (int) $filters['quartos']);
-        }
-
-        if (!empty($filters['banheiros'])) {
-            $builder->where('properties.banheiros >=', (int) $filters['banheiros']);
-        }
-
-        if (!empty($filters['vagas'])) {
-            $builder->where('properties.vagas >=', (int) $filters['vagas']);
-        }
-
-        if (!empty($filters['property_ids'])) {
-            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
-            $ids = array_values(array_filter(array_map('intval', $ids)));
-            if (!empty($ids)) {
-                $builder->whereIn('properties.id', $ids);
-            }
-        }
-
-        // Mesmo racional do listProperties: match exato indexável (ver
-        // resolveLocationName) em vez de LIKE sensível a caso/acento.
-        $this->applyLocationFilter($builder, $filters, 'cidade');
-        $this->applyLocationFilter($builder, $filters, 'bairro');
-
-        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
-            $builder->where('properties.preco >=', (float) $filters['min_price']);
-        }
-
-        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
-            $builder->where('properties.preco <=', (float) $filters['max_price']);
-        }
-
-        if (!empty($filters['bounds'])) {
-            $coords = explode(',', $filters['bounds']);
-            if (count($coords) === 4) {
-                $swLng = (float) $coords[0];
-                $swLat = (float) $coords[1];
-                $neLng = (float) $coords[2];
-                $neLat = (float) $coords[3];
-
-                $builder->where('properties.longitude >=', min($swLng, $neLng))
-                    ->where('properties.longitude <=', max($swLng, $neLng))
-                    ->where('properties.latitude >=', min($swLat, $neLat))
-                    ->where('properties.latitude <=', max($swLat, $neLat));
-            }
-        }
-
-        if (!empty($filters['polygon'])) {
-            $polyData = json_decode($filters['polygon'], true);
-            if (is_array($polyData)) {
-                $points = [];
-                foreach ($polyData as $pt) {
-                    if (is_array($pt) && count($pt) >= 2) {
-                        $points[] = sprintf('(%F,%F)', (float) $pt[0], (float) $pt[1]);
-                    }
-                }
-                if (count($points) >= 3) {
-                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '(" . implode(',', $points) . ")'", null, false);
-                }
-            }
-        }
+        $this->applySearchFilters($builder, $filters);
 
         $sort = $filters['sort'] ?? 'relevance';
         if ($sort === 'price_asc') {
@@ -1266,6 +1113,113 @@ class PropertyService
             'bairros' => $publicDistinct('bairro'),
             'tipos'   => $publicDistinct('tipo_imovel'),
         ];
+    }
+
+    /**
+     * Filtros de busca de imóvel — o `WHERE` que define "o que corresponde à
+     * pesquisa do visitante". Único ponto de montagem, usado por
+     * `listProperties` (catálogo do parceiro/admin) e `buildPublicMapSearchQuery`
+     * (busca pública do mapa/lista).
+     *
+     * Isto é pré-requisito da Fase 2 (exposição por slot): a lane patrocinada
+     * precisa aplicar EXATAMENTE o mesmo `WHERE` da lane orgânica, senão um
+     * slot pode mostrar imóvel fora do filtro que o visitante pediu — que é
+     * exatamente o que o cliente disse que não quer ("não colocar casa de
+     * R$1,5mi na frente de quem buscou apto até R$500 mil"). Se cada lane
+     * montasse o filtro por um caminho próprio, mais cedo ou tarde os dois
+     * caminhos divergiam.
+     *
+     * Não inclui filtros de ESCOPO (account_id, status, user_id_responsavel,
+     * external_id, account_type, show_deleted) — esses decidem QUEM pode ver
+     * o quê (painel do parceiro, admin), não O QUE bate com a pesquisa, e só
+     * `listProperties` precisa deles.
+     */
+    private function applySearchFilters($builder, array $filters): void
+    {
+        if (!empty($filters['tipo_imovel'])) {
+            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
+        }
+
+        if (!empty($filters['tipo_negocio'])) {
+            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
+        }
+
+        if (!empty($filters['quartos'])) {
+            $builder->where('properties.quartos >=', (int) $filters['quartos']);
+        }
+
+        if (!empty($filters['banheiros'])) {
+            $builder->where('properties.banheiros >=', (int) $filters['banheiros']);
+        }
+
+        if (!empty($filters['vagas'])) {
+            $builder->where('properties.vagas >=', (int) $filters['vagas']);
+        }
+
+        if (!empty($filters['property_ids'])) {
+            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
+            $ids = array_values(array_filter(array_map('intval', $ids)));
+            if (!empty($ids)) {
+                $builder->whereIn('properties.id', $ids);
+            }
+        }
+
+        // Cidade/bairro: match EXATO indexável em vez do LIKE '%..%' anterior —
+        // que além de forçar seq scan era sensível a caso/acento (slug de URL
+        // SEO nunca casava com "São Paulo"). resolveLocationName normaliza
+        // slug/sem-acento para o nome exato do banco; sem resolução, cai no
+        // LOWER() = (coberto pelo índice funcional idx_properties_status_lower_city_neighborhood).
+        $this->applyLocationFilter($builder, $filters, 'cidade');
+        $this->applyLocationFilter($builder, $filters, 'bairro');
+
+        // isset()+string-vazia, não só isset(): min_price='' chegando aqui
+        // (querystring com o campo presente e vazio) faria
+        // `WHERE preco >= ''`, que o Postgres rejeita — coluna numérica não
+        // aceita string vazia, nem por coerção implícita.
+        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
+            $builder->where('properties.preco >=', (float) $filters['min_price']);
+        }
+
+        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
+            $builder->where('properties.preco <=', (float) $filters['max_price']);
+        }
+
+        // --- Spatial Filters ---
+        if (!empty($filters['bounds'])) {
+            // bounds format: "southWestLng,southWestLat,northEastLng,northEastLat"
+            $coords = explode(',', $filters['bounds']);
+            if (count($coords) === 4) {
+                $swLng = (float) $coords[0];
+                $swLat = (float) $coords[1];
+                $neLng = (float) $coords[2];
+                $neLat = (float) $coords[3];
+
+                // Min/max para garantir a ordem correta independente do
+                // hemisfério e da direção do arrasto.
+                $builder->where('properties.longitude >=', min($swLng, $neLng))
+                        ->where('properties.longitude <=', max($swLng, $neLng))
+                        ->where('properties.latitude >=', min($swLat, $neLat))
+                        ->where('properties.latitude <=', max($swLat, $neLat));
+            }
+        }
+
+        if (!empty($filters['polygon'])) {
+            // polygon format: JSON string de [[lng, lat], [lng, lat], ...]
+            $polyData = json_decode($filters['polygon'], true);
+            if (is_array($polyData)) {
+                $points = [];
+                foreach ($polyData as $pt) {
+                    if (is_array($pt) && count($pt) >= 2) {
+                        $points[] = sprintf('(%F,%F)', (float) $pt[0], (float) $pt[1]);
+                    }
+                }
+                if (count($points) >= 3) {
+                    $polyString = '(' . implode(',', $points) . ')';
+                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '{$polyString}'", null, false);
+                }
+            }
+        }
+        // -----------------------
     }
 
     /**
