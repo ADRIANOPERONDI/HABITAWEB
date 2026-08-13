@@ -12,20 +12,31 @@ class PlanModel extends Model
     protected $returnType       = \App\Entities\Plan::class;
     protected $useSoftDeletes   = true;
     protected $protectFields    = true;
-    // `descricao` foi retirada daqui: nenhuma migration cria essa coluna em
-    // `plans`. Mantê-la permitida fazia qualquer save que trouxesse o campo
-    // estourar em SQL em vez de ser ignorado pelo $protectFields.
     protected $allowedFields    = [
         'chave', 'nome', 'limite_imoveis_ativos', 'limite_turbo_mensal',
         'limite_api_requests_dia', 'preco_mensal', 'preco_trimestral',
         'preco_semestral', 'preco_anual', 'limite_fotos_por_imovel',
-        'destaques_mensais', 'carencia_dias', 'ativo'
+        'destaques_mensais', 'carencia_dias', 'ativo', 'descricao',
+        'features', 'credito_leads_mensal', 'exposure_weight', 'turbo_bonus_anual'
     ];
 
     protected bool $allowEmptyInserts = false;
     protected bool $updateOnlyChanged = true;
 
-    protected array $casts = [];
+    /**
+     * Casts no MODEL, não na entity.
+     *
+     * O `$casts` da entity não se aplica ao que o model lê do banco — é o alerta
+     * registrado no CLAUDE.md. E ele importa aqui por dois motivos concretos:
+     * o Postgres devolve boolean como 't'/'f', e a string 'f' é truthy no PHP
+     * (um plano inativo passaria por ativo em qualquer `if ($plan->ativo)`); e
+     * `features` chega como JSON string, que precisa virar array antes de
+     * qualquer leitura de flag.
+     */
+    protected array $casts = [
+        'features' => 'json-array',
+        'ativo'    => 'boolean',
+    ];
     protected array $castHandlers = [];
 
     // Dates

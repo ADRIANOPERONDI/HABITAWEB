@@ -200,9 +200,20 @@
                             <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i> 
                                 <?= $p->limite_fotos_por_imovel ?> Fotos por Imóvel
                             </li>
-                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i> 
-                                <?= $p->destaques_mensais ?> Destaques/mês
+                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i>
+                                <?php $turbos = $p->turbosIncluidos(); ?>
+                                <?= $turbos === null ? 'Turbinadas ilimitadas' : ($turbos === 0 ? 'Turbinadas avulsas (R$ 50 / 7 dias)' : $turbos . ' Turbinadas/mês') ?>
                             </li>
+                            <?php if ($p->turboBonusAnual() > 0): ?>
+                                <li class="mb-2"><i class="fa-solid fa-plus text-success me-2"></i>
+                                    +<?= $p->turboBonusAnual() ?> turbinadas/mês no plano anual
+                                </li>
+                            <?php endif; ?>
+                            <?php foreach ($p->activeFeatures() as $feature): ?>
+                                <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i>
+                                    <?= esc(\App\Entities\PlanFeature::label($feature)) ?>
+                                </li>
+                            <?php endforeach; ?>
                         </ul>
 
                         <?php if($plan && $plan->id == $p->id): ?>
