@@ -532,7 +532,9 @@ class PropertyService
         $this->publicVisibility->apply($builder);
 
         // Formula: (PlanPrice + (IsDestaque * 100) + (TurboLevel * 100)) * (Score / 100)
-        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (CASE WHEN properties.is_destaque = true THEN 100 ELSE 0 END) + (COALESCE(properties.highlight_level, 0) * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
+        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (CASE WHEN properties.is_destaque = true THEN 100 ELSE 0 END) + ("
+                 . \App\Libraries\Search\HighlightSql::effectiveLevel()
+                 . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
         
         $builder->orderBy($sqlSort, 'DESC', false)
                 ->orderBy('properties.created_at', 'DESC');
@@ -582,7 +584,7 @@ class PropertyService
                 ->where('properties.status', 'ACTIVE')
                 ->groupStart()
                     ->where('properties.is_destaque', true)
-                    ->orWhere('properties.highlight_level >', 0)
+                    ->orWhere(\App\Libraries\Search\HighlightSql::isActive(), null, false)
                 ->groupEnd()
                 ->groupBy('properties.id')
                 ->groupBy('accounts.is_verified')
@@ -627,10 +629,7 @@ class PropertyService
                 ->join('accounts', 'accounts.id = properties.account_id', 'left')
                 ->where('properties.status', 'ACTIVE')
                 ->where('properties.is_destaque', false)
-                ->groupStart()
-                    ->where('properties.highlight_level', 0)
-                    ->orWhere('properties.highlight_level', null)
-                ->groupEnd()
+                ->where(\App\Libraries\Search\HighlightSql::effectiveLevel() . ' = 0', null, false)
                 ->groupBy('properties.id')
                 ->groupBy('accounts.is_verified')
                 ->orderBy('properties.score_qualidade', 'DESC')
@@ -763,7 +762,7 @@ class PropertyService
         if (isset($filters['promoted_only']) && $filters['promoted_only'] === true) {
              $builder->groupStart()
                      ->where('properties.is_destaque', true)
-                     ->orWhere('properties.highlight_level >', 0)
+                     ->orWhere(\App\Libraries\Search\HighlightSql::isActive(), null, false)
                      ->groupEnd();
         }
 
@@ -816,7 +815,7 @@ class PropertyService
         // 3. * (properties.score_qualidade / 100): Score age como multiplicador de eficiência (0.0 a 1.0)
         // Alta qualidade aproveita 100% do investimento. Baixa qualidade desperdiça.
         
-        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (COALESCE(properties.highlight_level, 0) * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
+        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (" . \App\Libraries\Search\HighlightSql::effectiveLevel() . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
         
         $builder->orderBy($sqlSort, 'DESC', false)
                 ->orderBy('properties.created_at', 'DESC');
@@ -982,7 +981,7 @@ class PropertyService
         } elseif ($sort === 'recent') {
             $builder->orderBy('properties.created_at', 'DESC');
         } else {
-            $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (COALESCE(properties.highlight_level, 0) * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
+            $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (" . \App\Libraries\Search\HighlightSql::effectiveLevel() . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
             $builder->orderBy($sqlSort, 'DESC', false)
                 ->orderBy('properties.created_at', 'DESC');
         }

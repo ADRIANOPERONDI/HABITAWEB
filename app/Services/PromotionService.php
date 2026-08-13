@@ -193,13 +193,31 @@ class PromotionService
         $startDate = date('Y-m-d H:i:s');
         $endDate   = date('Y-m-d H:i:s', strtotime("+{$package->duracao_dias} days"));
 
-        // Define Nível de Destaque
+        // Define Nível de Destaque.
+        //
+        // TURBO_IMOVEL é o único tipo realmente vendido hoje (TURBO_7_DIAS) e não
+        // tinha braço próprio: caía no `default => 1` por coincidência. Tipo
+        // desconhecido agora falha alto em vez de virar destaque de graça — se um
+        // pacote novo for cadastrado sem mapeamento, queremos saber pelo log, não
+        // descobrir meses depois que ele concedia exposição sem regra.
         $level = match ($package->tipo_promocao) {
+            self::TIPO_TURBO => 1,
             'DESTAQUE'       => 1,
             'SUPER_DESTAQUE' => 2,
             'VITRINE'        => 3,
-            default          => 1,
+            default          => null,
         };
+
+        if ($level === null) {
+            log_message('error', sprintf(
+                '[Promocao] tipo_promocao sem nivel mapeado: "%s" (pacote %s, imovel %d). Ativacao abortada.',
+                $package->tipo_promocao,
+                $package->chave,
+                $propertyId
+            ));
+
+            return false;
+        }
 
         $db = \Config\Database::connect();
         $db->transStart();
