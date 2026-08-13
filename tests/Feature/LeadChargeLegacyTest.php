@@ -188,10 +188,13 @@ final class LeadChargeLegacyTest extends HabitawebTestCase
     }
 
     /**
-     * O gatilho roda dentro do fechamento do lead. Se a apuração quebrar, o
-     * corretor não pode ficar impedido de fechar o negócio.
+     * Desde a Fase 3, fechar o negócio não dispara mais o gatilho de
+     * apuração — a cobrança já aconteceu no recebimento do lead. O método
+     * onLeadClosed continua existindo (chamável direto, como no resto desta
+     * classe) e o negócio fecha normalmente; só não há mais fio ligando os
+     * dois. Ver LeadChargeReceivedTest para o gatilho vigente.
      */
-    public function testFalhaNaApuracaoNaoDerrubaOFechamentoDoLead(): void
+    public function testFecharLeadNaoDisparaMaisApuracaoAutomatica(): void
     {
         [$tenant, $propertyId] = $this->cenario();
         $this->regra(['value' => 10]);
@@ -208,28 +211,10 @@ final class LeadChargeLegacyTest extends HabitawebTestCase
 
         $this->assertTrue($ok, 'o lead tem que fechar de qualquer jeito');
         $this->assertSame(LeadModel::STATUS_CONCLUIDO, model(LeadModel::class)->find($leadId)->status);
-    }
-
-    /** O fluxo real: fechar pelo LeadService já apura. */
-    public function testLeadServiceApuraSozinhoAoFechar(): void
-    {
-        [$tenant, $propertyId] = $this->cenario();
-        $this->regra(['value' => 8]);
-
-        $leadId = (int) model(LeadModel::class)->insert([
-            'property_id'           => $propertyId,
-            'account_id_anunciante' => $tenant['account']->id,
-            'nome_visitante'        => 'Cliente',
-            'tipo_lead'             => 'MSG',
-            'status'                => LeadModel::STATUS_NOVO,
-        ], true);
-
-        service('leadService')->updateStatus($leadId, LeadModel::STATUS_CONCLUIDO, ['closing_value' => 5000]);
-
-        $c = model(LeadChargeModel::class)->findByLead($leadId);
-
-        $this->assertNotNull($c);
-        $this->assertSame(400.0, $c->commission_value);
+        $this->assertNull(
+            model(LeadChargeModel::class)->findByLead($leadId),
+            'fechar o negocio nao pode mais gerar uma cobranca NEGOCIO_FECHADO automaticamente'
+        );
     }
 
     // ------------------------------------------------------ precedência

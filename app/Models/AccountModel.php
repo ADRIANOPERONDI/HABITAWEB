@@ -20,7 +20,9 @@ class AccountModel extends Model
         // Subconta (imobiliária -> corretor). Sem isto no allowedFields, o
         // insert de subconta feito por Api\V1\AccountController::create()
         // descartava o vínculo silenciosamente.
-        'parent_account_id'
+        'parent_account_id',
+        // Isenção de cobrança por lead (Fase 3) — contas internas/superadmin.
+        'cobranca_leads_isenta',
     ];
 
     protected bool $allowEmptyInserts = false;
@@ -30,10 +32,12 @@ class AccountModel extends Model
      * O PostgreSQL devolve booleano como 'f'/'t', e a string 'f' é truthy em
      * PHP — sem este cast, $account->is_verified era SEMPRE true e o selo de
      * "parceiro verificado" aparecia para contas nunca verificadas
-     * (app/Views/web/home.php exibe $partner->is_verified).
+     * (app/Views/web/home.php exibe $partner->is_verified). Mesmo risco para
+     * cobranca_leads_isenta: sem cast, toda conta pareceria isenta.
      */
     protected array $casts = [
-        'is_verified' => 'boolean',
+        'is_verified'            => 'boolean',
+        'cobranca_leads_isenta'  => 'boolean',
     ];
     protected array $castHandlers = [];
 
