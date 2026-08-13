@@ -16,7 +16,7 @@ class PlanModel extends Model
         'chave', 'nome', 'limite_imoveis_ativos', 'limite_turbo_mensal',
         'limite_api_requests_dia', 'preco_mensal', 'preco_trimestral',
         'preco_semestral', 'preco_anual', 'limite_fotos_por_imovel',
-        'destaques_mensais', 'carencia_dias', 'ativo', 'descricao',
+        'carencia_dias', 'ativo', 'descricao',
         'features', 'credito_leads_mensal', 'exposure_weight', 'turbo_bonus_anual'
     ];
 
