@@ -8,7 +8,13 @@ class AddMoreFieldsToPlans extends Migration
 {
     public function up()
     {
-        if (! $this->db->tableExists('plans')) {
+        // `tableExists()` sem o segundo argumento lê `dataCache['table_names']`,
+        // que numa migração desde banco vazio é populado antes de `plans` existir.
+        // O guard então retornava aqui, o CI4 registrava a migration como aplicada
+        // e as colunas nunca eram criadas. Ver RepairMissingPlanColumns.
+        $this->db->resetDataCache();
+
+        if (! $this->db->tableExists('plans', false)) {
             return;
         }
 
