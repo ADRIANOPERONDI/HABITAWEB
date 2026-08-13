@@ -5,14 +5,15 @@ namespace App\Models;
 use CodeIgniter\Model;
 
 /**
- * Regras de comissão por lead fechado.
+ * Regras de cobrança por lead — quanto cobrar, por tenant e por tipo de
+ * negócio.
  */
-class IntegrationCommissionRuleModel extends Model
+class LeadChargeRuleModel extends Model
 {
-    protected $table            = 'integration_commission_rules';
+    protected $table            = 'lead_charge_rules';
     protected $primaryKey       = 'id';
     protected $useAutoIncrement = true;
-    protected $returnType       = \App\Entities\IntegrationCommissionRule::class;
+    protected $returnType       = \App\Entities\LeadChargeRule::class;
     protected $allowedFields    = [
         'account_id', 'provider_code', 'tipo_negocio', 'model', 'value',
         'min_value', 'max_value', 'is_active', 'valid_from', 'valid_to', 'notes',
@@ -40,8 +41,12 @@ class IntegrationCommissionRuleModel extends Model
      *
      * Sem ordenação explícita, o banco poderia devolver a genérica antes da
      * específica e o tenant seria cobrado pela taxa errada.
+     *
+     * `$providerCode` é nulo para lead sem vínculo de integração — a maioria a
+     * partir da Fase 3, já que todo lead recebido é cobrável, não só o de
+     * imóvel vindo de conector externo.
      */
-    public function resolveFor(int $accountId, string $providerCode, ?string $tipoNegocio, ?string $onDate = null): ?\App\Entities\IntegrationCommissionRule
+    public function resolveFor(int $accountId, ?string $providerCode, ?string $tipoNegocio, ?string $onDate = null): ?\App\Entities\LeadChargeRule
     {
         $onDate ??= date('Y-m-d');
 
@@ -86,7 +91,7 @@ class IntegrationCommissionRuleModel extends Model
         return $rules[0];
     }
 
-    /** @return \App\Entities\IntegrationCommissionRule[] */
+    /** @return \App\Entities\LeadChargeRule[] */
     public function listAll(): array
     {
         return $this->orderBy('account_id', 'ASC')->orderBy('tipo_negocio', 'ASC')->findAll();

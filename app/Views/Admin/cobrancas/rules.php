@@ -1,7 +1,7 @@
 <?= $this->extend('Layouts/master') ?>
 
-<?= $this->section('title') ?>Regras de comissão<?= $this->endSection() ?>
-<?= $this->section('page_title') ?>Regras de comissão<?= $this->endSection() ?>
+<?= $this->section('title') ?>Regras de cobrança<?= $this->endSection() ?>
+<?= $this->section('page_title') ?>Regras de cobrança<?= $this->endSection() ?>
 
 <?= $this->section('styles') ?>
 <style>
@@ -12,8 +12,8 @@
 <?= $this->section('content') ?>
 
 <div class="mb-3">
-    <a href="<?= site_url('admin/comissoes') ?>" class="text-decoration-none text-muted small">
-        <i class="fa-solid fa-arrow-left me-1"></i> Voltar para as comissões
+    <a href="<?= site_url('admin/cobrancas') ?>" class="text-decoration-none text-muted small">
+        <i class="fa-solid fa-arrow-left me-1"></i> Voltar para as cobranças
     </a>
 </div>
 
@@ -31,7 +31,7 @@
 
             <?php if ($rules === []): ?>
                 <p class="text-muted mb-0">
-                    Nenhuma regra ainda — sem regra, nenhuma comissão é apurada.
+                    Nenhuma regra ainda — sem regra, nenhuma cobrança é gerada.
                     Comece cadastrando a padrão da plataforma ao lado.
                 </p>
             <?php else: ?>
@@ -90,7 +90,7 @@
         <div class="panel-card p-4">
             <h5 class="mb-3">Nova regra</h5>
 
-            <form method="post" action="<?= site_url('admin/comissoes/regras') ?>">
+            <form method="post" action="<?= site_url('admin/cobrancas/regras') ?>">
                 <?= csrf_field() ?>
 
                 <div class="mb-3">
@@ -124,7 +124,7 @@
                     <div class="col-6">
                         <label class="form-label" for="value">Valor</label>
                         <input type="text" class="form-control" id="value" name="value" placeholder="10" required>
-                        <div class="form-text">% do valor de fechamento, ou reais.</div>
+                        <div class="form-text">Percentual do valor de fechamento (negócio fechado) ou reais fixos (lead recebido).</div>
                     </div>
                 </div>
 
@@ -163,10 +163,10 @@
 <script>
 $(document).on('click', '.btn-excluir', function () {
     confirmAction(
-        '<?= site_url('admin/comissoes/regras') ?>/' + $(this).data('id'),
+        '<?= site_url('admin/cobrancas/regras') ?>/' + $(this).data('id'),
         'DELETE',
         'Excluir esta regra?',
-        'As comissões já apuradas por ela continuam como estão.'
+        'As cobranças já geradas por ela continuam como estão.'
     );
 });
 </script>

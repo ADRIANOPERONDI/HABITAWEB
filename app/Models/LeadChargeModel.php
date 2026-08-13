@@ -5,18 +5,21 @@ namespace App\Models;
 use CodeIgniter\Model;
 
 /**
- * Comissões apuradas sobre leads fechados de imóveis integrados.
+ * Cobranças por lead — recebido ou, no histórico anterior à Fase 3, fechado
+ * com sucesso em imóvel vindo de integração. Ver `origem`.
  */
-class IntegrationCommissionModel extends Model
+class LeadChargeModel extends Model
 {
-    protected $table            = 'integration_commissions';
+    protected $table            = 'lead_charges';
     protected $primaryKey       = 'id';
     protected $useAutoIncrement = true;
-    protected $returnType       = \App\Entities\IntegrationCommission::class;
+    protected $returnType       = \App\Entities\LeadCharge::class;
     protected $allowedFields    = [
         'account_id', 'provider_code', 'lead_id', 'property_id', 'rule_id',
-        'tipo_negocio', 'base_value', 'commission_value', 'status',
-        'payment_transaction_id', 'closed_at', 'approved_at', 'invoiced_at', 'paid_at', 'notes',
+        'tipo_negocio', 'origem', 'periodo', 'base_value', 'commission_value', 'status',
+        'payment_transaction_id', 'credit_applied', 'contest_deadline',
+        'dispute_reason', 'disputed_at', 'dispute_resolved_at', 'waived_reason',
+        'closed_at', 'approved_at', 'invoiced_at', 'paid_at', 'notes',
     ];
 
     protected $useTimestamps = true;
@@ -25,11 +28,16 @@ class IntegrationCommissionModel extends Model
 
     public const STATUS_PENDING   = 'PENDING';
     public const STATUS_APPROVED  = 'APPROVED';
+    public const STATUS_DISPUTED  = 'DISPUTED';
     public const STATUS_INVOICED  = 'INVOICED';
     public const STATUS_PAID      = 'PAID';
     public const STATUS_CANCELLED = 'CANCELLED';
+    public const STATUS_WAIVED    = 'WAIVED';
 
-    public function findByLead(int $leadId): ?\App\Entities\IntegrationCommission
+    public const ORIGEM_LEAD_RECEBIDO  = 'LEAD_RECEBIDO';
+    public const ORIGEM_NEGOCIO_FECHADO = 'NEGOCIO_FECHADO';
+
+    public function findByLead(int $leadId): ?\App\Entities\LeadCharge
     {
         return $this->where('lead_id', $leadId)->first();
     }
@@ -37,30 +45,30 @@ class IntegrationCommissionModel extends Model
     /**
      * Lista com filtros, para a tela do superadmin.
      *
-     * @return array{items: \App\Entities\IntegrationCommission[], pager: mixed}
+     * @return array{items: \App\Entities\LeadCharge[], pager: mixed}
      */
     public function listFiltered(array $filters = [], int $perPage = 25): array
     {
-        $builder = $this->select('integration_commissions.*, accounts.nome as account_name')
-            ->join('accounts', 'accounts.id = integration_commissions.account_id', 'left');
+        $builder = $this->select('lead_charges.*, accounts.nome as account_name')
+            ->join('accounts', 'accounts.id = lead_charges.account_id', 'left');
 
         if (! empty($filters['account_id'])) {
-            $builder->where('integration_commissions.account_id', (int) $filters['account_id']);
+            $builder->where('lead_charges.account_id', (int) $filters['account_id']);
         }
 
         if (! empty($filters['status'])) {
-            $builder->where('integration_commissions.status', $filters['status']);
+            $builder->where('lead_charges.status', $filters['status']);
         }
 
         if (! empty($filters['from'])) {
-            $builder->where('integration_commissions.closed_at >=', $filters['from'] . ' 00:00:00');
+            $builder->where('lead_charges.created_at >=', $filters['from'] . ' 00:00:00');
         }
 
         if (! empty($filters['to'])) {
-            $builder->where('integration_commissions.closed_at <=', $filters['to'] . ' 23:59:59');
+            $builder->where('lead_charges.created_at <=', $filters['to'] . ' 23:59:59');
         }
 
-        $items = $builder->orderBy('integration_commissions.closed_at', 'DESC')->paginate($perPage);
+        $items = $builder->orderBy('lead_charges.created_at', 'DESC')->paginate($perPage);
 
         return ['items' => $items, 'pager' => $this->pager];
     }
@@ -92,7 +100,7 @@ class IntegrationCommissionModel extends Model
         return $out;
     }
 
-    /** @return \App\Entities\IntegrationCommission[] */
+    /** @return \App\Entities\LeadCharge[] */
     public function approvedFor(int $accountId): array
     {
         return $this->where('account_id', $accountId)
@@ -100,7 +108,16 @@ class IntegrationCommissionModel extends Model
             ->findAll();
     }
 
-    /** Contas com comissão aprovada esperando faturamento. */
+    /** Aprovadas de uma conta num período (mês de competência), para o fechamento de ciclo. */
+    public function approvedForPeriod(int $accountId, string $periodo): array
+    {
+        return $this->where('account_id', $accountId)
+            ->where('status', self::STATUS_APPROVED)
+            ->where('periodo', $periodo)
+            ->findAll();
+    }
+
+    /** Contas com cobrança aprovada esperando faturamento. */
     public function accountsWithApproved(): array
     {
         $rows = $this->builder()
@@ -113,12 +130,24 @@ class IntegrationCommissionModel extends Model
         return array_map(static fn ($r) => (int) $r['account_id'], $rows);
     }
 
+    /** PENDING cujo prazo de contestação já passou — candidatas à aprovação automática. */
+    public function pendingPastDeadline(?string $onDate = null): array
+    {
+        $onDate ??= date('Y-m-d H:i:s');
+
+        return $this->where('status', self::STATUS_PENDING)
+            ->where('contest_deadline IS NOT NULL')
+            ->where('contest_deadline <=', $onDate)
+            ->findAll();
+    }
+
     public function markStatus(int $id, string $status, array $extra = []): bool
     {
         $stamp = match ($status) {
             self::STATUS_APPROVED => ['approved_at' => date('Y-m-d H:i:s')],
             self::STATUS_INVOICED => ['invoiced_at' => date('Y-m-d H:i:s')],
             self::STATUS_PAID     => ['paid_at' => date('Y-m-d H:i:s')],
+            self::STATUS_DISPUTED => ['disputed_at' => date('Y-m-d H:i:s')],
             default               => [],
         };
 

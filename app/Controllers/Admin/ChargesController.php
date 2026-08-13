@@ -3,27 +3,27 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
-use App\Models\IntegrationCommissionModel;
-use App\Models\IntegrationCommissionRuleModel;
-use App\Services\IntegrationCommissionService;
+use App\Models\LeadChargeModel;
+use App\Models\LeadChargeRuleModel;
+use App\Services\LeadChargeService;
 
 /**
- * Comissões por lead fechado.
+ * Cobranças por lead.
  *
  * Duas audiências, e a diferença importa:
  *
- *  - superadmin: /admin/comissoes — vê tudo, aprova, cancela e fatura.
- *  - tenant: /admin/minhas-comissoes — extrato SOMENTE LEITURA do que ele
+ *  - superadmin: /admin/cobrancas — vê tudo, aprova, cancela e fatura.
+ *  - tenant: /admin/minhas-cobrancas — extrato SOMENTE LEITURA do que ele
  *    deve. Existe para não haver surpresa na fatura; esconder isso é o caminho
  *    mais curto para uma discussão de cobrança.
  */
-class CommissionsController extends BaseController
+class ChargesController extends BaseController
 {
-    private IntegrationCommissionService $service;
+    private LeadChargeService $service;
 
     public function __construct()
     {
-        $this->service = new IntegrationCommissionService();
+        $this->service = new LeadChargeService();
     }
 
     // ------------------------------------------------------------ superadmin
@@ -39,18 +39,20 @@ class CommissionsController extends BaseController
 
         $data = $this->service->listFiltered(array_filter($filters));
 
-        return view('Admin/comissoes/index', [
+        return view('Admin/cobrancas/index', [
             'commissions' => $data['items'],
             'pager'       => $data['pager'],
             'totals'      => $this->service->totalsByStatus(),
             'filters'     => $filters,
             'accounts'    => model(\App\Models\AccountModel::class)->where('deleted_at IS NULL')->findAll(),
             'statuses'    => [
-                IntegrationCommissionModel::STATUS_PENDING   => 'Aguardando aprovação',
-                IntegrationCommissionModel::STATUS_APPROVED  => 'Aprovada',
-                IntegrationCommissionModel::STATUS_INVOICED  => 'Faturada',
-                IntegrationCommissionModel::STATUS_PAID      => 'Paga',
-                IntegrationCommissionModel::STATUS_CANCELLED => 'Cancelada',
+                LeadChargeModel::STATUS_PENDING   => 'Aguardando aprovação',
+                LeadChargeModel::STATUS_APPROVED  => 'Aprovada',
+                LeadChargeModel::STATUS_DISPUTED  => 'Contestada',
+                LeadChargeModel::STATUS_INVOICED  => 'Faturada',
+                LeadChargeModel::STATUS_PAID      => 'Paga',
+                LeadChargeModel::STATUS_CANCELLED => 'Cancelada',
+                LeadChargeModel::STATUS_WAIVED    => 'Isentada',
             ],
         ]);
     }
@@ -61,31 +63,31 @@ class CommissionsController extends BaseController
         $ids = (array) ($this->request->getPost('ids') ?? []);
 
         if ($ids === []) {
-            return $this->response->setJSON(['success' => false, 'message' => 'Nenhuma comissão selecionada.']);
+            return $this->response->setJSON(['success' => false, 'message' => 'Nenhuma cobrança selecionada.']);
         }
 
         $n = $this->service->approveMany($ids);
 
-        audit_log('commission.approved', ['count' => $n]);
+        audit_log('lead_charge.approved', ['count' => $n]);
 
         return $this->response->setJSON([
             'success' => true,
-            'message' => "{$n} comissão(ões) aprovada(s).",
+            'message' => "{$n} cobrança(s) aprovada(s).",
         ]);
     }
 
-    /** POST (AJAX): cancela uma comissão ainda não faturada. */
+    /** POST (AJAX): cancela uma cobrança ainda não faturada. */
     public function cancel(int $id)
     {
         $ok = $this->service->cancel($id, (string) $this->request->getPost('reason'));
 
-        audit_log('commission.cancelled', ['id' => $id, 'ok' => $ok]);
+        audit_log('lead_charge.cancelled', ['id' => $id, 'ok' => $ok]);
 
         return $this->response->setJSON([
             'success' => $ok,
             'message' => $ok
-                ? 'Comissão cancelada.'
-                : 'Só é possível cancelar comissões que ainda não foram faturadas.',
+                ? 'Cobrança cancelada.'
+                : 'Só é possível cancelar cobranças que ainda não foram faturadas.',
         ]);
     }
 
@@ -93,8 +95,8 @@ class CommissionsController extends BaseController
 
     public function rules()
     {
-        return view('Admin/comissoes/rules', [
-            'rules'    => model(IntegrationCommissionRuleModel::class)->listAll(),
+        return view('Admin/cobrancas/rules', [
+            'rules'    => model(LeadChargeRuleModel::class)->listAll(),
             'accounts' => model(\App\Models\AccountModel::class)->where('deleted_at IS NULL')->findAll(),
         ]);
     }
@@ -103,9 +105,9 @@ class CommissionsController extends BaseController
     {
         $post = $this->request->getPost();
 
-        $model = (string) ($post['model'] ?? IntegrationCommissionRuleModel::MODEL_PERCENT);
+        $model = (string) ($post['model'] ?? LeadChargeRuleModel::MODEL_PERCENT);
 
-        if (! in_array($model, [IntegrationCommissionRuleModel::MODEL_PERCENT, IntegrationCommissionRuleModel::MODEL_FIXED], true)) {
+        if (! in_array($model, [LeadChargeRuleModel::MODEL_PERCENT, LeadChargeRuleModel::MODEL_FIXED], true)) {
             return redirect()->back()->with('error', 'Modelo de cobrança inválido.');
         }
 
@@ -128,21 +130,21 @@ class CommissionsController extends BaseController
             'notes'         => $post['notes'] ?? null,
         ];
 
-        $ruleModel = model(IntegrationCommissionRuleModel::class);
+        $ruleModel = model(LeadChargeRuleModel::class);
         $id        = (int) ($post['id'] ?? 0);
 
         $id > 0 ? $ruleModel->update($id, $data) : $ruleModel->insert($data);
 
-        audit_log('commission.rule_saved', ['id' => $id ?: 'new']);
+        audit_log('lead_charge.rule_saved', ['id' => $id ?: 'new']);
 
-        return redirect()->to(site_url('admin/comissoes/regras'))->with('message', 'Regra salva.');
+        return redirect()->to(site_url('admin/cobrancas/regras'))->with('message', 'Regra salva.');
     }
 
     public function deleteRule(int $id)
     {
-        model(IntegrationCommissionRuleModel::class)->delete($id);
+        model(LeadChargeRuleModel::class)->delete($id);
 
-        audit_log('commission.rule_deleted', ['id' => $id]);
+        audit_log('lead_charge.rule_deleted', ['id' => $id]);
 
         return $this->response->setJSON(['success' => true, 'message' => 'Regra removida.']);
     }
@@ -156,7 +158,7 @@ class CommissionsController extends BaseController
         $accountId = (int) ($user->account_id ?? 0);
 
         if ($accountId === 0) {
-            return view('Admin/comissoes/mine', [
+            return view('Admin/cobrancas/mine', [
                 'commissions' => [],
                 'pager'       => \Config\Services::pager(),
                 'totals'      => [],
@@ -165,7 +167,7 @@ class CommissionsController extends BaseController
 
         $data = $this->service->statementFor($accountId);
 
-        return view('Admin/comissoes/mine', [
+        return view('Admin/cobrancas/mine', [
             'commissions' => $data['items'],
             'pager'       => $data['pager'],
             'totals'      => $this->service->totalsByStatus(['account_id' => $accountId]),

@@ -2,10 +2,10 @@
 
 namespace App\Entities;
 
-use App\Models\IntegrationCommissionRuleModel;
+use App\Models\LeadChargeRuleModel;
 use CodeIgniter\Entity\Entity;
 
-class IntegrationCommissionRule extends Entity
+class LeadChargeRule extends Entity
 {
     protected $casts = [
         'id'         => 'integer',
@@ -14,7 +14,8 @@ class IntegrationCommissionRule extends Entity
     ];
 
     /**
-     * Aplica a regra sobre o valor de fechamento.
+     * Aplica a regra sobre o valor base (closing_value para negócio fechado;
+     * 0 para lead recebido, onde o modelo é sempre FIXED).
      *
      * Piso e teto entram DEPOIS do cálculo, nesta ordem: o teto tem a última
      * palavra, para que um piso mal configurado acima do teto não gere cobrança
@@ -22,10 +23,10 @@ class IntegrationCommissionRule extends Entity
      */
     public function calculate(float $baseValue): float
     {
-        $model = (string) ($this->attributes['model'] ?? IntegrationCommissionRuleModel::MODEL_PERCENT);
+        $model = (string) ($this->attributes['model'] ?? LeadChargeRuleModel::MODEL_PERCENT);
         $value = (float) ($this->attributes['value'] ?? 0);
 
-        $commission = $model === IntegrationCommissionRuleModel::MODEL_FIXED
+        $commission = $model === LeadChargeRuleModel::MODEL_FIXED
             ? $value
             : $baseValue * ($value / 100);
 
@@ -48,7 +49,7 @@ class IntegrationCommissionRule extends Entity
         $model = (string) ($this->attributes['model'] ?? '');
         $value = (float) ($this->attributes['value'] ?? 0);
 
-        $base = $model === IntegrationCommissionRuleModel::MODEL_FIXED
+        $base = $model === LeadChargeRuleModel::MODEL_FIXED
             ? 'R$ ' . number_format($value, 2, ',', '.')
             : rtrim(rtrim(number_format($value, 2, ',', '.'), '0'), ',') . '%';
 

@@ -266,17 +266,18 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('integracoes/(:segment)', 'IntegrationsController::configure/$1');
     $routes->post('integracoes/(:segment)', 'IntegrationsController::save/$1');
 
-    // Comissões por lead fechado nos imóveis vindos de integração.
-    // A gestão é do superadmin; o tenant só tem o extrato somente-leitura, e
-    // por isso 'minhas-comissoes' fica fora do grupo restrito.
-    $routes->get('minhas-comissoes', 'CommissionsController::mine');
-    $routes->group('comissoes', ['filter' => 'group:superadmin'], function ($routes) {
-        $routes->get('/', 'CommissionsController::index');
-        $routes->post('aprovar', 'CommissionsController::approve');
-        $routes->post('(:num)/cancelar', 'CommissionsController::cancel/$1');
-        $routes->get('regras', 'CommissionsController::rules');
-        $routes->post('regras', 'CommissionsController::saveRule');
-        $routes->delete('regras/(:num)', 'CommissionsController::deleteRule/$1');
+    // Cobrança por lead recebido (Fase 3 — antes "comissão por negócio
+    // fechado", ver LeadChargeService). A gestão é do superadmin; o tenant só
+    // tem o extrato somente-leitura, e por isso 'minhas-cobrancas' fica fora
+    // do grupo restrito.
+    $routes->get('minhas-cobrancas', 'ChargesController::mine');
+    $routes->group('cobrancas', ['filter' => 'group:superadmin'], function ($routes) {
+        $routes->get('/', 'ChargesController::index');
+        $routes->post('aprovar', 'ChargesController::approve');
+        $routes->post('(:num)/cancelar', 'ChargesController::cancel/$1');
+        $routes->get('regras', 'ChargesController::rules');
+        $routes->post('regras', 'ChargesController::saveRule');
+        $routes->delete('regras/(:num)', 'ChargesController::deleteRule/$1');
     });
 
     // Plans Management: ver o $routes->resource('plans', ...) acima, servido por

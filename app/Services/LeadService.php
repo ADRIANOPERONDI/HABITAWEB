@@ -366,7 +366,7 @@ class LeadService
             // negócio porque a apuração de comissão falhou.
             if ($newStatus === LeadModel::STATUS_CONCLUIDO) {
                 try {
-                    (new \App\Services\IntegrationCommissionService())
+                    (new \App\Services\LeadChargeService())
                         ->onLeadClosed($this->leadModel->find($leadId));
                 } catch (\Throwable $e) {
                     log_message('error', 'Erro ao apurar comissão do lead ' . $leadId . ': ' . $e->getMessage());
