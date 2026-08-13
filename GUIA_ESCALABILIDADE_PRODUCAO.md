@@ -286,6 +286,17 @@ comando promove para APPROVED só quem passou do prazo sem o tenant contestar
 via `/admin/minhas-cobrancas`. Sem este cron, cobrança nenhuma chega a
 APPROVED e o fechamento de ciclo mensal não teria o que faturar.
 
+**Crédito mensal de lead (Ouro/Diamante)** — dia 1 de cada mês, antes de
+qualquer fechamento de ciclo:
+
+```cron
+5 0 1 * * cd /var/www/habitaweb && php spark creditos:conceder
+```
+
+Idempotente (índice único parcial em `lead_credit_ledger`): rodar de novo no
+mesmo mês não duplica a concessão. Precisa rodar **antes** de
+`leads:fechar-ciclo` consumir o crédito do mês.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL
