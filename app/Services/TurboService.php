@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\PromotionModel;
 use App\Models\PromotionPackageModel;
 use App\Models\PropertyModel;
+use App\Models\SubscriptionModel;
 use CodeIgniter\Config\Factories;
 
 /**
@@ -26,12 +27,14 @@ class TurboService
     protected PromotionModel $promotionModel;
     protected PromotionPackageModel $packageModel;
     protected PropertyModel $propertyModel;
+    protected SubscriptionModel $subscriptionModel;
 
     public function __construct()
     {
-        $this->promotionModel = Factories::models(PromotionModel::class);
-        $this->packageModel   = Factories::models(PromotionPackageModel::class);
-        $this->propertyModel  = Factories::models(PropertyModel::class);
+        $this->promotionModel    = Factories::models(PromotionModel::class);
+        $this->packageModel      = Factories::models(PromotionPackageModel::class);
+        $this->propertyModel     = Factories::models(PropertyModel::class);
+        $this->subscriptionModel = Factories::models(SubscriptionModel::class);
     }
 
     /**
@@ -40,6 +43,12 @@ class TurboService
      * `incluidas === null` significa ilimitado (plano com `limite_turbo_mensal`
      * NULL). Conta sem assinatura vigente não tem cota nenhuma — `incluidas = 0`,
      * não null, porque "sem plano" não é "ilimitado".
+     *
+     * Assinatura no ciclo ANUAL soma `turbo_bonus_anual` à cota do plano — é o
+     * benefício do anual descrito na proposta comercial (exposição, não
+     * desconto): Prata anual +2/mês, Ouro +3/mês, Diamante +5/mês. O bônus entra
+     * na MESMA contagem por `periodo` da cota normal — não é um contador à
+     * parte, então reseta junto com ela todo mês, sem mecanismo novo.
      *
      * @return array{incluidas: ?int, usadas: int, restantes: ?int, periodo: string}
      */
@@ -53,6 +62,12 @@ class TurboService
         // `?? 0` engoliria esse null junto com o de "conta sem plano" — os dois
         // casos têm significado oposto. Só "sem plano" vira 0.
         $incluidas = $plan === null ? 0 : $plan->turbosIncluidos();
+
+        // Bônus do anual só faz sentido quando a cota é finita — "ilimitado +
+        // bônus" continua ilimitado, e sem plano não há bônus a somar.
+        if ($plan !== null && $incluidas !== null && $this->billingCycleFor($accountId) === 'YEARLY') {
+            $incluidas += $plan->turboBonusAnual();
+        }
 
         $usadas = $this->promotionModel
             ->where('account_id', $accountId)
@@ -333,6 +348,25 @@ class TurboService
     private function periodoAtual(): string
     {
         return date('Y-m-01');
+    }
+
+    /**
+     * Ciclo de cobrança da assinatura vigente da conta, para decidir o bônus
+     * de turbinada do anual. Sem assinatura vigente, trata como mensal (sem
+     * bônus) — mesma janela de status que PlanGate usa para "conta tem plano".
+     */
+    private function billingCycleFor(int $accountId): string
+    {
+        $subscription = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->whereIn('status', PlanGate::STATUS_VIGENTES)
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        // strtoupper por robustez: o vocabulário real (CheckoutController /
+        // PaymentService::normalizeBillingCycle) é sempre maiúsculo, mas nada
+        // impede outro caminho de gravar diferente.
+        return strtoupper((string) ($subscription->billing_cycle ?? 'MONTHLY'));
     }
 
     /**

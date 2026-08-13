@@ -51,11 +51,26 @@ final class TurboServiceTest extends HabitawebTestCase
         return (int) $model->getInsertID();
     }
 
-    private function assinar(int $planId): void
+    private function makePlanComBonusAnual(int $limiteTurbo, int $bonusAnual): int
+    {
+        $model = model(PlanModel::class);
+        $model->insert([
+            'chave'               => 'TB_' . bin2hex(random_bytes(4)),
+            'nome'                => 'Plano Turbo Anual ' . bin2hex(random_bytes(4)),
+            'preco_mensal'        => 990.00,
+            'limite_turbo_mensal' => $limiteTurbo,
+            'turbo_bonus_anual'   => $bonusAnual,
+            'ativo'               => true,
+        ]);
+
+        return (int) $model->getInsertID();
+    }
+
+    private function assinar(int $planId, string $billingCycle = 'MONTHLY'): void
     {
         model(SubscriptionModel::class)
             ->where('account_id', $this->accountId)
-            ->set(['plan_id' => $planId, 'status' => 'ACTIVE'])
+            ->set(['plan_id' => $planId, 'status' => 'ACTIVE', 'billing_cycle' => $billingCycle])
             ->update();
 
         PlanGate::forget($this->accountId);
@@ -247,6 +262,73 @@ final class TurboServiceTest extends HabitawebTestCase
             0,
             (int) (new PropertyModel())->find($propertyId)->highlight_level
         );
+    }
+
+    // ---- bônus de turbinada do ciclo anual -----------------------------
+
+    public function testCicloAnualSomaOBonusNaCota(): void
+    {
+        $planId = $this->makePlanComBonusAnual(limiteTurbo: 5, bonusAnual: 3);
+        $this->assinar($planId, 'YEARLY');
+
+        $quota = (new TurboService())->quotaFor($this->accountId);
+
+        $this->assertSame(8, $quota['incluidas'], '5 do plano + 3 do bônus anual.');
+    }
+
+    public function testCicloMensalNaoRecebeOBonus(): void
+    {
+        $planId = $this->makePlanComBonusAnual(limiteTurbo: 5, bonusAnual: 3);
+        $this->assinar($planId, 'MONTHLY');
+
+        $quota = (new TurboService())->quotaFor($this->accountId);
+
+        $this->assertSame(5, $quota['incluidas'], 'Sem o ciclo anual, o bônus não se aplica.');
+    }
+
+    public function testBonusAnualEntraNaMesmaContagemDeConsumo(): void
+    {
+        $planId = $this->makePlanComBonusAnual(limiteTurbo: 5, bonusAnual: 3);
+        $this->assinar($planId, 'YEARLY');
+        $service = new TurboService();
+
+        for ($i = 0; $i < 8; $i++) {
+            $result = $service->activateFromQuota($this->novoImovel(), $this->accountId);
+            $this->assertTrue($result['success'], "Falhou na iteração {$i} (8 = 5 do plano + 3 do bônus): {$result['message']}");
+        }
+
+        $nono = $service->activateFromQuota($this->novoImovel(), $this->accountId);
+        $this->assertFalse($nono['success'], 'O bônus não é um contador à parte — soma na mesma cota mensal.');
+    }
+
+    public function testBonusZeradoNaoAlteraACota(): void
+    {
+        // PRATA da proposta: turbo mensal 0, bônus anual 2.
+        $planId = $this->makePlanComBonusAnual(limiteTurbo: 0, bonusAnual: 2);
+        $this->assinar($planId, 'YEARLY');
+
+        $quota = (new TurboService())->quotaFor($this->accountId);
+
+        $this->assertSame(2, $quota['incluidas'], 'Plano sem turbo mensal, mas com bônus anual, ainda concede o bônus.');
+    }
+
+    public function testBonusNaoSeAplicaAPlanoIlimitado(): void
+    {
+        $model = model(PlanModel::class);
+        $model->insert([
+            'chave'               => 'TB_' . bin2hex(random_bytes(4)),
+            'nome'                => 'Plano Ilimitado Anual',
+            'preco_mensal'        => 990.00,
+            'limite_turbo_mensal' => null,
+            'turbo_bonus_anual'   => 5,
+            'ativo'               => true,
+        ]);
+        $planId = (int) $model->getInsertID();
+        $this->assinar($planId, 'YEARLY');
+
+        $quota = (new TurboService())->quotaFor($this->accountId);
+
+        $this->assertNull($quota['incluidas'], 'Ilimitado + bônus continua ilimitado, não pode virar um número.');
     }
 
     // ---- deactivateExpired ------------------------------------------------
