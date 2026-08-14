@@ -238,6 +238,25 @@ Sem esse cron, as visitas continuam sendo contadas (ficam no Redis), mas a
 coluna `visitas_count` para de refletir no painel até o próximo flush. Se o
 Redis cair, o app volta sozinho a gravar visitas direto no banco (fallback).
 
+O mesmo `metrics:flush` agora também descarrega as séries diárias do painel
+por período (Fase 4): `property_view_daily`, `property_view_source_daily` e
+`search_daily`. Diferença importante em relação às visitas: se o Redis cair,
+**não há fallback síncrono** para essas séries — elas são agregadas por
+natureza, não existe "linha crua" para gravar direto. Uma visualização ou
+busca durante um blecaute de Redis simplesmente não entra nessas tabelas;
+nunca derruba a página.
+
+**Retenção das séries diárias** — mensal, mesma instância worker:
+
+```cron
+0 4 1 * * cd /var/www/habitaweb && php spark metrics:prune
+```
+
+Remove linhas com mais de 24 meses de `property_view_daily`,
+`property_view_source_daily` e `search_daily`. A granularidade diária já
+limita o volume por natureza; sem retenção, ainda assim cresceria pra
+sempre.
+
 **Integrações com plataformas externas (Simob e afins)** — também só na
 instância worker:
 

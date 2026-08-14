@@ -2,6 +2,9 @@
 
 namespace App\Commands;
 
+use App\Models\PropertyViewDailyModel;
+use App\Models\PropertyViewSourceDailyModel;
+use App\Models\SearchDailyModel;
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 
@@ -10,6 +13,8 @@ use CodeIgniter\CLI\CLI;
  * - Contadores de visita de imóvel (PropertyService::incrementVisit) — um
  *   UPDATE agregado por imóvel em vez de um UPDATE por page view.
  * - Recálculos de score adiados pelo debounce do RankingService.
+ * - Séries diárias do painel por período (Fase 4): visualização por imóvel,
+ *   por origem, e busca — todas via UPSERT que SOMA, não substitui.
  *
  * Agendar via cron (numa instância só, junto dos demais crons):
  *   *\/5 * * * * php spark metrics:flush
@@ -50,5 +55,29 @@ class FlushMetrics extends BaseCommand
         }
 
         CLI::write("Ranking: {$recalculated} score(s) recalculado(s).", 'green');
+
+        // 3. Série diária de visualização por imóvel
+        $viewDailyModel = model(PropertyViewDailyModel::class);
+        $viewsFlushed   = $buffer->flushPropertyViews(
+            static fn (int $propertyId, string $dia, int $views, int $unicas): bool =>
+                $viewDailyModel->upsertCounters($propertyId, $dia, $views, $unicas)
+        );
+        CLI::write("Views diárias: {$viewsFlushed} série(s) atualizada(s).", 'green');
+
+        // 4. Série diária de visualização por origem
+        $sourceDailyModel = model(PropertyViewSourceDailyModel::class);
+        $sourcesFlushed   = $buffer->flushPropertyViewSources(
+            static fn (int $propertyId, string $dia, string $origem, int $views): bool =>
+                $sourceDailyModel->upsertCounter($propertyId, $dia, $origem, $views)
+        );
+        CLI::write("Views por origem: {$sourcesFlushed} série(s) atualizada(s).", 'green');
+
+        // 5. Série diária de busca
+        $searchDailyModel = model(SearchDailyModel::class);
+        $searchesFlushed  = $buffer->flushSearches(
+            static fn (string $dia, array $dims, int $buscas): bool =>
+                $searchDailyModel->upsertCounter($dia, $dims, $buscas)
+        );
+        CLI::write("Buscas: {$searchesFlushed} série(s) atualizada(s).", 'green');
     }
 }

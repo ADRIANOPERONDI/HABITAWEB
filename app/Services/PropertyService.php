@@ -994,6 +994,34 @@ class PropertyService
     }
 
     /**
+     * Registra a visualização na série diária (`property_view_daily` /
+     * `property_view_source_daily`, Fase 4) — sinal adicional para o painel
+     * por período, com dedup de visitante único por dia. Não mexe em
+     * `incrementVisit`/`visitas_count`: os dois caminhos coexistem, chamados
+     * juntos por quem exibe o imóvel.
+     *
+     * Sem fallback síncrono se o Redis estiver fora: a série diária é
+     * agregada por natureza (não existe "linha crua" para gravar direto no
+     * Postgres sem reintroduzir o problema que o buffer resolve), então uma
+     * visualização durante um blecaute de Redis simplesmente não entra nessa
+     * série — nunca derruba a renderização da página.
+     */
+    public function recordView(int $id): void
+    {
+        $request = service('request');
+
+        $ip = $request->getIPAddress();
+
+        $userAgent = $request instanceof \CodeIgniter\HTTP\IncomingRequest
+            ? (string) $request->getUserAgent()
+            : '';
+
+        $origem = \App\Libraries\Metrics\ViewOrigin::classify($request->getHeaderLine('Referer'));
+
+        service('metricsBuffer')->bufferPropertyView($id, $origem, $ip, $userAgent);
+    }
+
+    /**
      * Deleta (Soft Delete) um imóvel.
      */
     public function deleteProperty(int $id): bool

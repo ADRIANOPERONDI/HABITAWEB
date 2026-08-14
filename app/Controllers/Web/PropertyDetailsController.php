@@ -17,6 +17,7 @@ class PropertyDetailsController extends BaseController
         }
 
         $propertyService->incrementVisit((int) $id);
+        $propertyService->recordView((int) $id);
 
         // isFavorited já vem de getPropertyDetails() (mesma checagem, mesmo
         // auth()->id()) — o bloco duplicado que existia aqui fazia uma segunda
