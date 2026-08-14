@@ -84,6 +84,25 @@ class AccountService
     }
 
     /**
+     * Equipe pública de uma conta (página premium, Fase 5) — a mesma
+     * `TeamController::index()` já usa (`account_id`, exclui soft-deleted),
+     * mais o opt-in `publico` (corretor decide se aparece na vitrine) e
+     * `active = 1` (afastado/desligado não some do painel interno, mas some
+     * da página pública).
+     *
+     * @return \App\Entities\User[]
+     */
+    public function getPublicTeam(int $accountId): array
+    {
+        return \CodeIgniter\Config\Factories::models(\App\Models\UserModel::class)
+            ->where('account_id', $accountId)
+            ->where('publico', true)
+            ->where('active', 1)
+            ->orderBy('nome', 'ASC')
+            ->findAll();
+    }
+
+    /**
      * Exclui (soft delete) uma conta.
      *
      * Api\V1\AccountController::delete() já chamava este método, mas ele nunca

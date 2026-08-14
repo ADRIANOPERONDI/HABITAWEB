@@ -71,16 +71,48 @@ class PartnerController extends BaseController
     {
         $propertyService = new \App\Services\PropertyService();
 
-        $propData = $propertyService->listPublicProperties([
-            'account_id' => $partner->id,
-            'status'     => 'ACTIVE'
-        ], 9);
+        $isPremium = \App\Services\PlanGate::has(
+            (int) $partner->id,
+            \App\Entities\PlanFeature::PAGINA_PREMIUM
+        );
 
-        return view('web/partners/show', [
+        if (!$isPremium) {
+            $propData = $propertyService->listPublicProperties([
+                'account_id' => $partner->id,
+                'status'     => 'ACTIVE'
+            ], 9);
+
+            return view('web/partners/show', [
+                'partner'    => $partner,
+                'properties' => $propData['properties'],
+                'pager'      => $propData['pager'],
+                'title'      => $partner->nome . ' - Perfil do Parceiro'
+            ]);
+        }
+
+        // Página premium (Diamante): abas Todos/Lançamentos/Destaques sobre o
+        // mesmo WHERE base (account_id + ACTIVE) — só o filtro extra muda.
+        $aba = $this->request->getGet('aba');
+        if (!in_array($aba, ['lancamentos', 'destaques'], true)) {
+            $aba = 'todos';
+        }
+
+        $filters = ['account_id' => $partner->id, 'status' => 'ACTIVE'];
+        if ($aba === 'lancamentos') {
+            $filters['is_novo'] = true;
+        } elseif ($aba === 'destaques') {
+            $filters['promoted_only'] = true;
+        }
+
+        $propData = $propertyService->listPublicProperties($filters, 9);
+
+        return view('web/partners/show_premium', [
             'partner'    => $partner,
             'properties' => $propData['properties'],
             'pager'      => $propData['pager'],
-            'title'      => $partner->nome . ' - Perfil do Parceiro'
+            'team'       => (new \App\Services\AccountService())->getPublicTeam((int) $partner->id),
+            'aba'        => $aba,
+            'title'      => $partner->nome . ' - ' . ($partner->tipo_conta === 'IMOBILIARIA' ? 'Imobiliária' : 'Corretor') . ' Parceiro'
         ]);
     }
 }

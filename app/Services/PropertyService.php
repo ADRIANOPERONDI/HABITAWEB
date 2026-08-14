@@ -1254,6 +1254,11 @@ class PropertyService
             $builder->where('properties.vagas >=', (int) $filters['vagas']);
         }
 
+        // Aba "Lançamentos" da página premium da imobiliária (Fase 5).
+        if (isset($filters['is_novo']) && $filters['is_novo'] === true) {
+            $builder->where('properties.is_novo', true);
+        }
+
         if (!empty($filters['property_ids'])) {
             $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
             $ids = array_values(array_filter(array_map('intval', $ids)));
