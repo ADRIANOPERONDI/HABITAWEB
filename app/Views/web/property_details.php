@@ -451,7 +451,11 @@
                         })
                         .then(data => {
                             const icon = favoriteBtn.querySelector('i');
-                            const nowFavorited = data.status === 'added';
+                            // O envelope de resposta tem 'status' em dois
+                            // niveis: data.status e o codigo HTTP (201/200),
+                            // data.data.status e 'added'/'removed' -- o icone
+                            // nunca acendia porque comparava o nivel errado.
+                            const nowFavorited = data.data?.status === 'added';
                             favoriteBtn.dataset.favorited = nowFavorited ? '1' : '0';
                             favoriteBtn.title = nowFavorited ? 'Remover dos favoritos' : 'Favoritar';
                             icon.classList.toggle('fa-solid', nowFavorited);
