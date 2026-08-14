@@ -171,12 +171,30 @@ final class PlanSeederTest extends HabitawebTestCase
     {
         model(PlanModel::class)->where('chave', 'PRATA')->set(['preco_mensal' => 1850.00])->update();
 
-        model(PlanModel::class)->insert([
+        // Upsert em vez de insert cego: `chave` é UNIQUE de verdade no banco, e
+        // o ambiente de teste já tem PRATA_LEGADO como baseline permanente
+        // (exigida pelo TenantFactory). Um insert() colidindo com ela falha em
+        // silêncio (DBDebug=false), deixando o teste comparar contra o preço da
+        // baseline em vez da fixture proposital daqui. Usa o query builder cru
+        // (como o próprio PlanSeeder::upsert() faz) em vez do Model: passar
+        // update($id, $data) sem a chave 'id' no array deixa o placeholder
+        // {id} da regra is_unique[plans.chave,id,{id}] vazio, a validação se
+        // autorrejeita comparando a linha com ela mesma, e o update() retorna
+        // false em silêncio — outro caso do mesmo padrão de falha silenciosa.
+        $db = \Config\Database::connect();
+        $legadoExistente = $db->table('plans')->where('chave', 'PRATA_LEGADO')->get()->getRowArray();
+        $fixtureLegado = [
             'chave'        => 'PRATA_LEGADO',
             'nome'         => 'Prata legado pré-existente',
             'preco_mensal' => 1234.00,
-            'ativo'        => false,
-        ]);
+            'ativo'        => 'f',
+        ];
+
+        if ($legadoExistente) {
+            $db->table('plans')->where('id', $legadoExistente['id'])->update($fixtureLegado);
+        } else {
+            $db->table('plans')->insert($fixtureLegado);
+        }
 
         $this->semear();
 
