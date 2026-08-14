@@ -891,3 +891,78 @@ Persistência mínima em qualquer opção (já na seção 2.1): `appendonly yes`
 | ~~Conversão dos últimos `base_url()` de upload para `getPublicUrl()`~~ | **Feito (2026-07-11)** — helpers `media_url()`/`media_variant_url()` em todos os call sites de upload | — |
 | CI com serviço Redis (`phpunit.yml`) | Suíte local já roda contra Redis real; CI segue com FileHandler | Primeira regressão que só se manifestaria com handler Redis |
 | ~~Upgrade CI4 4.6.4 → 4.7.2+ (CVE-2026-48062, regra `ext_in`)~~ | **Feito (2026-07-11)** — 4.7.4 instalado, configs sincronizadas, `composer audit` limpo, suíte completa verde | — |
+
+---
+
+## 13. Runbook: virada comercial (Fases 6 e 7 — rampa de lançamento e migração de planos)
+
+A reestruturação comercial (planos Prata/Ouro/Diamante com mensalidade em
+rampa e cobrança por lead) já está toda no código — `PlanSeeder` já renomeou
+os planos de preço antigo para `<CHAVE>_LEGADO` (`ativo=false`) e criou
+`PRATA`/`OURO`/`DIAMANTE` com os preços novos. **Rodar o seeder não é a
+virada** — ele só prepara o catálogo. A virada de verdade é o dia em que as
+contas existentes migram e a cobrança liga, e isso é feito à mão, com as
+ferramentas abaixo, não por deploy.
+
+### 13.1 Sequência
+
+1. **Deploy com `valid_from` no futuro.** `plan_launch_ramps` já vem seedada
+   (migration `2026-08-16-090000_CreatePlanLaunchRampsTable.php`) com
+   `valid_from` = data da migration — ajuste manualmente para a data real da
+   virada antes de ir para produção (`UPDATE plan_launch_ramps SET
+   valid_from = '2026-MM-DD'`). É a chave-mestra: nenhuma conta entra na
+   rampa antes dessa data, mesmo que o código já esteja rodando. Se a virada
+   tiver prazo de validade (a rampa é condição de lançamento de uma praça
+   específica, não vale para sempre), preencha também `valid_to` — sem ele
+   uma conta que assinar daqui a dois anos ainda ganharia os 6 meses grátis
+   do lançamento.
+2. **Comunicação, 30 dias antes.** Fora do código (não há infraestrutura de
+   e-mail transacional para isso neste repositório): avisar cada conta em
+   plano legado do preço novo, da rampa (se aplicável) e da data.
+3. **Dia 1 do mês M — roda o relatório primeiro.**
+   ```bash
+   php spark planos:migrar-comercial --dry-run
+   ```
+   Confira o relatório inteiro (preço atual, preço novo nos dois modos,
+   leads dos últimos 30 dias) antes de aplicar qualquer coisa. Depois, conta
+   por conta (recomendado na primeira leva) ou em lote:
+   ```bash
+   php spark planos:migrar-comercial --confirmar --modo rampa --conta 123
+   # ou, decidido o modo para toda a base:
+   php spark planos:migrar-comercial --confirmar --modo cheio
+   ```
+   `--modo rampa` x `--modo cheio` é decisão de caixa do cliente (ver
+   docblock de `App\Commands\MigrateCommercialPlans`), não tem default —
+   escolha explícita a cada execução.
+4. **A partir daqui, os crons já cobrem o resto** (ver seção 3.4):
+   `assinaturas:aplicar-rampa` (diário) aplica as transições de faixa;
+   `leads:aprovar-cobrancas` (diário) e `leads:fechar-ciclo` (dia 1) cobram
+   por lead recebido, rampa ou não — a cobrança por lead nunca esperou a
+   rampa, ela é a receita do semestre de lançamento para quem entrou em
+   `--modo rampa`.
+5. **Dia 1 do mês M+1 — fecha o primeiro ciclo com conferência.**
+   ```bash
+   php spark leads:fechar-ciclo --dry-run
+   ```
+   Revise linha a linha antes de deixar o cron rodar sem supervisão daí em
+   diante.
+
+### 13.2 Coisas que só dão problema se pularem um passo
+
+- **Não rode `--confirmar` sem ter rodado `--dry-run` primeiro** — o
+  relatório é o que embasa a escolha entre `--modo rampa` e `--modo cheio`;
+  aplicar às cegas é decisão de caixa tomada sem dado.
+- **`--modo rampa` cancela a assinatura real no gateway** quando a conta já
+  tinha uma (Asaas não aceita assinatura de valor zero). Isso é esperado —
+  `assinaturas:aplicar-rampa` recria quando a conta sair do 0% — mas se
+  algo além do esperado depender daquela `asaas_subscription_id`
+  (relatório externo, planilha manual), avise quem mantém isso antes.
+- **`assinaturas:aplicar-rampa` não cria assinatura nova sozinho** na
+  virada 0%→50% (ver seção 3.4) — fica marcado como ação manual em
+  `audit_logs`. Alguém do time comercial precisa completar essa virada
+  específica; não é um cron 100% autônomo do início ao fim.
+- **Contas que nunca foram migradas continuam no plano legado
+  indefinidamente** — `PlanGate`/features/turbo lêem o plano da assinatura
+  ativa, seja ele qual for; uma conta esquecida em `_LEGADO` não quebra,
+  só fica congelada na estrutura comercial antiga (turbo, limites, features)
+  até alguém rodar a migração para ela.
