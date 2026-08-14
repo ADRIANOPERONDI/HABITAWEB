@@ -15,10 +15,14 @@ class PartnerController extends BaseController
         $propertyService = new \App\Services\PropertyService();
         
         $data = $accountService->listPublicPartners(12);
-        
-        // Calculate total properties for each partner via service/model logic
+
+        // Uma query em lote (GROUP BY) para a página inteira, não uma por
+        // parceiro — o loop antigo era N+1: 12 parceiros na página, 12
+        // queries de contagem além da própria listagem.
+        $accountIds = array_map(static fn ($partner) => $partner->id, $data['partners']);
+        $counts = $propertyService->countPublicPropertiesByAccounts($accountIds);
         foreach ($data['partners'] as $partner) {
-            $partner->total_properties = $propertyService->countPublicPropertiesByAccount($partner->id);
+            $partner->total_properties = $counts[(int) $partner->id] ?? 0;
         }
 
         return view('web/partners/index', [

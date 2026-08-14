@@ -149,15 +149,21 @@ class AccountService
 
     /**
      * Lista parceiros (contas ativas) para exibição pública.
+     *
+     * Passa a exigir assinatura vigente (ACTIVE/TRIAL) — antes só olhava
+     * `accounts.status`, então uma conta com assinatura cancelada (mas conta
+     * não desativada manualmente) seguia na vitrine pública de parceiros.
      */
     public function listPublicPartners(int $perPage = 12): array
     {
         return [
             'partners' => $this->accountModel
                 ->select('accounts.*')
-                ->where('status', 'ACTIVE')
+                ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'inner')
+                ->where('accounts.status', 'ACTIVE')
                 ->where('accounts.nome !=', 'Administrador')
-                ->orderBy('nome', 'ASC')
+                ->groupBy('accounts.id')
+                ->orderBy('accounts.nome', 'ASC')
                 ->paginate($perPage),
             'pager' => $this->accountModel->pager
         ];
