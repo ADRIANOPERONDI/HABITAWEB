@@ -108,6 +108,26 @@ class PropertyModel extends Model
     }
 
     /**
+     * Cidade onde a conta tem mais imóveis ativos — proxy para "a praça da
+     * conta" enquanto `accounts` não tem endereço próprio (chega na Fase 5).
+     */
+    public function mostCommonCidade(int $accountId): ?string
+    {
+        $row = $this->builder()
+            ->select('cidade, COUNT(*) as total')
+            ->where('account_id', $accountId)
+            ->where('status', 'ACTIVE')
+            ->where("cidade IS NOT NULL AND cidade != ''", null, false)
+            ->groupBy('cidade')
+            ->orderBy('total', 'DESC')
+            ->limit(1)
+            ->get()
+            ->getRow();
+
+        return $row->cidade ?? null;
+    }
+
+    /**
      * Busca condomínios únicos de uma conta.
      */
     public function getDistinctCondominios(int $accountId): array
