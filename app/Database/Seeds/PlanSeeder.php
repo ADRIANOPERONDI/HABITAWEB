@@ -96,7 +96,7 @@ class PlanSeeder extends Seeder
                 'descricao'               => 'Máxima exposição, página premium e inteligência sobre o mercado da praça.',
                 'limite_imoveis_ativos'   => null,
                 'limite_fotos_por_imovel' => null,
-                'limite_turbo_mensal'     => 15,
+                'limite_turbo_mensal'     => 10,
                 'turbo_bonus_anual'       => 5,
                 'credito_leads_mensal'    => 500.00,
                 'exposure_weight'         => 20,
