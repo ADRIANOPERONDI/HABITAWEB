@@ -15,7 +15,11 @@ class SubscriptionModel extends Model
     protected $allowedFields    = [
         'account_id', 'plan_id', 'status', 'billing_cycle', 'data_inicio', 'data_fim',
         'proximo_pagamento', 'asaas_subscription_id', 'asaas_customer_id',
-        'payment_method', 'next_billing_date'
+        'payment_method', 'next_billing_date',
+        // Rampa de lancamento (Fase 6) — ramp_started_at nulo = nao participa,
+        // cobra cheio. 'valor' e o preco efetivamente cobrado, ja com o
+        // desconto de rampa se houver.
+        'ramp_started_at', 'ramp_percent_atual', 'valor',
     ];
 
     protected bool $allowEmptyInserts = false;
