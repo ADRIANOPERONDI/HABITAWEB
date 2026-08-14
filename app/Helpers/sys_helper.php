@@ -226,3 +226,20 @@ if (!function_exists('media_variant_url')) {
         return media_url($url);
     }
 }
+
+if (!function_exists('partner_url')) {
+    /**
+     * URL pública canônica de uma conta (página da imobiliária/corretor).
+     * Slug quando existe (toda conta nova já ganha um em
+     * AccountModel::generateSlug()); fallback por id só para as poucas
+     * contas de fixture/teste que driblam o model e inserem direto no banco.
+     */
+    function partner_url($partner): string
+    {
+        if (!empty($partner->slug)) {
+            return site_url('imobiliaria/' . $partner->slug);
+        }
+
+        return site_url('parceiro/' . $partner->id);
+    }
+}

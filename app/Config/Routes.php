@@ -47,6 +47,10 @@ $routes->post('webhook/(:segment)', 'Webhook\WebhookController::receive/$1');
 
 // Partner Routes (Public Marketplace)
 $routes->get('parceiros', 'Web\PartnerController::index');
+// URL canônica por slug (Fase 5). parceiro/(:num) segue existindo e vira 301
+// para cá dentro do próprio PartnerController::show() — link antigo/indexado
+// continua funcionando, só deixa de ser o canônico.
+$routes->get('imobiliaria/(:segment)', 'Web\PartnerController::showBySlug/$1');
 $routes->get('parceiro/(:num)', 'Web\PartnerController::show/$1');
 
 // Páginas legais

@@ -36,7 +36,11 @@ class ProfileController extends BaseController
         }
 
         $data = $this->request->getPost([
-            'nome', 'email', 'telefone', 'whatsapp', 'creci', 'documento'
+            'nome', 'email', 'telefone', 'whatsapp', 'creci', 'documento',
+            // Perfil público da imobiliária (Fase 5).
+            'cep', 'estado', 'cidade', 'bairro', 'rua', 'numero', 'complemento',
+            'descricao', 'site', 'horario_atendimento',
+            'instagram', 'facebook', 'linkedin', 'youtube', 'tiktok',
         ]);
 
         $userNome = $this->request->getPost('user_nome');
@@ -53,6 +57,16 @@ class ProfileController extends BaseController
 
         if ($file && $file->isValid() && !$file->hasMoved()) {
             $data['logo'] = $this->moveAndOptimizeImage($file, 'uploads/accounts', 800, 800, 82);
+        }
+
+        $capaFile = $this->request->getFile('capa');
+
+        if ($error = $this->validateImageUpload($capaFile, 10240, 'Capa')) {
+            return redirect()->back()->withInput()->with('error', $error);
+        }
+
+        if ($capaFile && $capaFile->isValid() && !$capaFile->hasMoved()) {
+            $data['capa'] = $this->moveAndOptimizeImage($capaFile, 'uploads/accounts', 1600, 500, 82);
         }
 
         // --- VERIFICATION DOCUMENTS ---

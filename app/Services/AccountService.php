@@ -76,6 +76,14 @@ class AccountService
     }
 
     /**
+     * Busca uma conta pelo slug de URL (página pública da imobiliária).
+     */
+    public function getAccountBySlug(string $slug): ?Account
+    {
+        return $this->accountModel->where('slug', $slug)->first();
+    }
+
+    /**
      * Exclui (soft delete) uma conta.
      *
      * Api\V1\AccountController::delete() já chamava este método, mas ele nunca

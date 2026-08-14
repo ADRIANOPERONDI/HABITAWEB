@@ -129,10 +129,14 @@ final class PartnerPageTest extends HabitawebTestCase
     {
         $accountId = $this->featuredPartner('Parceiro Home ' . bin2hex(random_bytes(3)));
         $this->property($accountId);
+        $slug = model(\App\Models\AccountModel::class)->find($accountId)->slug;
 
         $html = $this->get('/')->getBody();
 
-        $this->assertStringContainsString('parceiro/' . $accountId, $html);
+        // Desde a etapa 5.3 a URL canônica é por slug (imobiliaria/{slug}),
+        // não mais parceiro/{id} — mas o que este teste prova continua sendo
+        // o mesmo: nunca mais linka para a rota inexistente 'anunciante/{id}'.
+        $this->assertStringContainsString('imobiliaria/' . $slug, $html);
         $this->assertStringNotContainsString('anunciante/' . $accountId, $html);
     }
 
@@ -140,8 +144,9 @@ final class PartnerPageTest extends HabitawebTestCase
     {
         $tenant = (new TenantFactory())->create(['nome' => 'Parceiro Capa ' . bin2hex(random_bytes(3))]);
         $this->property((int) $tenant['account']->id);
+        $slug = model(\App\Models\AccountModel::class)->find($tenant['account']->id)->slug;
 
-        $html = $this->get('parceiro/' . $tenant['account']->id)->getBody();
+        $html = $this->get('imobiliaria/' . $slug)->getBody();
 
         // Sem capa cadastrada, cai no placeholder LOCAL (assets/img/...),
         // nunca mais no https://placehold.co/... hardcoded.

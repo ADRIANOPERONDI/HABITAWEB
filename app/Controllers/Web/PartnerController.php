@@ -33,22 +33,46 @@ class PartnerController extends BaseController
     }
 
     /**
-     * Show partner profile and their properties
+     * URL legada por id. Segue funcionando (link antigo/indexado não pode
+     * quebrar), mas quando a conta já tem slug o canônico passa a ser
+     * `imobiliaria/(:segment)` — 301, não 302: é o mesmo parceiro, não uma
+     * mudança temporária, e é o sinal que motores de busca precisam para
+     * transferir o rankeamento da URL antiga para a nova.
      */
     public function show($id)
     {
         $accountService = new \App\Services\AccountService();
-        $propertyService = new \App\Services\PropertyService();
-        
-        $partner = $accountService->getAccountById((int)$id);
+        $partner = $accountService->getAccountById((int) $id);
 
         if (!$partner) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound('Parceiro não encontrado.');
         }
 
-        // Get properties for this partner via service
+        if (!empty($partner->slug)) {
+            return redirect()->to(site_url('imobiliaria/' . $partner->slug), 301);
+        }
+
+        return $this->renderShow($partner);
+    }
+
+    public function showBySlug(string $slug)
+    {
+        $accountService = new \App\Services\AccountService();
+        $partner = $accountService->getAccountBySlug($slug);
+
+        if (!$partner) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound('Parceiro não encontrado.');
+        }
+
+        return $this->renderShow($partner);
+    }
+
+    private function renderShow(\App\Entities\Account $partner)
+    {
+        $propertyService = new \App\Services\PropertyService();
+
         $propData = $propertyService->listPublicProperties([
-            'account_id' => $id,
+            'account_id' => $partner->id,
             'status'     => 'ACTIVE'
         ], 9);
 
