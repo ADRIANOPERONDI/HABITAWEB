@@ -128,7 +128,7 @@ class SimobPropertyMapper
         return new ExternalProperty(
             externalId: $externalId,
             fields: array_filter($fields, static fn ($v) => $v !== null && $v !== ''),
-            images: $this->mapImages($detail, $listItem, $externalId),
+            images: $this->mapImages($detail, $listItem),
             externalCode: (string) ($detail['codigo'] ?? $listItem['codigo'] ?? $externalId),
             externalUpdatedAt: $this->cleanDate($listItem['updatedAt'] ?? $detail['updatedAt'] ?? null),
             raw: $detail,
@@ -430,13 +430,17 @@ class SimobPropertyMapper
     /**
      * @return ExternalImage[]
      */
-    private function mapImages(array $detail, array $listItem, string $externalId): array
+    private function mapImages(array $detail, array $listItem): array
     {
         $raw = $detail['imagens'] ?? $listItem['imagens'] ?? [];
 
         if (! is_array($raw)) {
             return [];
         }
+
+        // Vem no mesmo nível de `imagens`, não por imagem — é o segmento de
+        // caminho que a própria API dá pra montar a URL (ver SimobClient::imageUrl).
+        $baseUrlImagem = trim((string) ($detail['baseUrlImagem'] ?? $listItem['baseUrlImagem'] ?? ''));
 
         $max    = (int) ($this->settings['max_images'] ?? 20);
         $images = [];
@@ -449,7 +453,7 @@ class SimobPropertyMapper
             $nome = trim((string) ($img['baseNomeImagem'] ?? ''));
             $ext  = trim((string) ($img['extensao'] ?? ''));
 
-            if ($nome === '' || $ext === '') {
+            if ($nome === '' || $ext === '' || $baseUrlImagem === '') {
                 continue;
             }
 
@@ -457,7 +461,7 @@ class SimobPropertyMapper
             $ordem = (int) ($img['posicao'] ?? $img['ordem'] ?? count($images) + 1);
 
             $images[] = new ExternalImage(
-                url: SimobClient::imageUrl($this->baseUrl, $externalId, $nome, $ext),
+                url: SimobClient::imageUrl($this->baseUrl, $baseUrlImagem, $nome, $ext),
                 ordem: $ordem,
                 principal: false,
                 descricao: $this->str($img['descricao'] ?? null),

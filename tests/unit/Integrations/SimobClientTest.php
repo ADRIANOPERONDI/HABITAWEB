@@ -96,6 +96,19 @@ final class SimobClientTest extends TestCase
         $client->listProperties(1, 0);
     }
 
+    /**
+     * O Simob usa a MESMA flag success=false pra "filtro sem resultado" (uma
+     * imobiliária que só vende bate nisso em toda página da finalidade de
+     * locação) — sem essa distinção, uma imobiliária sem nenhum imóvel numa
+     * das duas finalidades nunca conseguiria sincronizar a outra.
+     */
+    public function testNenhumImovelEncontradoViraListaVaziaEmVezDeException(): void
+    {
+        [$client] = $this->client([['success' => false, 'message' => 'Nenhum imóvel encontrado para este filtro!']]);
+
+        $this->assertSame([], $client->listProperties(1, 0));
+    }
+
     public function testContadorAceitaInteiroPuro(): void
     {
         [$client, $http] = $this->client([['success' => true, 'result' => 137]]);
