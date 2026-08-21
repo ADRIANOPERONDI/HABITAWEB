@@ -32,6 +32,21 @@ final class PropertyMediaApiTest extends HabitawebTestCase
 
     private string $fixtures;
 
+    /**
+     * Só os diretórios que ESTE teste criou.
+     *
+     * `FCPATH . 'uploads/properties'` é a mesma pasta física usada pelo
+     * ambiente de desenvolvimento (só o banco é isolado, `habitaweb_test` vs
+     * o banco de dev) — um tearDown() que varresse a pasta inteira apagaria
+     * qualquer mídia real que estivesse lá na hora de rodar a suíte, e foi
+     * exatamente isso que aconteceu: uma rodada completa de
+     * `vendor/bin/phpunit` apagou do disco fotos reais sincronizadas de uma
+     * integração de verdade, mesmo com os registros de `property_media`
+     * intactos no banco (arquivo e linha de banco não vivem na mesma
+     * transação). Mesmo padrão de PropertyMediaVariantTest/PropertyLimitTest.
+     */
+    private array $uploadDirsToClean = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -41,10 +56,10 @@ final class PropertyMediaApiTest extends HabitawebTestCase
 
     protected function tearDown(): void
     {
-        $dir = FCPATH . 'uploads/properties';
-        if (is_dir($dir)) {
-            foreach (glob($dir . '/*/*') ?: [] as $file) {
-                @unlink($file);
+        foreach ($this->uploadDirsToClean as $dir) {
+            if (is_dir($dir)) {
+                array_map('unlink', glob("{$dir}/*") ?: []);
+                @rmdir($dir);
             }
         }
 
@@ -73,7 +88,10 @@ final class PropertyMediaApiTest extends HabitawebTestCase
 
         $this->assertTrue($result['success'], 'Setup falhou ao criar o imóvel.');
 
-        return (int) $result['property_id'];
+        $propertyId = (int) $result['property_id'];
+        $this->uploadDirsToClean[] = FCPATH . 'uploads/properties/' . $propertyId;
+
+        return $propertyId;
     }
 
     /** Semeia uma mídia real no imóvel e devolve o id. */
