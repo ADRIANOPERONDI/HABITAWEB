@@ -383,4 +383,47 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $this->assertSame(0, $result->created);
         $this->assertStringContainsString('em andamento', $result->errorSummary());
     }
+
+    // -------------------------------------------------- prioridade do botão
+
+    /**
+     * "Sincronizar agora" só marca sync_priority_requested_at
+     * (IntegrationService::markPriority()) — quem consome é esta mesma
+     * chamada a run(), e o campo precisa sair limpo, senão a integração
+     * fica "prioritária" pra sempre em AccountIntegrationModel::dueForSync().
+     */
+    public function testPedidoDePrioridadeELimpoAoConcluirComSucesso(): void
+    {
+        [$sync, $integration] = $this->syncService([$this->property('100')]);
+
+        model(AccountIntegrationModel::class)->update($integration->id, [
+            'sync_priority_requested_at' => date('Y-m-d H:i:s'),
+        ]);
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+        $this->assertNotNull($integration->sync_priority_requested_at);
+
+        $sync->run($integration);
+
+        $this->assertNull(
+            model(AccountIntegrationModel::class)->find($integration->id)->sync_priority_requested_at
+        );
+    }
+
+    /** Mesmo numa rodada que termina em erro, o pedido não pode ficar preso. */
+    public function testPedidoDePrioridadeELimpoMesmoComErro(): void
+    {
+        [$sync, $integration] = $this->syncService([], new AuthException('Credencial recusada pela plataforma externa.'));
+
+        model(AccountIntegrationModel::class)->update($integration->id, [
+            'is_active'                  => true,
+            'sync_priority_requested_at' => date('Y-m-d H:i:s'),
+        ]);
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+
+        $sync->run($integration);
+
+        $this->assertNull(
+            model(AccountIntegrationModel::class)->find($integration->id)->sync_priority_requested_at
+        );
+    }
 }

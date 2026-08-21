@@ -12,7 +12,7 @@ class AccountIntegration extends Entity
         'is_active'  => 'boolean',
     ];
 
-    protected $dates = ['last_test_at', 'last_sync_at', 'created_at', 'updated_at'];
+    protected $dates = ['last_test_at', 'last_sync_at', 'sync_priority_requested_at', 'created_at', 'updated_at'];
 
     /** Preferências de sincronização, com os padrões aplicados. */
     public function settings(): array

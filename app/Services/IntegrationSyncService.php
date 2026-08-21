@@ -93,8 +93,10 @@ class IntegrationSyncService
             // começou, e não o de agora: o que a origem alterou durante a
             // execução precisa entrar da próxima vez.
             $this->integrationModel->update($integration->id, [
-                'last_sync_at' => $startedAt,
-                'status'       => AccountIntegrationModel::STATUS_CONNECTED,
+                'last_sync_at'               => $startedAt,
+                'status'                     => AccountIntegrationModel::STATUS_CONNECTED,
+                // Pedido de "sincronizar agora" foi atendido nesta rodada.
+                'sync_priority_requested_at' => null,
             ]);
         } catch (AuthException $e) {
             // Credencial recusada: desliga o sync. Insistir de 30 em 30 minutos
@@ -103,9 +105,10 @@ class IntegrationSyncService
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, $result->toCounters(), $e->getMessage());
             $this->integrationModel->update($integration->id, [
-                'is_active'         => false,
-                'status'            => AccountIntegrationModel::STATUS_ERROR,
-                'last_test_message' => $e->getMessage(),
+                'is_active'                  => false,
+                'status'                     => AccountIntegrationModel::STATUS_ERROR,
+                'last_test_message'          => $e->getMessage(),
+                'sync_priority_requested_at' => null,
             ]);
         } catch (RateLimitException $e) {
             // Credencial boa, só não é hora: não desliga nada, e o cursor fica
@@ -117,8 +120,9 @@ class IntegrationSyncService
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, $result->toCounters(), $e->getMessage());
             $this->integrationModel->update($integration->id, [
-                'status'            => AccountIntegrationModel::STATUS_ERROR,
-                'last_test_message' => $e->getMessage(),
+                'status'                     => AccountIntegrationModel::STATUS_ERROR,
+                'last_test_message'          => $e->getMessage(),
+                'sync_priority_requested_at' => null,
             ]);
         } finally {
             cache()->delete($lockKey);

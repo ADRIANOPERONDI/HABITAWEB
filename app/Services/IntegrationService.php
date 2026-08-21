@@ -420,4 +420,18 @@ class IntegrationService
 
         return TestResult::ok($active ? 'Sincronização automática ativada.' : 'Sincronização automática pausada.');
     }
+
+    /**
+     * Marca "sincronizar agora": o cron `integration:sync` (a cada 1 min)
+     * trata esta integração antes das outras (ver
+     * AccountIntegrationModel::dueForSync()) e limpa este campo ao consumir
+     * (IntegrationSyncService::run()). Quem chama isso NUNCA deve rodar o
+     * sync diretamente — é exatamente o que causava o timeout no request web.
+     */
+    public function markPriority(AccountIntegration $integration): void
+    {
+        $this->integrationModel->update($integration->id, [
+            'sync_priority_requested_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
 }

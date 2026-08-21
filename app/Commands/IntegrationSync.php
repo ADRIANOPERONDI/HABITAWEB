@@ -61,7 +61,16 @@ class IntegrationSync extends BaseCommand
             try {
                 CLI::write("→ {$rotulo}...");
 
-                $result = $service->run($integration, IntegrationSyncRunModel::TRIGGER_CRON, $full);
+                // "Sincronizar agora" do painel só marca a prioridade
+                // (AccountIntegrationModel::dueForSync()); quem roda de fato é
+                // esta mesma passada do cron, um pouco mais cedo. O trigger
+                // registrado reflete o pedido original, pra manter o
+                // histórico em /admin/integracoes/{code}/execucoes legível.
+                $trigger = $integration->sync_priority_requested_at !== null
+                    ? IntegrationSyncRunModel::TRIGGER_MANUAL
+                    : IntegrationSyncRunModel::TRIGGER_CRON;
+
+                $result = $service->run($integration, $trigger, $full);
 
                 CLI::write('  ' . $result->humanSummary(), $result->errors > 0 ? 'yellow' : 'green');
 
