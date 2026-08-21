@@ -78,6 +78,26 @@ final class SimobPropertyMapperTest extends TestCase
         $this->assertStringContainsString('PROXIMIDADE: Cerâmica Wunsch', $p->fields['descricao']);
     }
 
+    /**
+     * "ÁREA DA EDIFICAÇÃO EM M²" é o rótulo real usado pela imobiliária
+     * Giusti — nenhum fragmento de SimobVocabulary::CHARACTERISTIC_GUESSES
+     * batia com ele, então toda área construída ficava só no texto da
+     * descrição em vez do campo estruturado.
+     */
+    public function testAreaDaEdificacaoVaiParaAreaConstruida(): void
+    {
+        $p = $this->mapper()->mapDetail([
+            'id'          => '42',
+            'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
+            'cidade'      => 'São Miguel do Oeste',
+            'caracteristicas' => [
+                ['id' => 28885, 'descricao' => 'ÁREA DA EDIFICAÇÃO EM M²', 'valor' => '174', 'tipo' => 4],
+            ],
+        ]);
+
+        $this->assertSame(174.0, $p->fields['area_construida']);
+    }
+
     public function testMontaAUrlDeImagemViaBaseUrlImagemComACapaNaPrimeira(): void
     {
         $detail = $this->fixture('detalhe_imovel')['result'][0];
