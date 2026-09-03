@@ -971,8 +971,10 @@ verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
   (relatório externo, planilha manual), avise quem mantém isso antes.
 - **`assinaturas:aplicar-rampa` não cria assinatura nova sozinho** na
   virada 0%→50% (ver seção 3.4) — fica marcado como ação manual em
-  `audit_logs`. Alguém do time comercial precisa completar essa virada
-  específica; não é um cron 100% autônomo do início ao fim.
+  `audit_logs`. Quem completa essa virada é o superadmin, pelo botão
+  "Iniciar cobrança no gateway" na aba Assinatura de
+  `admin/accounts/(:num)/edit` (`AccountSubscriptionController::startGateway`)
+  — não é um cron 100% autônomo do início ao fim.
 - **Contas que nunca foram migradas continuam no plano legado
   indefinidamente** — `PlanGate`/features/turbo lêem o plano da assinatura
   ativa, seja ele qual for; uma conta esquecida em `_LEGADO` não quebra,
