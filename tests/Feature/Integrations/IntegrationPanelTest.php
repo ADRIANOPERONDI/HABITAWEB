@@ -170,6 +170,138 @@ final class IntegrationPanelTest extends HabitawebTestCase
         );
     }
 
+    /**
+     * O formulário de configure.php reenvia config[base_url] com o valor
+     * ATUAL a cada submit, junto com as preferências de sync — sem detectar
+     * mudança de verdade, salvar só "Máximo de fotos" já derrubava o status
+     * pra PENDING, desligando "Sincronizar agora" sem o tenant ter mexido
+     * em credencial nenhuma.
+     */
+    public function testSalvarSemMudarNadaNaoDerrubaOStatus(): void
+    {
+        $tenant  = (new TenantFactory())->create();
+        $service = new IntegrationService();
+        $int     = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($int, ['base_url' => 'https://x.simob.com.br', 'token' => 'ABC']);
+        model(AccountIntegrationModel::class)->markTested((int) $int->id, true, 'ok');
+
+        // Reenvia o MESMO base_url (como o form real faz) e token em branco
+        // (como o campo de senha sempre chega).
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob', $this->withCsrf([
+            'config'   => ['base_url' => 'https://x.simob.com.br', 'token' => ''],
+            'settings' => ['max_images' => '10'],
+        ]));
+
+        $this->assertSame(
+            AccountIntegrationModel::STATUS_CONNECTED,
+            model(AccountIntegrationModel::class)->find($int->id)->status
+        );
+    }
+
+    public function testPausarSyncNaoMudaOStatusDeConexao(): void
+    {
+        $tenant  = (new TenantFactory())->create();
+        $service = new IntegrationService();
+        $int     = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        model(AccountIntegrationModel::class)->markTested((int) $int->id, true, 'ok');
+        model(AccountIntegrationModel::class)->update($int->id, ['is_active' => true]);
+
+        $service->toggleActive(model(AccountIntegrationModel::class)->find($int->id), false);
+
+        $reloaded = model(AccountIntegrationModel::class)->find($int->id);
+        $this->assertFalse((bool) $reloaded->is_active);
+        $this->assertSame(AccountIntegrationModel::STATUS_CONNECTED, $reloaded->status);
+    }
+
+    /**
+     * Sem isso, o estado normal depois de configurar e testar é "conectado,
+     * mas is_active=false" — nem o sync automático nem o envio de leads
+     * fazem nada até o tenant achar um botão separado de ativar.
+     */
+    public function testPrimeiroTesteBemSucedidoLigaOSyncAutomatico(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        $this->assertFalse((bool) $int->is_active);
+
+        model(AccountIntegrationModel::class)->markTested((int) $int->id, true, 'ok');
+
+        $this->assertTrue((bool) model(AccountIntegrationModel::class)->find($int->id)->is_active);
+    }
+
+    /** Reativar depois de uma pausa DELIBERADA continua exigindo o toggle do tenant. */
+    public function testTestarDeNovoNaoReativaQuemPausouDeProposito(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $model = model(AccountIntegrationModel::class);
+        $model->markTested((int) $int->id, true, 'primeiro teste');
+        $model->update($int->id, ['is_active' => false]);
+
+        $model->markTested((int) $int->id, true, 'segundo teste, depois de pausar');
+
+        $this->assertFalse((bool) $model->find($int->id)->is_active);
+    }
+
+    public function testDesconectarLiberaOsImoveisParaEdicao(): void
+    {
+        $tenant  = (new TenantFactory())->create();
+        $service = new IntegrationService();
+        $int     = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($int, ['base_url' => 'https://x.simob.com.br', 'token' => 'ABC']);
+
+        $propertyId = model(\App\Models\PropertyModel::class)->insert([
+            'account_id'   => $tenant['account']->id,
+            'titulo'       => 'Espelhado',
+            'tipo_negocio' => 'ALUGUEL',
+            'tipo_imovel'  => 'APARTAMENTO',
+            'preco'        => 1000,
+            'cidade'       => 'Chapecó',
+            'bairro'       => 'Centro',
+            'estado'       => 'SC',
+            'status'       => 'ACTIVE',
+        ], true);
+
+        model(\App\Models\PropertyExternalRefModel::class)->insert([
+            'property_id'   => $propertyId,
+            'account_id'    => $tenant['account']->id,
+            'provider_code' => 'simob',
+            'external_id'   => '999',
+        ]);
+
+        $this->assertTrue($service->isManagedProperty($propertyId));
+
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob/desconectar', $this->withCsrf())->assertRedirect();
+
+        $this->assertFalse($service->isManagedProperty($propertyId));
+        // O imóvel em si não é tocado — só o vínculo some.
+        $this->assertNotNull(model(\App\Models\PropertyModel::class)->find($propertyId));
+    }
+
+    public function testRedescobrirInformaEncontradasNovasEAtualizadas(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        model(IntegrationMappingModel::class)->seedSuggestion((int) $int->id, IntegrationMappingModel::KIND_CATEGORY, [
+            'external_id'    => '17',
+            'external_label' => 'ANTIGO NOME',
+            'target_value'   => 'APARTAMENTO',
+        ]);
+
+        $connector = new \Tests\Support\Integrations\FakeConnector();
+        $connector->mappingsToDiscover = [
+            'category'       => [['external_id' => '17', 'external_label' => 'APARTAMENTO', 'external_type' => null]],
+            'characteristic' => [['external_id' => '41', 'external_label' => 'DORMITÓRIO(S)', 'external_type' => '3']],
+        ];
+
+        $resumo = (new IntegrationService())->seedMappings($int, $connector);
+
+        $this->assertSame(['found' => 1, 'new' => 0, 'updated' => 1], $resumo['category']);
+        $this->assertSame(['found' => 1, 'new' => 1, 'updated' => 0], $resumo['characteristic']);
+    }
+
     // --------------------------------------------------------- isolamento
 
     /**

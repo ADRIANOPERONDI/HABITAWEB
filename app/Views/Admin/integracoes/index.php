@@ -29,11 +29,15 @@
             $integration = $row['integration'];
             $status      = $integration->status ?? 'NOT_CONFIGURED';
 
+            // status é saúde da CONEXÃO; pausa é só is_active, independente
+            // (ver IntegrationService::toggleActive) — "Pausado" nunca é um
+            // status isolado, só a combinação dos dois.
             [$badgeClass, $badgeLabel] = match (true) {
                 $integration === null                                            => ['secondary', 'Não configurado'],
-                $status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED => ['success', $integration->is_active ? 'Conectado' : 'Conectado (pausado)'],
+                $status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED && ! $integration->is_active
+                                                                                  => ['warning', 'Conectado (pausado)'],
+                $status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED => ['success', 'Conectado'],
                 $status === \App\Models\AccountIntegrationModel::STATUS_ERROR     => ['danger', 'Erro'],
-                $status === \App\Models\AccountIntegrationModel::STATUS_PAUSED    => ['warning', 'Pausado'],
                 default                                                          => ['secondary', 'Aguardando teste'],
             };
         ?>

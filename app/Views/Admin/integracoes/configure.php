@@ -14,12 +14,18 @@
 <?= $this->section('content') ?>
 
 <?php
-    $statusMap = [
-        \App\Models\AccountIntegrationModel::STATUS_CONNECTED => ['success', 'Conectado'],
-        \App\Models\AccountIntegrationModel::STATUS_ERROR     => ['danger', 'Erro'],
-        \App\Models\AccountIntegrationModel::STATUS_PAUSED    => ['warning', 'Pausado'],
-    ];
-    [$badgeClass, $badgeLabel] = $statusMap[$integration->status] ?? ['secondary', 'Aguardando teste'];
+    // status é saúde da CONEXÃO; pausa é só is_active — os dois são
+    // independentes (ver IntegrationService::toggleActive). "Pausado" só
+    // existe combinando os dois, nunca como um status isolado.
+    [$badgeClass, $badgeLabel] = match (true) {
+        $integration->status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED && ! $integration->is_active
+            => ['warning', 'Conectado (pausado)'],
+        $integration->status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED
+            => ['success', 'Conectado'],
+        $integration->status === \App\Models\AccountIntegrationModel::STATUS_ERROR
+            => ['danger', 'Erro'],
+        default => ['secondary', 'Aguardando teste'],
+    };
 ?>
 
 <div class="mb-3">

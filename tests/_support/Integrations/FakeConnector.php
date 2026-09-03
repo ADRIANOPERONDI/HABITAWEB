@@ -75,9 +75,12 @@ class FakeConnector implements IntegrationProviderInterface
         return null;
     }
 
+    /** @var array{category?:list<array<string,mixed>>, characteristic?:list<array<string,mixed>>} */
+    public array $mappingsToDiscover = [];
+
     public function discoverMappings(): array
     {
-        return [];
+        return $this->mappingsToDiscover;
     }
 
     public function pushLead(array $lead): TestResult
