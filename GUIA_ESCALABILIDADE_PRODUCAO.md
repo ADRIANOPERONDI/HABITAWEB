@@ -899,10 +899,13 @@ Persistência mínima em qualquer opção (já na seção 2.1): `appendonly yes`
 A reestruturação comercial (planos Prata/Ouro/Diamante com mensalidade em
 rampa e cobrança por lead) já está toda no código — `PlanSeeder` já renomeou
 os planos de preço antigo para `<CHAVE>_LEGADO` (`ativo=false`) e criou
-`PRATA`/`OURO`/`DIAMANTE` com os preços novos. **Rodar o seeder não é a
-virada** — ele só prepara o catálogo. A virada de verdade é o dia em que as
-contas existentes migram e a cobrança liga, e isso é feito à mão, com as
-ferramentas abaixo, não por deploy.
+`PRATA`/`OURO`/`DIAMANTE` com os preços novos. Ele também desativa, pela
+chave, qualquer plano fora do catálogo atual que exista no banco por fora do
+seeder (formulário antigo do admin, por exemplo) — `php spark db:seed
+PlanSeeder` sozinho já cobre essa limpeza, sem precisar de UPDATE manual.
+**Rodar o seeder não é a virada** — ele só prepara o catálogo. A virada de
+verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
+é feito à mão, com as ferramentas abaixo, não por deploy.
 
 ### 13.1 Sequência
 

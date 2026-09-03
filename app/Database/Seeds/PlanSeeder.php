@@ -34,9 +34,26 @@ class PlanSeeder extends Seeder
     public function run()
     {
         $this->renomearLegados();
+        $this->desativarForaDoCatalogo(['START', 'PRO', 'IMOBILIARIA', 'TEST_FREE']);
 
         foreach ($this->planos() as $plano) {
             $this->upsert($plano);
+        }
+    }
+
+    /**
+     * Desativa planos fora do catálogo comercial atual — legados de antes
+     * desta reestruturação, criados fora deste seeder (ex.: pelo formulário
+     * antigo do admin), que continuariam aparecendo no checkout e na troca
+     * de plano se ninguém desligasse. Só mexe em `ativo`; contas já
+     * assinadas nesses planos não são tocadas (ver runbook §13 — migrar ou
+     * não é decisão de caixa, não deste seeder). Idempotente e silencioso
+     * quando a chave não existe (comum em banco novo).
+     */
+    private function desativarForaDoCatalogo(array $chaves): void
+    {
+        foreach ($chaves as $chave) {
+            $this->db->table('plans')->where('chave', $chave)->update(['ativo' => 'f']);
         }
     }
 
@@ -63,7 +80,11 @@ class PlanSeeder extends Seeder
                 'limite_turbo_mensal'     => 0,
                 'turbo_bonus_anual'       => 2,
                 'credito_leads_mensal'    => 0.00,
-                'exposure_weight'         => 0,
+                // 1, não 0: só pra dar ao Prata algum peso de desempate na
+                // lane patrocinada. Seguro subir isso — HighlightSql::sponsorshipWeight
+                // soma exposure_weight só DEPOIS do bônus de +1000 de turbo,
+                // então isto nunca compete com o sinal principal de ranking.
+                'exposure_weight'         => 1,
                 'limite_api_requests_dia' => 5000,
                 'preco_mensal'            => 990.00,
                 'preco_anual'             => 9900.00,
@@ -109,7 +130,9 @@ class PlanSeeder extends Seeder
                     PlanFeature::EXPOSICAO_BUSCA      => true,
                     PlanFeature::EXPOSICAO_VITRINE    => true,
                     PlanFeature::PAGINA_PREMIUM       => true,
-                    PlanFeature::INTELIGENCIA_MERCADO => true,
+                    // INTELIGENCIA_MERCADO fica de fora (P4): a tela ainda
+                    // não existe (fase 2), e conceder a feature sem tela
+                    // nenhuma pra mostrar é vender o que não se entrega.
                     PlanFeature::COMPARATIVO_MERCADO  => true,
                 ],
             ],

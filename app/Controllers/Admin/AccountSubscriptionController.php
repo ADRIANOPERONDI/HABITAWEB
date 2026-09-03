@@ -29,7 +29,7 @@ class AccountSubscriptionController extends BaseController
         }
 
         $subscription = $this->subscriptionModel->where('account_id', $accountId)->orderBy('id', 'DESC')->first();
-        $plans = model('App\Models\PlanModel')->where('ativo', true)->findAll();
+        $plans = model('App\Models\PlanModel')->comercializaveis();
         
         $transactionModel = model('App\Models\PaymentTransactionModel');
         $pendingTransactions = $transactionModel->where('account_id', $accountId)

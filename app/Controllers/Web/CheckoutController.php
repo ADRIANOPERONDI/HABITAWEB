@@ -19,8 +19,7 @@ class CheckoutController extends BaseController
      */
     public function index()
     {
-        $planModel = model('App\Models\PlanModel');
-        $plans = $planModel->where('ativo', true)->findAll();
+        $plans = model('App\Models\PlanModel')->comercializaveis();
 
         return view('web/checkout/plans', [
             'plans' => $plans

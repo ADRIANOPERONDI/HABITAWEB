@@ -92,6 +92,26 @@ final class PlanCheckoutTest extends HabitawebTestCase
         $response->assertDontSee('Plano Aposentado');
     }
 
+    /**
+     * `PlanModel::comercializaveis()` (usado por `CheckoutController::index`)
+     * exige `ativo=true` E `preco_mensal > 0` — um plano com mensalidade
+     * zero (`TEST_FREE`, por exemplo) não é comercial de verdade, mesmo que
+     * esteja `ativo`.
+     */
+    public function testPlanoGratuitoOuInativoNaoApareceNoCheckout(): void
+    {
+        $this->makePlan(['nome' => 'Plano Gratis Teste', 'preco_mensal' => 0.00, 'ativo' => true]);
+        $this->makePlan(['nome' => 'Plano Inativo Teste', 'ativo' => false]);
+        $this->makePlan(['nome' => 'Plano Comercial Teste', 'preco_mensal' => 1500.00, 'ativo' => true]);
+
+        $response = $this->get('checkout/plans');
+
+        $response->assertStatus(200);
+        $response->assertDontSee('Plano Gratis Teste');
+        $response->assertDontSee('Plano Inativo Teste');
+        $response->assertSee('Plano Comercial Teste');
+    }
+
     // --------------------------------------------------- rampa no checkout
 
     private function ativarGatewayFake(): void

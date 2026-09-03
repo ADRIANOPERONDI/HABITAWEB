@@ -137,6 +137,53 @@ final class LaunchRampIntegrationTest extends HabitawebTestCase
         $this->assertSame($ouroId, (int) $ainda->plan_id, 'downgrade bloqueado -- plano nao mudou');
     }
 
+    /**
+     * O bloqueio de downgrade precisa vir ANTES do desvio gratuito: no mês 1
+     * da rampa (0%), TODO plano custa R$0 no mesmo mês — se a checagem de
+     * exposure_weight ficasse depois desse desvio, uma conta em Diamante
+     * trocaria pra Prata de graça sem passar pela trava, porque os dois
+     * "custam" a mesma coisa (zero) naquele mês.
+     */
+    public function testDowngradeBloqueadoMesmoQuandoODestinoSaiDeGraca(): void
+    {
+        $diamanteId = $this->plan('DIAMANTE', 2490.00, 20);
+        $prataId    = $this->plan('PRATA', 990.00, 0);
+
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+        model(SubscriptionModel::class)->update($tenant['subscription']->id, [
+            'plan_id'         => $diamanteId,
+            'ramp_started_at' => date('Y-m-d'), // mes 1: 0%
+        ]);
+
+        $response = $this->actingAs($tenant['user'])->post('admin/subscription/upgrade/' . $prataId, $this->withCsrf([
+            'billing_type' => 'PIX',
+        ]));
+
+        $response->assertRedirect();
+        $ainda = model(SubscriptionModel::class)->find($tenant['subscription']->id);
+        $this->assertSame($diamanteId, (int) $ainda->plan_id, 'downgrade bloqueado mesmo com os dois planos a R$0 no mes');
+    }
+
+    /**
+     * C7: `upgrade()` só alcança plano `ativo` E comercial (`preco_mensal >
+     * 0`) — um plano legado desativado ou gratuito não pode ser alcançado
+     * só por saber o id dele.
+     */
+    public function testTrocaParaPlanoGratuitoLegadoERecusada(): void
+    {
+        $legadoGratuitoId = $this->plan('PRATA_LEGADO', 0.00, 0);
+
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+
+        $response = $this->actingAs($tenant['user'])->post('admin/subscription/upgrade/' . $legadoGratuitoId, $this->withCsrf([
+            'billing_type' => 'PIX',
+        ]));
+
+        $response->assertRedirect();
+        $ainda = model(SubscriptionModel::class)->find($tenant['subscription']->id);
+        $this->assertNotSame($legadoGratuitoId, (int) $ainda->plan_id, 'plano gratuito/legado nao pode ser alcancado pela troca');
+    }
+
     public function testChangeSubscriptionPlanAplicaODescontoDeRampaNoValorEnviadoAoGateway(): void
     {
         $this->ativarGatewayFake();
