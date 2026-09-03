@@ -69,6 +69,7 @@ class PartnerController extends BaseController
 
     private function renderShow(\App\Entities\Account $partner)
     {
+        helper('format');
         $propertyService = new \App\Services\PropertyService();
 
         $isPremium = \App\Services\PlanGate::has(

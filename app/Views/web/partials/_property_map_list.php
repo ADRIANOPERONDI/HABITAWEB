@@ -62,10 +62,7 @@
 
                         <div class="premium-price-row">
                             <div>
-                                <div class="premium-price">R$ <?= number_format($property->preco, 2, ',', '.') ?></div>
-                                <?php if($property->tipo_negocio === 'ALUGUEL'): ?>
-                                    <div class="small text-muted">por mês</div>
-                                <?php endif; ?>
+                                <div class="premium-price"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></div>
                             </div>
                             <span class="premium-card-cta">Ver imóvel</span>
                         </div>

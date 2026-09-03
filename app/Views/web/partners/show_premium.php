@@ -209,7 +209,7 @@
 
                                 <div class="mt-auto">
                                     <h4 class="fw-bold text-primary mb-0">
-                                        R$ <?= number_format($property->preco, 2, ',', '.') ?>
+                                        <?= price_label((float) $property->preco, $property->tipo_negocio) ?>
                                     </h4>
 
                                     <div class="d-flex justify-content-between mt-3 pt-3 border-top small text-muted">
