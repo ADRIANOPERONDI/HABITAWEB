@@ -16,7 +16,7 @@ class AccountIntegrationModel extends Model
     protected $allowedFields    = [
         'account_id', 'provider_code', 'is_active', 'status',
         'last_test_at', 'last_test_message', 'last_sync_at', 'sync_cursor', 'settings',
-        'sync_priority_requested_at',
+        'sync_priority_requested_at', 'sync_locked_until',
     ];
 
     /** Janela de "vencido" pro sync automático — ver dueForSync(). */
