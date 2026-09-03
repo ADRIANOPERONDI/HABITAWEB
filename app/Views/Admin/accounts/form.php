@@ -85,6 +85,15 @@
 
                             <hr class="my-4 opacity-50">
 
+                            <div class="form-check form-switch mb-4">
+                                <input class="form-check-input" type="checkbox" name="cobranca_leads_isenta" id="cobrancaLeadsIsentaSwitch"
+                                       <?= old('cobranca_leads_isenta', $account->cobranca_leads_isenta) ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="cobrancaLeadsIsentaSwitch">
+                                    Isenta de cobrança por lead
+                                    <span class="d-block form-text">Conta não gera cobrança nenhuma ao receber leads (ex.: conta interna, demo, parceria).</span>
+                                </label>
+                            </div>
+
                             <div class="d-flex justify-content-end gap-2">
                                 <button type="submit" class="btn btn-primary rounded-pill px-5 py-2 fw-bold shadow">
                                     Salvar Alterações

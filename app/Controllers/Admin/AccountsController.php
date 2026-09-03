@@ -42,7 +42,11 @@ class AccountsController extends BaseController
         }
 
         $data = $this->request->getPost();
-        
+
+        // Checkbox desmarcado não é enviado no POST — sem isto, uma vez
+        // marcada, a isenção nunca seria desligada pela tela.
+        $data['cobranca_leads_isenta'] = ! empty($data['cobranca_leads_isenta']);
+
         if ($model->update($id, $data)) {
             return redirect()->to('admin/accounts')->with('message', 'Conta atualizada com sucesso.');
         }

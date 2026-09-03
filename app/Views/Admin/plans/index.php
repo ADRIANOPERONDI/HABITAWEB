@@ -17,25 +17,36 @@
                 <thead class="table-light">
                     <tr>
                         <th class="ps-4">Nome</th>
-                        <th>Preço (R$)</th>
+                        <th>Mensal (R$)</th>
+                        <th>Anual (R$)</th>
                         <th>Imóveis</th>
                         <th>Fotos Max</th>
-                        <th>Destaques</th>
+                        <th>Turbinadas/mês</th>
+                        <th>Crédito leads (R$)</th>
+                        <th>Peso</th>
+                        <th>Features</th>
                         <th>Status</th>
                         <th class="text-end pe-4">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($plans)): ?>
-                        <tr><td colspan="7" class="text-center py-4 text-muted">Nenhum plano cadastrado.</td></tr>
+                        <tr><td colspan="11" class="text-center py-4 text-muted">Nenhum plano cadastrado.</td></tr>
                     <?php else: ?>
                         <?php foreach($plans as $plan): ?>
                         <tr>
                             <td class="ps-4 fw-bold"><?= esc($plan->nome) ?></td>
                             <td>R$ <?= number_format($plan->preco_mensal, 2, ',', '.') ?></td>
+                            <td><?= $plan->preco_anual > 0 ? 'R$ ' . number_format($plan->preco_anual, 2, ',', '.') : '—' ?></td>
                             <td><?= $plan->limite_imoveis_ativos === null ? 'Ilimitado' : $plan->limite_imoveis_ativos ?></td>
-                            <td><?= $plan->limite_fotos_por_imovel ?></td>
+                            <td><?= $plan->limite_fotos_por_imovel === null ? 'Ilimitado' : $plan->limite_fotos_por_imovel ?></td>
                             <td><?= $plan->turbosIncluidos() === null ? 'Ilimitado' : $plan->turbosIncluidos() ?></td>
+                            <td><?= $plan->creditoLeadsMensal() > 0 ? number_format($plan->creditoLeadsMensal(), 2, ',', '.') : '—' ?></td>
+                            <td><?= (int) $plan->exposureWeight() ?></td>
+                            <td class="small">
+                                <?php $features = $plan->activeFeatures(); ?>
+                                <?= $features === [] ? '—' : esc(implode(', ', array_map([\App\Entities\PlanFeature::class, 'label'], $features))) ?>
+                            </td>
                             <td>
                                 <?php if($plan->ativo): ?>
                                     <span class="badge bg-success">Ativo</span>

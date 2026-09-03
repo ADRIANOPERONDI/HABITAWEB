@@ -1,11 +1,19 @@
 <?= $this->extend('Layouts/master') ?>
 
-<?= $this->section('title') ?>Meus Destaques<?= $this->endSection() ?>
+<?= $this->section('title') ?>Minhas turbinadas<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">Meus Destaques e Promoções</h1>
+    <h1 class="h2">Minhas turbinadas</h1>
 </div>
+
+<?php
+    $origemLabels = [
+        \App\Services\TurboService::ORIGEM_PLANO    => 'Cota do plano',
+        \App\Services\TurboService::ORIGEM_PAGO     => 'Comprada',
+        \App\Services\TurboService::ORIGEM_CORTESIA => 'Cortesia',
+    ];
+?>
 
 <div class="card shadow-sm">
     <div class="card-body p-0">
@@ -15,6 +23,7 @@
                     <tr>
                         <th class="ps-4">Imóvel</th>
                         <th>Pacote</th>
+                        <th>Origem</th>
                         <th>Status</th>
                         <th>Válido até</th>
                         <th class="text-end pe-4">Ações</th>
@@ -22,7 +31,7 @@
                 </thead>
                 <tbody>
                     <?php if (empty($promotions)): ?>
-                        <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma promoção ativa.</td></tr>
+                        <tr><td colspan="6" class="text-center py-4 text-muted">Nenhuma turbinada ativa.</td></tr>
                     <?php else: ?>
                         <?php foreach($promotions as $promo): ?>
                         <tr>
@@ -33,8 +42,11 @@
                             </td>
                             <td>
                                 <span class="badge bg-warning text-dark">
-                                    <i class="fa-solid fa-bolt me-1"></i> <?= esc($promo->pacote_key) ?>
+                                    <i class="fa-solid fa-bolt me-1"></i> <?= esc($promo->pacote_nome ?? 'Turbinada') ?>
                                 </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border"><?= esc($origemLabels[$promo->origem] ?? ($promo->origem ?? '—')) ?></span>
                             </td>
                             <td>
                                 <?php if ($promo->ativo): ?>

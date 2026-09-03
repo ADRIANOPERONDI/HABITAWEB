@@ -8,9 +8,9 @@
 <div class="row justify-content-center">
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm rounded-4 p-4">
-            <?php 
+            <?php
                 $action = $member ? "admin/team/{$member->id}/update" : "admin/team";
-                echo form_open($action);
+                echo form_open($action, $member ? ['enctype' => 'multipart/form-data'] : []);
             ?>
 
                 <div class="mb-4">
@@ -49,6 +49,39 @@
                         <option value="imobiliaria_admin" <?= $currentRole == 'imobiliaria_admin' ? 'selected' : '' ?>><?= lang('Auth.role_imobiliaria_admin') ?> (Acesso a tudo da conta)</option>
                     </select>
                 </div>
+
+                <?php if ($member): ?>
+                    <hr class="my-4">
+                    <h6 class="fw-bold mb-3">Perfil público (página da imobiliária)</h6>
+
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="publico" id="publicoSwitch"
+                               <?= old('publico', $member->publico) ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="publicoSwitch">
+                            Exibir na página pública
+                            <span class="d-block form-text">Só aparece se o plano da conta tiver página premium.</span>
+                        </label>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Cargo (exibido publicamente)</label>
+                        <input type="text" name="cargo" class="form-control rounded-pill px-3" value="<?= old('cargo', $member->cargo ?? '') ?>" placeholder="Ex: Corretora Sênior">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Biografia</label>
+                        <textarea name="bio" class="form-control rounded-4 px-3" rows="3" placeholder="Uma breve apresentação do membro."><?= old('bio', $member->bio ?? '') ?></textarea>
+                    </div>
+
+                    <div class="mb-5">
+                        <label class="form-label fw-bold">Foto</label>
+                        <?php if (!empty($member->foto)): ?>
+                            <img src="<?= media_url($member->foto) ?>" alt="" class="rounded-circle d-block mb-2 object-fit-cover" style="width: 64px; height: 64px;">
+                        <?php endif; ?>
+                        <input type="file" name="foto" class="form-control rounded-pill px-3" accept="image/jpeg,image/png,image/webp">
+                        <small class="text-muted ps-2">JPG, PNG ou WEBP, até 4MB.</small>
+                    </div>
+                <?php endif; ?>
 
                 <div class="d-flex gap-3">
                     <button type="submit" class="btn btn-primary btn-lg rounded-pill px-5 shadow">
