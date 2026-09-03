@@ -166,29 +166,66 @@ class ChargesController extends BaseController
     {
         $user      = auth()->user();
         $accountId = (int) ($user->account_id ?? 0);
-        $periodo   = date('Y-m-01');
+        $periodo   = $this->periodoFromRequest();
+
+        // Regras vigentes da plataforma, pro painel "Como funciona" — o
+        // tenant vê de onde vem o valor que está pagando, não só o total.
+        $regrasPlataforma = model(LeadChargeRuleModel::class)->platformDefaults();
 
         if ($accountId === 0) {
             return view('Admin/cobrancas/mine', [
-                'commissions'  => [],
-                'pager'        => \Config\Services::pager(),
-                'totals'       => [],
-                'periodo'      => $periodo,
-                'projetado'    => 0.0,
-                'creditoAtual' => 0.0,
+                'commissions'      => [],
+                'pager'            => \Config\Services::pager(),
+                'totals'           => [],
+                'periodo'          => $periodo,
+                'periodoOpcoes'    => $this->ultimosPeriodos(),
+                'projetado'        => 0.0,
+                'creditoAtual'     => 0.0,
+                'regrasPlataforma' => $regrasPlataforma,
             ]);
         }
 
-        $data = $this->service->statementFor($accountId);
+        $data = $this->service->statementFor($accountId, $periodo);
 
         return view('Admin/cobrancas/mine', [
-            'commissions'  => $data['items'],
-            'pager'        => $data['pager'],
-            'totals'       => $this->service->totalsByStatus(['account_id' => $accountId]),
-            'periodo'      => $periodo,
-            'projetado'    => model(LeadChargeModel::class)->projectedTotalFor($accountId, $periodo),
-            'creditoAtual' => (new LeadCreditService())->balanceFor($accountId, $periodo),
+            'commissions'      => $data['items'],
+            'pager'            => $data['pager'],
+            'totals'           => $this->service->totalsByStatus(['account_id' => $accountId, 'periodo' => $periodo]),
+            'periodo'          => $periodo,
+            'periodoOpcoes'    => $this->ultimosPeriodos(),
+            'projetado'        => model(LeadChargeModel::class)->projectedTotalFor($accountId, $periodo),
+            'creditoAtual'     => (new LeadCreditService())->balanceFor($accountId, $periodo),
+            'regrasPlataforma' => $regrasPlataforma,
         ]);
+    }
+
+    /** Últimos 12 meses (incluindo o corrente), mais recente primeiro — opções do filtro de período. */
+    private function ultimosPeriodos(): array
+    {
+        $opcoes = [];
+
+        for ($i = 0; $i < 12; $i++) {
+            $data = date('Y-m-01', strtotime("-{$i} months"));
+            $opcoes[$data] = \CodeIgniter\I18n\Time::parse($data)->format('M/Y');
+        }
+
+        return $opcoes;
+    }
+
+    /**
+     * `periodo` vem da URL como `Y-m` (select de mês); a coluna no banco é o
+     * primeiro dia do mês. Formato inválido ou ausente cai no mês corrente —
+     * nunca estoura pra um erro de SQL por causa de um parâmetro de GET.
+     */
+    private function periodoFromRequest(): string
+    {
+        $raw = (string) ($this->request->getGet('periodo') ?? '');
+
+        if (preg_match('/^\d{4}-\d{2}$/', $raw) === 1) {
+            return $raw . '-01';
+        }
+
+        return date('Y-m-01');
     }
 
     /** POST (AJAX): o tenant contesta uma cobrança própria ainda dentro do prazo. */
