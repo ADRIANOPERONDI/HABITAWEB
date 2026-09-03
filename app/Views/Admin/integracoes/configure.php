@@ -198,7 +198,22 @@
                         <span class="badge bg-<?= $lastRun->statusBadge() ?>"><?= esc($lastRun->status) ?></span>
                     </dd>
                 <?php endif; ?>
+
+                <?php if ((int) $drafts > 0): ?>
+                    <dt class="col-6 text-muted fw-normal">Em rascunho</dt>
+                    <dd class="col-6 text-end"><?= (int) $drafts ?></dd>
+                <?php endif; ?>
             </dl>
+
+            <?php if ((int) $drafts > 0): ?>
+                <div class="alert alert-warning small mt-3 mb-0">
+                    <?= (int) $drafts ?> imóvel(is) importado(s) ainda em rascunho — eles não aparecem
+                    no site enquanto você não publicar.
+                    <button type="button" class="btn btn-sm btn-warning w-100 mt-2" id="btnPublicarRascunhos">
+                        <i class="fa-solid fa-upload me-1"></i> Publicar os <?= (int) $drafts ?> rascunhos
+                    </button>
+                </div>
+            <?php endif; ?>
         </div>
 
         <div class="mt-3 text-center">
@@ -270,6 +285,37 @@
 
     $('#btnToggle').on('click', function () {
         executar(base + '/toggle', 'Atualizando...');
+    });
+
+    $('#btnPublicarRascunhos').on('click', function () {
+        Swal.fire({
+            icon: 'question',
+            title: 'Publicar os imóveis importados?',
+            text: 'Eles passam a aparecer no site. Você pode pausar qualquer um depois, individualmente.',
+            showCancelButton: true,
+            confirmButtonText: 'Publicar',
+            cancelButtonText: 'Cancelar',
+        }).then(function (res) {
+            if (!res.isConfirmed) { return; }
+
+            Swal.fire({ title: 'Publicando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            $.post('<?= site_url('admin/properties/bulk-status') ?>', {
+                scope: 'imported_drafts',
+                provider_code: '<?= esc($provider->code, 'js') ?>',
+                status: 'ACTIVE',
+            })
+                .done(function (r) {
+                    Swal.fire({
+                        icon: r.success ? 'success' : 'error',
+                        title: r.success ? 'Pronto' : 'Não deu',
+                        text: r.message,
+                    }).then(() => { if (r.success) location.reload(); });
+                })
+                .fail(function () {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível concluir. Tente novamente.' });
+                });
+        });
     });
 })();
 </script>

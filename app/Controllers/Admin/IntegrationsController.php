@@ -58,6 +58,11 @@ class IntegrationsController extends BaseController
             'settings'    => $integration->settings(),
             'unconfirmed' => $this->service->countUnconfirmed($integration),
             'synced'      => $this->service->countSyncedProperties($this->accountId(), $code),
+            // Imóvel importado entra como rascunho (initial_status): sem ver
+            // quantos estão parados nessa fila, o tenant não descobre que
+            // precisa publicá-los — e nem que existe um botão pra isso.
+            'drafts'      => model(\App\Models\PropertyExternalRefModel::class)
+                ->countDraftsFor($this->accountId(), $code),
             'lastRun'     => $runModel->lastFor((int) $integration->id),
         ]);
     }

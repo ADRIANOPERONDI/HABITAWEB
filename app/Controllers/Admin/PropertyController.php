@@ -275,6 +275,82 @@ class PropertyController extends BaseController
         return $this->response->setJSON(['success' => false, 'message' => 'Erro ao desativar imóvel.']);
     }
 
+    /**
+     * POST admin/properties/bulk-status — publica (ou pausa) vários imóveis.
+     *
+     * Existe porque uma importação de integração entra inteira como rascunho
+     * (ver IntegrationService::MANAGED_FIELDS e o initial_status do conector):
+     * sem isto, publicar 96 imóveis importados é abrir 96 formulários.
+     *
+     * Aceita `ids[]` (o que estiver marcado na lista) ou
+     * `scope=imported_drafts` (todos os rascunhos vindos de integração).
+     * Cada item passa por trySaveProperty(), então o limite do plano vale
+     * item a item — publicar em lote não é um atalho pra furá-lo.
+     */
+    public function bulkStatus()
+    {
+        $user      = auth()->user();
+        $isAdmin   = $user->inGroup('superadmin', 'admin');
+        $accountId = (int) ($user->account_id ?? 0);
+        $status    = strtoupper((string) $this->request->getPost('status'));
+
+        if (! in_array($status, ['ACTIVE', 'PAUSED'], true)) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Status inválido.']);
+        }
+
+        if ($this->request->getPost('scope') === 'imported_drafts') {
+            $ids = model(\App\Models\PropertyExternalRefModel::class)
+                ->draftPropertyIdsFor($accountId, (string) $this->request->getPost('provider_code') ?: 'simob');
+        } else {
+            $ids = array_map('intval', (array) $this->request->getPost('ids'));
+        }
+
+        $ids = array_values(array_filter(array_unique($ids)));
+
+        if ($ids === []) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Nenhum imóvel selecionado.']);
+        }
+
+        $alterados = 0;
+        $recusados = [];
+
+        foreach ($ids as $id) {
+            $property = model(\App\Models\PropertyModel::class)->find($id);
+
+            // Escopo por conta é responsabilidade de quem consulta (ver
+            // CLAUDE.md): sem isto, um POST com ids de outra conta publicaria
+            // imóvel alheio.
+            if (! $property || (! $isAdmin && (int) $property->account_id !== $accountId)) {
+                continue;
+            }
+
+            if ($property->status === $status) {
+                continue;
+            }
+
+            $resultado = $this->propertyService->trySaveProperty(['status' => $status], $id, $isAdmin, true);
+
+            if ($resultado['success']) {
+                $alterados++;
+                continue;
+            }
+
+            $recusados[] = $property->titulo . ': ' . ($resultado['message'] ?? 'não foi possível salvar');
+        }
+
+        $verbo = $status === 'ACTIVE' ? 'publicado(s)' : 'pausado(s)';
+
+        return $this->response->setJSON([
+            'success'   => true,
+            'changed'   => $alterados,
+            'refused'   => count($recusados),
+            'message'   => $recusados === []
+                ? "{$alterados} imóvel(is) {$verbo}."
+                : "{$alterados} imóvel(is) {$verbo}. " . count($recusados) . ' não puderam ser alterados (limite do plano?).',
+            'details'   => array_slice($recusados, 0, 5),
+        ]);
+    }
+
     public function restore($id)
     {
         $user = auth()->user();

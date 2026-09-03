@@ -50,6 +50,30 @@ class PropertyExternalRefModel extends Model
         return $this->where('property_id', $propertyId)->countAllResults() > 0;
     }
 
+    /**
+     * IDs dos imóveis importados por esta integração que ainda estão em
+     * rascunho — a fila de publicação do tenant depois de uma importação.
+     *
+     * @return list<int>
+     */
+    public function draftPropertyIdsFor(int $accountId, string $providerCode): array
+    {
+        $rows = $this->select('property_external_refs.property_id')
+            ->join('properties', 'properties.id = property_external_refs.property_id')
+            ->where('property_external_refs.account_id', $accountId)
+            ->where('property_external_refs.provider_code', $providerCode)
+            ->where('properties.status', 'DRAFT')
+            ->where('properties.deleted_at IS NULL', null, false)
+            ->findAll();
+
+        return array_map(static fn ($row) => (int) $row->property_id, $rows);
+    }
+
+    public function countDraftsFor(int $accountId, string $providerCode): int
+    {
+        return count($this->draftPropertyIdsFor($accountId, $providerCode));
+    }
+
     public function upsertRef(array $data): bool
     {
         $existing = $this->findRef(

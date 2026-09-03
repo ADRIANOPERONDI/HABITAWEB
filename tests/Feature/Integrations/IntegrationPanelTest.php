@@ -302,6 +302,41 @@ final class IntegrationPanelTest extends HabitawebTestCase
         $this->assertSame(['found' => 1, 'new' => 1, 'updated' => 0], $resumo['characteristic']);
     }
 
+    /**
+     * Imóvel importado entra como rascunho: sem ver quantos estão parados
+     * nessa fila, o tenant não descobre que precisa publicá-los — nem que
+     * existe um botão pra isso.
+     */
+    public function testTelaMostraQuantosImportadosEstaoEmRascunho(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $propertyId = model(\App\Models\PropertyModel::class)->insert([
+            'account_id'   => $tenant['account']->id,
+            'titulo'       => 'Importado em rascunho',
+            'tipo_negocio' => 'VENDA',
+            'tipo_imovel'  => 'CASA',
+            'preco'        => 300000,
+            'cidade'       => 'Chapecó',
+            'bairro'       => 'Centro',
+            'estado'       => 'SC',
+            'status'       => 'DRAFT',
+        ], true);
+
+        model(\App\Models\PropertyExternalRefModel::class)->insert([
+            'property_id'   => $propertyId,
+            'account_id'    => $tenant['account']->id,
+            'provider_code' => 'simob',
+            'external_id'   => '900',
+        ]);
+
+        $resposta = $this->actingAs($tenant['user'])->get('admin/integracoes/simob');
+
+        $resposta->assertOK();
+        $resposta->assertSee('Publicar os 1 rascunhos');
+    }
+
     // --------------------------------------------------------- isolamento
 
     /**
