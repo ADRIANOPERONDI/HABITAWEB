@@ -356,6 +356,47 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $this->assertSame(IntegrationSyncRunModel::STATUS_ERROR, $run->status);
     }
 
+    /**
+     * Erro de transporte pontual (Simob fora do ar, timeout) não pode
+     * desligar uma credencial que continua válida — status = ERROR tiraria
+     * a integração de dueForSync() (que exclui ERROR de propósito) até o
+     * tenant testar a conexão de novo, para um token que nunca parou de
+     * funcionar.
+     */
+    public function testErroDeTransporteNaoDerrubaOStatusParaError(): void
+    {
+        [$sync, $integration] = $this->syncService([], new \RuntimeException('Timeout ao contatar a origem.'));
+        model(AccountIntegrationModel::class)->update($integration->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+
+        $sync->run($integration);
+
+        $reloaded = model(AccountIntegrationModel::class)->find($integration->id);
+        $this->assertSame(AccountIntegrationModel::STATUS_CONNECTED, $reloaded->status);
+        $this->assertStringContainsString('Timeout', $reloaded->last_test_message);
+    }
+
+    /** A PARTIR do quinto erro seguido, aí sim é algo estrutural — desliga. */
+    public function testCincoErrosSeguidosViramError(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, ['finalidades' => [1, 2], 'initial_status' => 'ACTIVE', 'import_images' => false]);
+
+        for ($i = 1; $i <= 5; $i++) {
+            $sync = new IntegrationSyncService(
+                integrationService: new FakeIntegrationService(new FakeConnector([], new \RuntimeException("Falha {$i}"))),
+                geocoder: new NullGeocoder(),
+            );
+            $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+        }
+
+        $reloaded = model(AccountIntegrationModel::class)->find($integration->id);
+        $this->assertSame(AccountIntegrationModel::STATUS_ERROR, $reloaded->status);
+    }
+
     /** Item que o conector não conseguiu montar não vira imóvel quebrado. */
     public function testItemQueNaoResolveEIgnoradoNaCriacao(): void
     {
@@ -675,16 +716,55 @@ final class IntegrationSyncTest extends HabitawebTestCase
 
     // ---------------------------------------------------------------- trava
 
-    public function testNaoRodaDuasVezesEmParalelo(): void
+    /**
+     * A trava é uma UPDATE condicional na própria coluna
+     * (AccountIntegrationModel::acquireLock), não mais uma chave de cache —
+     * simular "já tem rodada em andamento" é adquirir a trava antes, do
+     * jeito que a própria run() faria.
+     */
+    public function testTravaAtomicaNaoDeixaDuasRodadas(): void
     {
         [$sync, $integration] = $this->syncService([$this->property('100')]);
 
-        cache()->save('integration_sync_lock_' . $integration->id, time(), 60);
+        model(AccountIntegrationModel::class)->acquireLock((int) $integration->id, 60);
 
         $result = $sync->run($integration);
 
         $this->assertSame(0, $result->created);
         $this->assertStringContainsString('em andamento', $result->errorSummary());
+    }
+
+    /** Trava expirada (processo anterior morreu sem liberar) não bloqueia pra sempre. */
+    public function testTravaExpiradaPermiteNovaRodada(): void
+    {
+        [$sync, $integration] = $this->syncService([$this->property('100')]);
+
+        model(AccountIntegrationModel::class)->update($integration->id, [
+            'sync_locked_until' => date('Y-m-d H:i:s', time() - 10),
+        ]);
+
+        $result = $sync->run($integration);
+
+        $this->assertSame(1, $result->created);
+    }
+
+    /**
+     * Rodada RUNNING além do TTL (processo morto por Fatal Error, sem
+     * shutdown handler ter rodado — ex.: `kill -9`, reinício do servidor)
+     * é fechada como ERROR pela reconciliação no início da PRÓXIMA rodada,
+     * e não fica "Rodando" na tela pra sempre.
+     */
+    public function testRodadaPresaAlemDoTtlEFechadaComoErro(): void
+    {
+        [$sync, $integration] = $this->syncService([$this->property('100')]);
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $runId    = $runModel->start((int) $integration->id, IntegrationSyncRunModel::TRIGGER_CRON);
+        $runModel->update($runId, ['started_at' => date('Y-m-d H:i:s', time() - 3600)]);
+
+        $sync->run($integration);
+
+        $this->assertSame(IntegrationSyncRunModel::STATUS_ERROR, $runModel->find($runId)->status);
     }
 
     // -------------------------------------------------- prioridade do botão
