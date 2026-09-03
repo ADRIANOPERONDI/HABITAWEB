@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Database\Seeds\LeadChargeRuleSeeder;
 use App\Database\Seeds\PlanSeeder;
+use App\Entities\PlanFeature;
 use App\Models\PlanLaunchRampModel;
 use App\Models\PlanModel;
 use App\Models\SubscriptionModel;
@@ -62,7 +64,7 @@ final class PlanCheckoutTest extends HabitawebTestCase
         $response->assertSee('1.850,00');
         $response->assertSee('45 Imóveis');
         $response->assertSee('12 Fotos/Imóvel');
-        $response->assertSee('10 Destaques');
+        $response->assertSee('10 Turbinadas/mês');
     }
 
     public function testLimiteNuloAparaceComoIlimitado(): void
@@ -79,7 +81,73 @@ final class PlanCheckoutTest extends HabitawebTestCase
         $response->assertStatus(200);
         $response->assertSee('Imóveis ilimitados');
         $response->assertSee('Fotos ilimitadas');
-        $response->assertSee('Destaques ilimitados');
+        $response->assertSee('Turbinadas ilimitadas');
+    }
+
+    /**
+     * Card do card exibe features reais do plano (filtradas por
+     * `PlanFeature::visiveis()`), turbinadas + bônus anual, crédito mensal
+     * de leads e o preço do ciclo anual — nada disso existia antes do D1,
+     * que trocou o card estático (imóveis/fotos/"destaques") por um espelho
+     * do que o plano de fato entrega.
+     */
+    public function testCardMostraFeaturesTurbinadasECreditoDoPlano(): void
+    {
+        $this->makePlan([
+            'nome'                 => 'Plano Completo',
+            'preco_mensal'         => 1690.00,
+            'preco_anual'          => 16900.00,
+            'limite_turbo_mensal'  => 5,
+            'turbo_bonus_anual'    => 3,
+            'credito_leads_mensal' => 200.00,
+            'features'             => [PlanFeature::PAINEL_COMPLETO => true],
+        ]);
+
+        $response = $this->get('checkout/plans');
+
+        $response->assertStatus(200);
+        $response->assertSee('5 Turbinadas/mês');
+        $response->assertSee('+3 turbinadas/mês no plano anual');
+        $response->assertSee('Crédito mensal de R$ 200,00 em leads');
+        $response->assertSee('16.900,00');
+        $response->assertSee(PlanFeature::label(PlanFeature::PAINEL_COMPLETO));
+    }
+
+    /** Feature marcada `oculto` no catálogo (sem tela ainda) não aparece no card. */
+    public function testFeatureOcultaNaoApareceNoCard(): void
+    {
+        $this->makePlan([
+            'nome'     => 'Plano Com Feature Oculta',
+            'features' => [PlanFeature::INTELIGENCIA_MERCADO => true],
+        ]);
+
+        $response = $this->get('checkout/plans');
+
+        $response->assertStatus(200);
+        $response->assertDontSee(PlanFeature::label(PlanFeature::INTELIGENCIA_MERCADO));
+    }
+
+    public function testMostraPrecoDeLeadDasRegrasPadrao(): void
+    {
+        $this->seed(LeadChargeRuleSeeder::class);
+        $this->makePlan(['nome' => 'Plano Qualquer']);
+
+        $response = $this->get('checkout/plans');
+
+        $response->assertStatus(200);
+        $response->assertSee('Venda R$ 80,00');
+        $response->assertSee('Aluguel R$ 40,00');
+    }
+
+    /** A rampa é sempre mensal (P6) — a vitrine precisa dizer isso, não só mostrar o número. */
+    public function testMostraRampaSoNoMensal(): void
+    {
+        $this->makePlan(['nome' => 'Plano Qualquer']);
+
+        $response = $this->get('checkout/plans');
+
+        $response->assertStatus(200);
+        $response->assertSee('ciclo mensal');
     }
 
     public function testPlanoInativoNaoAparece(): void

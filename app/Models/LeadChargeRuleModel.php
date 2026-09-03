@@ -96,4 +96,39 @@ class LeadChargeRuleModel extends Model
     {
         return $this->orderBy('account_id', 'ASC')->orderBy('tipo_negocio', 'ASC')->findAll();
     }
+
+    /**
+     * Preços padrão da plataforma (sem tenant nem conector), por tipo de
+     * negócio — o que a vitrine pública de planos mostra como "quanto custa
+     * um lead". Não passa por `resolveFor()`: aqui não há conta concreta
+     * para resolver contra, só o catálogo geral vigente hoje.
+     *
+     * @return array<string, \App\Entities\LeadChargeRule> chave = tipo_negocio
+     */
+    public function platformDefaults(?string $onDate = null): array
+    {
+        $onDate ??= date('Y-m-d');
+
+        $rules = $this->where('account_id', null)
+            ->where('provider_code', null)
+            ->where('is_active', true)
+            ->groupStart()
+                ->where('valid_from <=', $onDate)
+                ->orWhere('valid_from', null)
+            ->groupEnd()
+            ->groupStart()
+                ->where('valid_to >=', $onDate)
+                ->orWhere('valid_to', null)
+            ->groupEnd()
+            ->findAll();
+
+        $porTipo = [];
+        foreach ($rules as $rule) {
+            if ($rule->tipo_negocio !== null) {
+                $porTipo[$rule->tipo_negocio] = $rule;
+            }
+        }
+
+        return $porTipo;
+    }
 }

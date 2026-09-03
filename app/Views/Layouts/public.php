@@ -247,6 +247,7 @@
         $isRentRoute = str_starts_with($currentPath, 'imoveis/aluguel');
         $isAboutRoute = in_array($currentPath, ['sobre', 'termos', 'privacidade'], true);
         $isPartnersRoute = str_starts_with($currentPath, 'parceiros') || str_starts_with($currentPath, 'parceiro/');
+        $isPlansRoute = str_starts_with($currentPath, 'checkout/plans');
     ?>
 
     <!-- Navbar -->
@@ -291,6 +292,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link fw-500 <?= $isPartnersRoute ? 'active' : '' ?>" href="<?= site_url('parceiros') ?>">Parceiros</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link fw-500 <?= $isPlansRoute ? 'active' : '' ?>" href="<?= site_url('checkout/plans') ?>">Planos</a>
                     </li>
                 </ul>
                 

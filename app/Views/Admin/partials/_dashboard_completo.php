@@ -97,7 +97,7 @@ $origemLabel = [
                             O comparativo completo (participação na oferta e nos leads da sua praça) é
                             exclusivo do plano Diamante.
                         </p>
-                        <a href="<?= site_url('admin/subscription/plans') ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                        <a href="<?= site_url('checkout/plans') ?>" class="btn btn-sm btn-outline-primary rounded-pill px-3">
                             Conhecer o Diamante
                         </a>
                     <?php endif; ?>

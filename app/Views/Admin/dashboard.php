@@ -110,7 +110,7 @@
                 <p class="mb-0 opacity-75"><?= $subscriptionAlert['message'] ?></p>
             </div>
             <div class="ms-auto">
-                <a href="<?= site_url('admin/subscription/plans') ?>" class="btn btn-<?= $subscriptionAlert['type'] ?> rounded-pill px-4 fw-bold">Ver Planos</a>
+                <a href="<?= site_url('checkout/plans') ?>" class="btn btn-<?= $subscriptionAlert['type'] ?> rounded-pill px-4 fw-bold">Ver Planos</a>
             </div>
         </div>
     </div>
@@ -132,7 +132,7 @@
                     tempo, de onde vêm seus acessos, e um comparativo de desempenho contra a média do
                     mercado — tudo no mesmo lugar.
                 </p>
-                <a href="<?= site_url('admin/subscription/plans') ?>" class="btn btn-primary rounded-pill px-4 fw-bold mx-auto">
+                <a href="<?= site_url('checkout/plans') ?>" class="btn btn-primary rounded-pill px-4 fw-bold mx-auto">
                     Conhecer os planos
                 </a>
             </div>
