@@ -249,27 +249,19 @@ class SubscriptionController extends BaseController
         $effectiveAmount = $rampService->amountFor($targetPlan, $billingCycle, $activeSub);
 
         if ($effectiveAmount <= 0) {
-            if ($activeSub) {
-                if ($activeSub->plan_id == $targetPlan->id) {
-                    return redirect()->back()->with('message', 'Você já está neste plano.');
-                }
-                $activeSub->status = 'CANCELADA_POR_TROCA';
-                $subscriptionModel->save($activeSub);
+            if ($activeSub && (int) $activeSub->plan_id === (int) $targetPlan->id) {
+                return redirect()->back()->with('message', 'Você já está neste plano.');
             }
 
-            $subscriptionModel->insert([
-                'account_id' => $accountId,
-                'plan_id'    => $targetPlan->id,
-                'status'     => 'ACTIVE',
-                'data_inicio'=> date('Y-m-d'),
-                'valor'      => 0.00,
-                'payment_method' => 'FREE',
-                // Continua o relógio da rampa da assinatura anterior (se
-                // havia uma) em vez de resetar para hoje — trocar de plano
-                // não deveria dar mais 6 meses grátis de novo.
-                'ramp_started_at'    => $activeSub->ramp_started_at ?? null,
-                'ramp_percent_atual' => $activeSub->ramp_started_at ? $rampService->percentFor($activeSub) : null,
-            ]);
+            // Continua o relógio da rampa da assinatura anterior (se havia
+            // uma) em vez de resetar para hoje — trocar de plano não deveria
+            // dar mais 6 meses grátis de novo.
+            $paymentService->createFreeLocalSubscription(
+                $accountId,
+                $targetPlan,
+                $billingCycle,
+                $activeSub->ramp_started_at ?? null
+            );
 
             return redirect()->to('admin/subscription')->with('message', "Plano alterado para {$targetPlan->nome} com sucesso!");
         }

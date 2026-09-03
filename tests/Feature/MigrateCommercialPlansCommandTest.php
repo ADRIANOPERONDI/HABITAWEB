@@ -129,6 +129,26 @@ final class MigrateCommercialPlansCommandTest extends HabitawebTestCase
         $this->assertSame('plano.migrado_comercial', $log->action);
     }
 
+    /**
+     * A conta migrada vem de uma assinatura PAGA, com `data_fim` = fim do
+     * ciclo já contratado (dias/meses à frente, não "para sempre"). Sem
+     * zerar esse campo, `SubscriptionCheck::checkExpiredSubscriptions()`
+     * (roda todo dia) marcaria essa assinatura EXPIRED assim que aquela data
+     * passasse — mesmo ela estando "ativa" com mensalidade R$0 na rampa.
+     */
+    public function testModoRampaZeraDataFim(): void
+    {
+        $planos = $this->planoLegadoENovo(1850.00, 990.00);
+        $tenant = $this->contaNoLegado($planos['legado'], [
+            'data_fim' => date('Y-m-d', strtotime('+5 days')),
+        ]);
+
+        $this->runCommand('--confirmar --modo rampa');
+
+        $sub = model(SubscriptionModel::class)->find($tenant['subscription']->id);
+        $this->assertNull($sub->data_fim, 'assinatura gratuita da rampa nao pode ter data de expiracao');
+    }
+
     public function testModoRampaComAssinaturaNoGatewayCancelaAAssinaturaReal(): void
     {
         $this->ativarGatewayFake();

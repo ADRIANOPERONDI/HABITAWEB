@@ -47,6 +47,19 @@
                         </div>
                     </div>
 
+                    <?php if ($rampPreview !== null): ?>
+                    <!-- Rampa de lançamento (D1): só aparece com o ciclo mensal selecionado -->
+                    <div class="alert alert-success border-0 rounded-4 small mb-3" id="rampBanner">
+                        <i class="fas fa-gift me-1"></i>
+                        <strong>R$ <?= number_format($rampPreview['amount_today'], 2, ',', '.') ?> hoje</strong>
+                        — R$ <?= number_format($rampPreview['next_amount'], 2, ',', '.') ?> a partir de
+                        <?= esc(date('d/m/Y', strtotime($rampPreview['next_date']))) ?>.
+                    </div>
+                    <div class="alert alert-secondary border-0 rounded-4 small mb-3 d-none" id="annualNoRampNote">
+                        O plano anual não participa da rampa de lançamento — o valor é cobrado integralmente.
+                    </div>
+                    <?php endif; ?>
+
                     <!-- Coupon Input -->
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted">Cupom de Desconto</label>
@@ -248,13 +261,27 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     let currentBasePrice = prices['MONTHLY'];
-    
+
+    // Rampa (D1): banner só faz sentido pro ciclo mensal — o anual nunca
+    // entra nela (P6). Os elementos só existem no DOM quando o PHP calculou
+    // uma prévia (rampPreview !== null); sem isso, nada a alternar.
+    const rampBanner = document.getElementById('rampBanner');
+    const annualNoRampNote = document.getElementById('annualNoRampNote');
+
+    function updateRampBanner(cycle) {
+        if (!rampBanner) { return; }
+
+        rampBanner.classList.toggle('d-none', cycle !== 'MONTHLY');
+        annualNoRampNote.classList.toggle('d-none', cycle !== 'YEARLY');
+    }
+
     cycleRadios.forEach(radio => {
         radio.addEventListener('change', function() {
             hiddenCycle.value = this.value;
             currentBasePrice = prices[this.value];
             updateTotalDisplay();
-            
+            updateRampBanner(this.value);
+
             // Re-validate coupon if one is already applied
             if (hiddenCoupon.value) {
                 applyCouponBtn.click();

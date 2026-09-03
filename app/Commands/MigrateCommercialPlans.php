@@ -244,6 +244,13 @@ class MigrateCommercialPlans extends BaseCommand
                         'ramp_percent_atual' => 0,
                         'valor'              => 0.00,
                         'payment_method'     => 'FREE',
+                        // NULL, nunca a data_fim antiga: essa assinatura vem
+                        // de uma conta paga (data_fim = fim do ciclo já
+                        // contratado), e SubscriptionCheck expira quem
+                        // passar de data_fim — sem zerar, a conta migrada
+                        // pra rampa perderia o painel no fim do ciclo que já
+                        // tinha pago, mesmo com a mensalidade agora em R$0.
+                        'data_fim'              => null,
                         'asaas_subscription_id' => $temGateway ? null : $sub->asaas_subscription_id,
                     ]);
 

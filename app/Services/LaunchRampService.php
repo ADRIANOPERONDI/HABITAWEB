@@ -30,6 +30,31 @@ class LaunchRampService
     }
 
     /**
+     * Data de adesão à rampa para um cadastro NOVO pelo checkout (D1), ou
+     * null se este cadastro não deve entrar nela.
+     *
+     * Só MONTHLY entra (P6): a rampa desconta um percentual do preço do
+     * CICLO, e aplicar isso a um plano anual criaria pró-rata sobre um valor
+     * de 12 meses pago de uma vez — ou pior, "anual a R$ 0" no primeiro
+     * semestre, o que a proposta comercial nunca previu. Cadastro anual paga
+     * as 10 mensalidades cheias de sempre; o benefício dele é a exposição
+     * extra (turbo bônus), não desconto de rampa.
+     *
+     * Depende de existir faixa configurada para o mês 1 — sem isso, marcar
+     * `ramp_started_at = hoje` só faria a conta entrar numa rampa vazia sem
+     * nunca sair dela (percentFor() cai no fallback de 100% de qualquer
+     * jeito, mas a data ficaria gravada sem nenhum propósito).
+     */
+    public function enrollmentDateForNewSignup(string $billingCycle): ?string
+    {
+        if ($billingCycle !== 'MONTHLY') {
+            return null;
+        }
+
+        return $this->rampModel->forMonth(1) !== null ? date('Y-m-d') : null;
+    }
+
+    /**
      * Mês de vida da conta (1-indexado) na data de referência, ou null se a
      * assinatura não participa da rampa.
      */

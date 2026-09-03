@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Entities\Subscription;
 use App\Models\AccountModel;
 use App\Models\SubscriptionModel;
 use App\Models\PaymentGatewayModel;
@@ -181,7 +182,7 @@ class PaymentService
     /**
      * Initialize a Subscription (Plan)
      */
-    public function initializeSubscription(int $accountId, int $planId, string $billingType, array $creditCard = [], ?string $couponCode = null, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3)
+    public function initializeSubscription(int $accountId, int $planId, string $billingType, array $creditCard = [], ?string $couponCode = null, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $rampStartedAt = null)
     {
         if (!$this->activeGateway) {
             throw new \Exception("Serviço de pagamento indisponível.");
@@ -194,24 +195,22 @@ class PaymentService
         if (!$plan) {
             throw new \Exception("Plano inválido.");
         }
-        
-        // Determine Base Amount and Duration based on Chosen Cycle
-        $baseAmount = (float)$plan->preco_mensal;
-        $monthsToAdd = 1;
-        switch($billingCycle) {
-            case 'QUARTERLY': 
-                $baseAmount = (float)$plan->preco_trimestral; 
-                $monthsToAdd = 3;
-                break;
-            case 'SEMIANNUALLY': 
-                $baseAmount = (float)$plan->preco_semestral; 
-                $monthsToAdd = 6;
-                break;
-            case 'YEARLY': 
-                $baseAmount = (float)$plan->preco_anual; 
-                $monthsToAdd = 12;
-                break;
-        }
+
+        // Duração do ciclo — independe de rampa.
+        $monthsToAdd = match ($billingCycle) {
+            'QUARTERLY'    => 3,
+            'SEMIANNUALLY' => 6,
+            'YEARLY'       => 12,
+            default        => 1,
+        };
+
+        // Valor efetivo do ciclo. LaunchRampService é o único ponto que
+        // decide quanto se cobra AGORA (aplica o desconto de rampa, Fase 6,
+        // quando $rampStartedAt não é nulo); getPlanAmountForBillingCycle
+        // continua resolvendo só o preço "de tabela" do ciclo.
+        $rampService     = new LaunchRampService($this);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+        $baseAmount       = $rampService->amountFor($plan, $billingCycle, $rampSubscription);
 
         // 1. Validate Coupon (Passing account_id for targeted coupons)
         $couponData = $this->validateCoupon($couponCode, $baseAmount, $accountId);
@@ -320,7 +319,9 @@ class PaymentService
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
             'billing_cycle' => $billingCycle,
-            'next_billing_date' => $subscriptionData['next_billing_date'] ?? null
+            'next_billing_date' => $subscriptionData['next_billing_date'] ?? null,
+            'ramp_started_at'    => $rampStartedAt,
+            'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
         ];
 
         // LOGICA DE INTEGRIDADE ABSOLUTA: Upsert baseado no asaas_subscription_id
@@ -553,6 +554,54 @@ class PaymentService
             'YEARLY' => 12,
             default => 1,
         };
+    }
+
+    /**
+     * Assinatura ACTIVE sem nenhuma chamada ao gateway — usada tanto pela
+     * troca de plano que cai a R$0 (SubscriptionController::upgrade) quanto
+     * pelo cadastro novo que entra no mês 0% da rampa (checkout, Fase 6/D1).
+     *
+     * Asaas não aceita assinatura de valor zero, e forçar R$0,01 mentiria na
+     * fatura do cliente — o caminho aqui é simplesmente não criar nada no
+     * gateway. `data_fim` fica sempre NULL: expirar essa assinatura
+     * derrubaria o painel do tenant no mês seguinte mesmo com a mensalidade
+     * continuando R$0 (ver SubscriptionCheck).
+     *
+     * `$rampStartedAt` é decisão de quem chama: `upgrade()` continua o
+     * relógio da assinatura anterior (troca de plano não dá 6 meses novos de
+     * graça); o checkout usa `LaunchRampService::enrollmentDateForNewSignup()`.
+     *
+     * @return array{success: bool, local_id: int}
+     */
+    public function createFreeLocalSubscription(int $accountId, $plan, string $billingCycle, ?string $rampStartedAt): array
+    {
+        $rampService      = new LaunchRampService($this);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+
+        $activeSub = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->where('status', 'ACTIVE')
+            ->first();
+
+        if ($activeSub) {
+            $activeSub->status = 'CANCELADA_POR_TROCA';
+            $this->subscriptionModel->save($activeSub);
+        }
+
+        $localSubId = $this->subscriptionModel->insert([
+            'account_id'         => $accountId,
+            'plan_id'            => $plan->id,
+            'status'             => 'ACTIVE',
+            'data_inicio'        => date('Y-m-d'),
+            'data_fim'           => null,
+            'valor'              => 0.00,
+            'payment_method'     => 'FREE',
+            'billing_cycle'      => $billingCycle,
+            'ramp_started_at'    => $rampStartedAt,
+            'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
+        ], true);
+
+        return ['success' => true, 'local_id' => $localSubId];
     }
 
     /**
@@ -1162,7 +1211,7 @@ class PaymentService
     /**
      * Start a Tokenization Payment (Manual Recurrence Flow)
      */
-    public function initiateTokenizationPayment(int $accountId, int $planId, string $billingType, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $couponCode = null)
+    public function initiateTokenizationPayment(int $accountId, int $planId, string $billingType, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $couponCode = null, ?string $rampStartedAt = null)
     {
         if (!$this->activeGateway) {
             throw new \Exception("Serviço de pagamento indisponível.");
@@ -1176,23 +1225,20 @@ class PaymentService
             throw new \Exception("Plano inválido.");
         }
 
-        // Determine Base Amount and Duration based on Chosen Cycle
-        $baseAmount = (float)$plan->preco_mensal;
-        $monthsToAdd = 1;
-        switch($billingCycle) {
-            case 'QUARTERLY': 
-                $baseAmount = (float)$plan->preco_trimestral; 
-                $monthsToAdd = 3;
-                break;
-            case 'SEMIANNUALLY': 
-                $baseAmount = (float)$plan->preco_semestral; 
-                $monthsToAdd = 6;
-                break;
-            case 'YEARLY': 
-                $baseAmount = (float)$plan->preco_anual; 
-                $monthsToAdd = 12;
-                break;
-        }
+        // Duração do ciclo — independe de rampa.
+        $monthsToAdd = match ($billingCycle) {
+            'QUARTERLY'    => 3,
+            'SEMIANNUALLY' => 6,
+            'YEARLY'       => 12,
+            default        => 1,
+        };
+
+        // Valor efetivo do ciclo, com o desconto de rampa (Fase 6) aplicado
+        // quando $rampStartedAt não é nulo — mesmo critério de
+        // initializeSubscription().
+        $rampService      = new LaunchRampService($this);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+        $baseAmount        = $rampService->amountFor($plan, $billingCycle, $rampSubscription);
 
         // 1. Validate Coupon
         $couponData = $this->validateCoupon($couponCode, $baseAmount, $accountId);
@@ -1243,7 +1289,9 @@ class PaymentService
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
             'billing_cycle' => $billingCycle,
-            'next_billing_date' => date('Y-m-d', strtotime("+$monthsToAdd months"))
+            'next_billing_date' => date('Y-m-d', strtotime("+$monthsToAdd months")),
+            'ramp_started_at'    => $rampStartedAt,
+            'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
         ];
 
         $this->subscriptionModel->insert($subscription);

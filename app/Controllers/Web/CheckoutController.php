@@ -49,11 +49,50 @@ class CheckoutController extends BaseController
             $account = model('App\Models\AccountModel')->find($user->account_id);
         }
 
+        // Prévia da rampa (D1) só faz sentido pro ciclo mensal (P6) — o
+        // anual nunca entra nela. rampPreview fica null nos outros casos, e
+        // a view mostra o preço cheio normalmente.
+        $rampPreview = $this->rampPreviewFor($plan);
+
         return view('web/checkout/plan', [
             'plan' => $plan,
             'user' => $user,
-            'account' => $account
+            'account' => $account,
+            'rampPreview' => $rampPreview,
         ]);
+    }
+
+    /**
+     * Prévia de "R$ 0,00 hoje — R$ X a partir de DD/MM" pra tela de
+     * confirmação do checkout, sobre uma assinatura provisória (o cadastro
+     * ainda não existe). Mesma conta de `process()`, só que sem persistir
+     * nada — é só o que a tela mostra ANTES do tenant confirmar.
+     *
+     * @return array{amount_today: float, next_amount: float, next_date: string}|null
+     */
+    private function rampPreviewFor($plan): ?array
+    {
+        $rampService   = new \App\Services\LaunchRampService($this->paymentService);
+        $rampStartedAt = $rampService->enrollmentDateForNewSignup('MONTHLY');
+
+        if ($rampStartedAt === null) {
+            return null;
+        }
+
+        $rampSubscription = new \App\Entities\Subscription(['ramp_started_at' => $rampStartedAt]);
+        $proxima          = $rampService->nextTransition($rampSubscription);
+
+        if ($proxima === null) {
+            return null;
+        }
+
+        $baseCiclo = $this->paymentService->getPlanAmountForBillingCycle($plan, 'MONTHLY');
+
+        return [
+            'amount_today' => $rampService->amountFor($plan, 'MONTHLY', $rampSubscription),
+            'next_amount'  => round($baseCiclo * $proxima['to_percent'] / 100, 2),
+            'next_date'    => $proxima['date'],
+        ];
     }
 
     /**
@@ -104,6 +143,31 @@ class CheckoutController extends BaseController
 
         $gracePeriodDays = (int) $plan->carencia_dias;
 
+        // A rampa decide o valor ANTES de qualquer chamada ao gateway (D1):
+        // Asaas não aceita assinatura de R$0, e criar uma "de mentirinha"
+        // (R$0,01) mentiria na fatura do cliente. Só MONTHLY entra (P6) —
+        // enrollmentDateForNewSignup() já filtra isso.
+        $rampService      = new \App\Services\LaunchRampService($this->paymentService);
+        $rampStartedAt    = $rampService->enrollmentDateForNewSignup($billingCycle);
+        $rampSubscription = new \App\Entities\Subscription(['ramp_started_at' => $rampStartedAt]);
+        $effectiveAmount  = $rampService->amountFor($plan, $billingCycle, $rampSubscription);
+
+        if ($effectiveAmount <= 0) {
+            $this->paymentService->createFreeLocalSubscription($user->account_id, $plan, $billingCycle, $rampStartedAt);
+
+            $mensagem = "Seu plano {$plan->nome} começa em R$ 0,00 hoje";
+            $proxima  = $rampService->nextTransition($rampSubscription);
+
+            if ($proxima !== null) {
+                $baseCiclo    = $this->paymentService->getPlanAmountForBillingCycle($plan, $billingCycle);
+                $valorProximo = round($baseCiclo * $proxima['to_percent'] / 100, 2);
+                $mensagem .= ' — R$ ' . number_format($valorProximo, 2, ',', '.')
+                    . ' a partir de ' . date('d/m/Y', strtotime($proxima['date']));
+            }
+
+            return redirect()->to('admin/subscription')->with('success', $mensagem);
+        }
+
         try {
             log_message('debug', '[Checkout] Processando pagamento para conta ' . $user->account_id);
             if ($billingType === 'CREDIT_CARD') {
@@ -115,7 +179,8 @@ class CheckoutController extends BaseController
                     $billingType,
                     $billingCycle,
                     $gracePeriodDays,
-                    $couponCode
+                    $couponCode,
+                    $rampStartedAt
                 );
             } else {
                 log_message('debug', '[Checkout] Iniciando Assinatura Nativa (PIX/Boleto).');
@@ -127,7 +192,8 @@ class CheckoutController extends BaseController
                     [], // No card data yet for redirect flow
                     $couponCode,
                     $billingCycle,
-                    $gracePeriodDays
+                    $gracePeriodDays,
+                    $rampStartedAt
                 );
             }
 
