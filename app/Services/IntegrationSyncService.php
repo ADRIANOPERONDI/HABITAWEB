@@ -459,7 +459,7 @@ class IntegrationSyncService
             )));
         }
 
-        $saved = $this->propertyService->trySaveProperty($data, $existingId, false, $existingId !== null);
+        $saved = $this->propertyService->trySaveProperty($data, $existingId, false, $existingId !== null, fromSync: true);
 
         if (! empty($saved['success'])) {
             return (int) ($saved['data']->id ?? $existingId);

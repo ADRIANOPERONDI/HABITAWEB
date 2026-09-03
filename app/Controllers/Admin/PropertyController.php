@@ -211,23 +211,13 @@ class PropertyController extends BaseController
         }
 
         // Imóvel espelhado de uma plataforma externa é read-only nos campos que
-        // o sync sobrescreve. A checagem é aqui, no servidor: o `disabled` do
-        // formulário é conveniência visual, não barreira — qualquer POST direto
-        // passaria por cima dele, e a edição seria perdida na próxima rodada de
-        // qualquer forma, o que é pior que recusar agora.
-        $managedFields = [];
-        if ((new \App\Services\IntegrationService())->isManagedProperty((int) $id)) {
-            foreach (\App\Services\IntegrationService::MANAGED_FIELDS as $field) {
-                if (array_key_exists($field, $data)) {
-                    $managedFields[] = $field;
-                    unset($data[$field]);
-                }
-            }
-        }
-
+        // o sync sobrescreve — a guarda em si vive dentro de
+        // PropertyService::trySaveProperty() (única, vale pra todo chamador:
+        // este controller, a API v1 e o próprio sync). O `disabled` do
+        // formulário é conveniência visual, não barreira.
         $result = $this->propertyService->trySaveProperty($data, $id, $isAdmin);
 
-        if ($managedFields !== [] && $result['success']) {
+        if (! empty($result['ignored_fields']) && $result['success']) {
             $result['message'] = 'Alterações salvas. Os campos sincronizados com a integração foram ignorados — '
                 . 'altere-os no sistema de origem.';
         }
@@ -268,8 +258,18 @@ class PropertyController extends BaseController
             }
         }
 
-        if ($this->propertyService->deleteProperty($id)) {
-            return $this->response->setJSON(['success' => true, 'message' => 'Imóvel desativado com sucesso.']);
+        // Imóvel espelhado de integração pausa em vez de apagar: o vínculo com
+        // a origem sobrevive, e sem isso o próximo sync não teria como saber
+        // que o tenant tentou removê-lo — ele simplesmente reapareceria.
+        $resultado = $this->propertyService->deleteOrPauseProperty((int) $id);
+
+        if ($resultado['success']) {
+            $mensagem = $resultado['paused']
+                ? 'Imóvel pausado — ele é espelhado de uma integração, então não pode ser removido por aqui. '
+                    . 'Ficará fora do site enquanto estiver pausado.'
+                : 'Imóvel desativado com sucesso.';
+
+            return $this->response->setJSON(['success' => true, 'message' => $mensagem]);
         }
 
         return $this->response->setJSON(['success' => false, 'message' => 'Erro ao desativar imóvel.']);
