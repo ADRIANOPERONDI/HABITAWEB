@@ -6,6 +6,7 @@ use App\Database\Seeds\PlanSeeder;
 use App\Models\AccountIntegrationConfigModel;
 use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationMappingModel;
+use App\Models\IntegrationSyncRunModel;
 use App\Services\IntegrationService;
 use CodeIgniter\Test\DatabaseTestTrait;
 use Tests\Support\Factories\TenantFactory;
@@ -506,5 +507,125 @@ final class IntegrationPanelTest extends HabitawebTestCase
 
         $this->assertFalse($body['success']);
         $this->assertStringContainsString('agendada há pouco', $body['message']);
+    }
+
+    // ------------------------------------------------------- status / abortar
+
+    /**
+     * Depois do "agendado" do teste acima, o painel só descobre o resultado
+     * consultando este endpoint — é ele que faz o polling do configure.php
+     * funcionar sem location.reload().
+     */
+    public function testEndpointDeStatusDevolveUltimaRodadaECooldown(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $runId    = $runModel->start((int) $int->id, IntegrationSyncRunModel::TRIGGER_CRON);
+        $runModel->finish($runId, IntegrationSyncRunModel::STATUS_SUCCESS, [
+            'created_count' => 5,
+            'ignored_count' => 2,
+        ]);
+
+        // Dispara o cooldown de verdade, do mesmo jeito que o botão "Sincronizar agora" faria.
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob/sincronizar', $this->withCsrf());
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])->get('admin/integracoes/simob/status')->getJSON(),
+            true
+        );
+
+        $this->assertTrue($body['success']);
+        $this->assertSame(AccountIntegrationModel::STATUS_CONNECTED, $body['status']);
+        $this->assertFalse($body['running']);
+        $this->assertSame(5, $body['last_run']['created_count']);
+        $this->assertSame(2, $body['last_run']['ignored_count']);
+        $this->assertGreaterThan(0, $body['cooldown_remaining'], 'acabou de agendar — o cooldown de 300s ainda está correndo');
+    }
+
+    /**
+     * closeStaleRunning() (início de run()) já fecha rodadas presas sozinho,
+     * mas só na PRÓXIMA vez que o cron passar por ali — pode levar minutos.
+     * "Abortar" existe pro tenant não ficar de mãos atadas até lá.
+     */
+    public function testAbortarRodadaPresaLiberaATrava(): void
+    {
+        $tenant           = (new TenantFactory())->create();
+        $int              = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        $integrationModel = model(AccountIntegrationModel::class);
+        $integrationModel->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+        $integrationModel->acquireLock((int) $int->id, 900);
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $runId    = $runModel->start((int) $int->id, IntegrationSyncRunModel::TRIGGER_CRON);
+        // Simula uma rodada travada há mais tempo do que o razoável (15 min).
+        $runModel->update($runId, ['started_at' => date('Y-m-d H:i:s', time() - 1000)]);
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])
+                ->post("admin/integracoes/simob/execucoes/{$runId}/abortar", $this->withCsrf())
+                ->getJSON(),
+            true
+        );
+
+        $this->assertTrue($body['success']);
+
+        $run = $runModel->find($runId);
+        $this->assertSame(IntegrationSyncRunModel::STATUS_ERROR, $run->status);
+        $this->assertNotNull($run->error_message);
+
+        $reloaded = $integrationModel->find($int->id);
+        $this->assertNull($reloaded->sync_locked_until, 'a trava precisa ser liberada junto com o abortar');
+    }
+
+    public function testAbortarAntesDoTempoRazoavelERecusadoESemMexerNaTrava(): void
+    {
+        $tenant           = (new TenantFactory())->create();
+        $int              = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        $integrationModel = model(AccountIntegrationModel::class);
+        $integrationModel->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+        $integrationModel->acquireLock((int) $int->id, 900);
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $runId    = $runModel->start((int) $int->id, IntegrationSyncRunModel::TRIGGER_CRON);
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])
+                ->post("admin/integracoes/simob/execucoes/{$runId}/abortar", $this->withCsrf())
+                ->getJSON(),
+            true
+        );
+
+        $this->assertFalse($body['success']);
+
+        $run = $runModel->find($runId);
+        $this->assertSame(IntegrationSyncRunModel::STATUS_RUNNING, $run->status, 'ainda dentro do tempo esperado — não deveria mexer na rodada');
+
+        $reloaded = $integrationModel->find($int->id);
+        $this->assertNotNull($reloaded->sync_locked_until, 'trava de uma rodada legítima não pode ser liberada antes da hora');
+    }
+
+    public function testAbortarNaoAlcancaExecucaoDeOutraConta(): void
+    {
+        $tenant  = (new TenantFactory())->create();
+        $vizinho = (new TenantFactory())->create();
+        $intVizinho = (new IntegrationService())->findOrCreate((int) $vizinho['account']->id, 'simob');
+        $runModel   = model(IntegrationSyncRunModel::class);
+        $runId      = $runModel->start((int) $intVizinho->id, IntegrationSyncRunModel::TRIGGER_CRON);
+        $runModel->update($runId, ['started_at' => date('Y-m-d H:i:s', time() - 1000)]);
+
+        (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])
+                ->post("admin/integracoes/simob/execucoes/{$runId}/abortar", $this->withCsrf())
+                ->getJSON(),
+            true
+        );
+
+        $this->assertFalse($body['success']);
+        $this->assertSame(IntegrationSyncRunModel::STATUS_RUNNING, $runModel->find($runId)->status);
     }
 }

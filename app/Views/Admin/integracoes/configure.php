@@ -234,6 +234,7 @@
 <script>
 (function () {
     const base = '<?= site_url('admin/integracoes/' . $provider->code) ?>';
+    let pollTimer = null;
 
     // O CSRF vai automático pelo $.ajaxSetup do Layouts/master.
     function executar(url, titulo) {
@@ -256,6 +257,52 @@
         executar(base + '/testar', 'Falando com o <?= esc($provider->name, 'js') ?>...');
     });
 
+    function pararPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    // O botão reflete o status real (rodando / em cooldown / livre) em vez
+    // de assumir que terminou assim que o clique volta — quem processa de
+    // fato é o cron, minutos depois.
+    function atualizarBotaoSincronizar(s) {
+        const $btn = $('#btnSincronizar');
+
+        if (s.running) {
+            $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-1"></i> Rodando...');
+        } else if (s.cooldown_remaining > 0) {
+            $btn.prop('disabled', true).html('<i class="fa-solid fa-clock me-1"></i> Aguarde ' + s.cooldown_remaining + 's');
+        } else {
+            $btn.prop('disabled', s.status !== 'CONNECTED').html('<i class="fa-solid fa-rotate me-1"></i> Sincronizar agora');
+        }
+    }
+
+    function consultarStatus() {
+        $.get(base + '/status').done(function (s) {
+            atualizarBotaoSincronizar(s);
+
+            if (s.running) {
+                if (Swal.isVisible()) {
+                    Swal.update({ title: 'Rodando há ' + s.running_seconds + 's...' });
+                }
+                return;
+            }
+
+            pararPolling();
+
+            const r = s.last_run;
+            const resumo = r
+                ? (r.created_count + ' criado(s), ' + r.updated_count + ' atualizado(s), '
+                    + r.ignored_count + ' ignorado(s), ' + r.error_count + ' erro(s)')
+                : 'nenhuma execução registrada ainda.';
+
+            Swal.fire({
+                icon: (r && r.status === 'ERROR') ? 'error' : 'success',
+                title: 'Concluído',
+                text: resumo,
+            });
+        });
+    }
+
     $('#btnSincronizar').on('click', function () {
         Swal.fire({
             icon: 'question',
@@ -275,7 +322,20 @@
 
             $.post(base + '/sincronizar')
                 .done(function (r) {
-                    Swal.fire({ icon: r.success ? 'success' : 'error', title: r.success ? 'Agendado' : 'Não deu', text: r.message });
+                    if (!r.success) {
+                        Swal.fire({ icon: 'error', title: 'Não deu', text: r.message });
+                        return;
+                    }
+
+                    Swal.fire({
+                        title: 'Agendado — aguardando o cron rodar...',
+                        allowOutsideClick: false,
+                        didOpen: () => Swal.showLoading(),
+                    });
+
+                    pararPolling();
+                    pollTimer = setInterval(consultarStatus, 5000);
+                    consultarStatus();
                 })
                 .fail(function () {
                     Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível concluir. Tente novamente.' });
@@ -285,6 +345,28 @@
 
     $('#btnToggle').on('click', function () {
         executar(base + '/toggle', 'Atualizando...');
+    });
+
+    // Ao abrir a página: reflete cooldown já em curso e retoma o polling se
+    // a página foi recarregada com uma sincronização ainda rodando.
+    $.get(base + '/status').done(function (s) {
+        atualizarBotaoSincronizar(s);
+
+        if (s.running) {
+            Swal.fire({
+                title: 'Rodando há ' + s.running_seconds + 's...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            pollTimer = setInterval(consultarStatus, 5000);
+        } else if (s.cooldown_remaining > 0) {
+            pollTimer = setInterval(function () {
+                $.get(base + '/status').done(function (s2) {
+                    atualizarBotaoSincronizar(s2);
+                    if (s2.cooldown_remaining <= 0) { pararPolling(); }
+                });
+            }, 5000);
+        }
     });
 
     $('#btnPublicarRascunhos').on('click', function () {

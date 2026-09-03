@@ -36,10 +36,17 @@
                         <th class="text-end">Fotos</th>
                         <th class="text-end">Duração</th>
                         <th>Observação</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($runs as $run): ?>
+                        <?php
+                            $rodandoHaSegundos = $run->status === \App\Models\IntegrationSyncRunModel::STATUS_RUNNING && $run->started_at
+                                ? time() - strtotime((string) $run->started_at)
+                                : null;
+                            $podeAbortar = $rodandoHaSegundos !== null && $rodandoHaSegundos > $staleRunSeconds;
+                        ?>
                         <tr>
                             <td class="text-nowrap">
                                 <?= $run->started_at
@@ -61,7 +68,24 @@
                                 <?php $d = $run->durationSeconds(); ?>
                                 <?= $d === null ? '—' : ($d < 60 ? $d . 's' : intdiv($d, 60) . 'min') ?>
                             </td>
-                            <td class="err-cell"><?= esc((string) $run->error_message) ?></td>
+                            <td class="err-cell">
+                                <?php if ($run->error_message): ?>
+                                    <details>
+                                        <summary class="text-danger" style="cursor: pointer;">ver</summary>
+                                        <div class="mt-1"><?= esc((string) $run->error_message) ?></div>
+                                    </details>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-nowrap">
+                                <?php if ($podeAbortar): ?>
+                                    <form method="post"
+                                          action="<?= site_url('admin/integracoes/' . $provider->code . '/execucoes/' . $run->id . '/abortar') ?>"
+                                          onsubmit="return confirm('Abortar esta sincronização travada? A trava é liberada e o próximo ciclo do cron pode rodar normalmente.');">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Abortar</button>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

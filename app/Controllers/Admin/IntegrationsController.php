@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Entities\AccountIntegration;
 use App\Libraries\Integrations\Exceptions\IntegrationException;
 use App\Libraries\Integrations\Simob\SimobVocabulary;
+use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationMappingModel;
 use App\Models\IntegrationSyncRunModel;
 use App\Services\IntegrationService;
@@ -24,6 +25,13 @@ class IntegrationsController extends BaseController
 
     /** Intervalo mínimo entre dois "Sincronizar agora" do mesmo tenant. */
     private const MANUAL_SYNC_COOLDOWN = 300;
+
+    /**
+     * A partir de quantos segundos rodando uma execução RUNNING é oferecida
+     * pra abortar manualmente. Mesmo TTL de IntegrationSyncService::LOCK_TTL —
+     * antes disso, ela pode só estar lenta, não travada.
+     */
+    private const STALE_RUN_SECONDS = 900;
 
     public function __construct()
     {
@@ -94,9 +102,10 @@ class IntegrationsController extends BaseController
         }
 
         return view('Admin/integracoes/runs', [
-            'integration' => $integration,
-            'provider'    => $this->service->findProvider($code),
-            'runs'        => model(IntegrationSyncRunModel::class)->recentFor((int) $integration->id, 30),
+            'integration'     => $integration,
+            'provider'        => $this->service->findProvider($code),
+            'runs'            => model(IntegrationSyncRunModel::class)->recentFor((int) $integration->id, 30),
+            'staleRunSeconds' => self::STALE_RUN_SECONDS,
         ]);
     }
 
@@ -203,6 +212,101 @@ class IntegrationsController extends BaseController
         return $this->response->setJSON([
             'success' => true,
             'message' => 'Sincronização agendada. Deve rodar em até 1 minuto — atualize esta página daqui a pouco para ver o resultado.',
+        ]);
+    }
+
+    /**
+     * GET (AJAX, polling): o painel só sabe que "agendou" — este endpoint é
+     * quem diz se já rodou. Sem ele, depois de clicar em "Sincronizar agora"
+     * o tenant só descobre o resultado atualizando a página na mão de vez em
+     * quando.
+     */
+    public function status(string $code)
+    {
+        $integration = $this->resolve($code);
+
+        if ($integration === null) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Integração não encontrada.']);
+        }
+
+        $lastRun = model(IntegrationSyncRunModel::class)->lastFor((int) $integration->id);
+        $running = $lastRun !== null && $lastRun->status === IntegrationSyncRunModel::STATUS_RUNNING;
+
+        return $this->response->setJSON([
+            'success'            => true,
+            'status'             => $integration->status,
+            'is_active'          => $integration->is_active,
+            'priority_pending'   => $integration->sync_priority_requested_at !== null,
+            'running'            => $running,
+            'running_seconds'    => $running ? max(0, time() - strtotime((string) $lastRun->started_at)) : null,
+            'last_run'           => $lastRun === null ? null : [
+                'id'            => (int) $lastRun->id,
+                'status'        => $lastRun->status,
+                'trigger_type'  => $lastRun->trigger_type,
+                'finished_at'   => $lastRun->finished_at ? (string) $lastRun->finished_at : null,
+                'duration'      => $lastRun->durationSeconds(),
+                'created_count' => (int) $lastRun->created_count,
+                'updated_count' => (int) $lastRun->updated_count,
+                'skipped_count' => (int) $lastRun->skipped_count,
+                'ignored_count' => (int) $lastRun->ignored_count,
+                'paused_count'  => (int) $lastRun->paused_count,
+                'images_count'  => (int) $lastRun->images_count,
+                'error_count'   => (int) $lastRun->error_count,
+                'error_message' => $lastRun->error_message,
+            ],
+            'cooldown_remaining' => $this->cooldownRemaining($integration),
+        ]);
+    }
+
+    /**
+     * POST: aborta manualmente uma execução presa em RUNNING além do tempo
+     * razoável. `closeStaleRunning()` (início de `run()`) já cobre o caso
+     * comum — a próxima rodada do cron fecha sozinha —, mas entre uma
+     * execução travar e o próximo cron passar por ali pode levar minutos, e
+     * o tenant não tem por que esperar sem poder fazer nada.
+     */
+    public function abortRun(string $code, int $runId)
+    {
+        $integration = $this->resolve($code);
+
+        if ($integration === null) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Integração não encontrada.']);
+        }
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $run      = $runModel->find($runId);
+
+        if ($run === null || (int) $run->account_integration_id !== (int) $integration->id) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Execução não encontrada.']);
+        }
+
+        if ($run->status !== IntegrationSyncRunModel::STATUS_RUNNING) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Esta execução já terminou.']);
+        }
+
+        if (time() - strtotime((string) $run->started_at) < self::STALE_RUN_SECONDS) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Esta execução ainda está dentro do tempo esperado. Aguarde mais um pouco antes de abortar.',
+            ]);
+        }
+
+        $runModel->finish(
+            (int) $run->id,
+            IntegrationSyncRunModel::STATUS_ERROR,
+            [],
+            'Abortada manualmente pelo tenant — trava liberada.'
+        );
+        model(AccountIntegrationModel::class)->releaseLock((int) $integration->id);
+
+        audit_log('integration.sync_aborted', ['provider' => $code, 'run_id' => $runId]);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Execução abortada. Você já pode sincronizar novamente.',
         ]);
     }
 
@@ -314,5 +418,17 @@ class IntegrationsController extends BaseController
     private function resolve(string $code): ?AccountIntegration
     {
         return $this->service->find($this->accountId(), $code);
+    }
+
+    /** Segundos restantes do cooldown de "Sincronizar agora" — 0 se livre. */
+    private function cooldownRemaining(AccountIntegration $integration): int
+    {
+        $iniciadoEm = cache("integration_manual_sync_{$integration->id}");
+
+        if ($iniciadoEm === null) {
+            return 0;
+        }
+
+        return max(0, self::MANUAL_SYNC_COOLDOWN - (time() - (int) $iniciadoEm));
     }
 }
