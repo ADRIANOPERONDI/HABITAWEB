@@ -126,12 +126,29 @@
         <div class="col-12">
             <div class="card upsell-card border-0 p-4 p-lg-5 text-center">
                 <i class="fa-solid fa-chart-line fa-2x text-primary mb-3"></i>
-                <h5 class="fw-bold text-dark mb-2">Desbloqueie o painel completo</h5>
-                <p class="text-muted mb-4">
-                    No plano Ouro ou Diamante você acompanha a evolução dos seus leads e visualizações no
-                    tempo, de onde vêm seus acessos, e um comparativo de desempenho contra a média do
-                    mercado — tudo no mesmo lugar.
-                </p>
+                <?php if (($nextPlanUpsell ?? null) !== null): ?>
+                    <h5 class="fw-bold text-dark mb-2">Desbloqueie o plano <?= esc($nextPlanUpsell['plan_name']) ?></h5>
+                    <p class="text-muted mb-3">
+                        <?php if ($nextPlanUpsell['missing_features'] !== []): ?>
+                            Você passa a ter <?= esc(implode(', ', $nextPlanUpsell['missing_features'])) ?>.
+                        <?php endif; ?>
+                        <?php if ($nextPlanUpsell['turbo_gain'] === 'ilimitadas'): ?>
+                            Turbinadas mensais ilimitadas.
+                        <?php elseif (is_int($nextPlanUpsell['turbo_gain']) && $nextPlanUpsell['turbo_gain'] > 0): ?>
+                            +<?= $nextPlanUpsell['turbo_gain'] ?> turbinada(s) por mês.
+                        <?php endif; ?>
+                        <?php if ($nextPlanUpsell['credit_gain'] > 0): ?>
+                            +R$ <?= number_format($nextPlanUpsell['credit_gain'], 2, ',', '.') ?> de crédito mensal em leads.
+                        <?php endif; ?>
+                    </p>
+                <?php else: ?>
+                    <h5 class="fw-bold text-dark mb-2">Desbloqueie o painel completo</h5>
+                    <p class="text-muted mb-4">
+                        No plano Ouro ou Diamante você acompanha a evolução dos seus leads e visualizações no
+                        tempo, de onde vêm seus acessos, e um comparativo de desempenho contra a média do
+                        mercado — tudo no mesmo lugar.
+                    </p>
+                <?php endif; ?>
                 <a href="<?= site_url('checkout/plans') ?>" class="btn btn-primary rounded-pill px-4 fw-bold mx-auto">
                     Conhecer os planos
                 </a>
