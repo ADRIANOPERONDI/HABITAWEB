@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Database\Seeds\PlanSeeder;
 use App\Models\LeadCreditLedgerModel;
+use App\Models\PlanLaunchRampModel;
 use App\Models\PlanModel;
 use App\Models\SubscriptionModel;
 use App\Services\LeadCreditService;
@@ -44,6 +45,31 @@ final class LeadCreditServiceTest extends HabitawebTestCase
             ->update();
 
         return $tenant;
+    }
+
+    private function contaComPlanoNaRampa(float $credito, string $rampStartedAt): array
+    {
+        $tenant = $this->contaComPlano($credito);
+
+        model(SubscriptionModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->set(['ramp_started_at' => $rampStartedAt])
+            ->update();
+
+        return $tenant;
+    }
+
+    /** As três faixas de produção, com valid_from fixo no passado. */
+    private function seedRampaPadrao(): void
+    {
+        $db = \Config\Database::connect();
+        $db->table('plan_launch_ramps')->truncate();
+
+        model(PlanLaunchRampModel::class)->insertBatch([
+            ['mes_de' => 1, 'mes_ate' => 6, 'percentual' => 0, 'is_active' => true, 'valid_from' => '2020-01-01'],
+            ['mes_de' => 7, 'mes_ate' => 12, 'percentual' => 50, 'is_active' => true, 'valid_from' => '2020-01-01'],
+            ['mes_de' => 13, 'mes_ate' => null, 'percentual' => 100, 'is_active' => true, 'valid_from' => '2020-01-01'],
+        ]);
     }
 
     public function testConcedeCreditoParaContaComPlanoElegivel(): void
@@ -136,5 +162,35 @@ final class LeadCreditServiceTest extends HabitawebTestCase
         (new LeadCreditService())->grantMonthly($periodoPassado);
 
         $this->assertSame(0.0, (new LeadCreditService())->balanceFor((int) $tenant['account']->id, $periodoAtual));
+    }
+
+    /**
+     * Mensalidade R$0 na rampa (meses 1-6) é a única receita do semestre de
+     * lançamento (D2) — conceder o crédito de lead JUNTO subsidiaria a
+     * mesma conta duas vezes no mesmo mês.
+     */
+    public function testNaoConcedeCreditoNoMesGratuitoDaRampa(): void
+    {
+        $this->seedRampaPadrao();
+
+        $tenant  = $this->contaComPlanoNaRampa(200.00, date('Y-m-d')); // mes 1: 0%
+        $periodo = date('Y-m-01');
+
+        (new LeadCreditService())->grantMonthly($periodo);
+
+        $this->assertSame(0.0, (new LeadCreditService())->balanceFor((int) $tenant['account']->id, $periodo));
+    }
+
+    /** A partir do mês em que a rampa volta a cobrar, o crédito segue normal. */
+    public function testConcedeQuandoARampaJaCobra(): void
+    {
+        $this->seedRampaPadrao();
+
+        $tenant  = $this->contaComPlanoNaRampa(200.00, date('Y-m-d', strtotime('-7 months'))); // mes 8: 50%
+        $periodo = date('Y-m-01');
+
+        (new LeadCreditService())->grantMonthly($periodo);
+
+        $this->assertSame(200.0, (new LeadCreditService())->balanceFor((int) $tenant['account']->id, $periodo));
     }
 }
