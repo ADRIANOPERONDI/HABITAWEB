@@ -916,6 +916,15 @@ ferramentas abaixo, não por deploy.
    específica, não vale para sempre), preencha também `valid_to` — sem ele
    uma conta que assinar daqui a dois anos ainda ganharia os 6 meses grátis
    do lançamento.
+
+   Mesmo deploy: rode `php spark db:seed LeadChargeRuleSeeder` (já entra em
+   `MainSeeder`, então um `db:seed MainSeeder` completo também cobre). Sem
+   ele, `lead_charge_rules` fica vazia e nenhum lead recebido gera cobrança —
+   a receita do semestre de lançamento simplesmente não liga. É idempotente
+   (upsert por tipo de negócio) e respeita `LEAD_CHARGE_VALID_FROM` no
+   `.env` — a mesma lógica de "código no ar não é a mesma coisa que cobrar":
+   defina essa variável para a data real da virada, não para hoje, se o
+   deploy sair antes da data combinada.
 2. **Comunicação, 30 dias antes.** Fora do código (não há infraestrutura de
    e-mail transacional para isso neste repositório): avisar cada conta em
    plano legado do preço novo, da rampa (se aplicável) e da data.
