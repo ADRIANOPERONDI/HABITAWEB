@@ -208,6 +208,55 @@ final class IntegrationSyncTest extends HabitawebTestCase
         ]);
     }
 
+    /**
+     * status sai de MANAGED_FIELDS (IntegrationService) por decisão de
+     * produto: a origem não tem "rascunho", quem decide isso é o tenant. A
+     * criação ainda aplica initial_status (senão todo imóvel nasceria sem
+     * status nenhum); a partir daí, uma troca manual sobrevive a qualquer
+     * atualização de conteúdo vinda do catálogo.
+     */
+    public function testStatusInicialSoNaCriacaoEAlteracaoManualSobrevive(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, [
+            'finalidades'    => [1, 2],
+            'initial_status' => 'DRAFT',
+            'import_images'  => false,
+        ]);
+
+        $sync = new IntegrationSyncService(new FakeIntegrationService(
+            new FakeConnector([$this->property('100', ['status' => 'DRAFT'])])
+        ));
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->seeInDatabase('properties', [
+            'account_id' => $tenant['account']->id,
+            'status'     => 'DRAFT',
+        ]);
+
+        $propertyModel = model(PropertyModel::class);
+        $propertyId    = $propertyModel->where('account_id', $tenant['account']->id)->first()->id;
+        $propertyModel->update($propertyId, ['status' => 'ACTIVE']);
+
+        // Segunda rodada: conteúdo mudou (força update), status da origem
+        // continua vindo como DRAFT — não pode voltar a sobrescrever.
+        $sync2 = new IntegrationSyncService(new FakeIntegrationService(new FakeConnector([
+            $this->property('100', ['status' => 'DRAFT', 'preco' => 399000], [], '2026-08-05 09:00:00'),
+        ])));
+        $result = $sync2->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $result->updated);
+        $this->seeInDatabase('properties', [
+            'id'     => $propertyId,
+            'status' => 'ACTIVE',
+            'preco'  => 399000,
+        ]);
+    }
+
     // ----------------------------------------------------------- resiliência
 
     /**

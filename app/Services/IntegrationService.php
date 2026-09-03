@@ -33,9 +33,18 @@ class IntegrationService
      *
      * Fica de fora, e continua editável, tudo que a origem não fornece:
      * destaque, meta tags, campos de curadoria, responsável e cliente.
+     *
+     * `status` NÃO entra aqui de propósito. A origem não tem conceito de
+     * "rascunho" — quem decide isso é o tenant, revisando o que a
+     * sincronização trouxe. IntegrationSyncService aplica initial_status
+     * só na CRIAÇÃO do imóvel; a partir daí o status é do tenant, e uma
+     * troca manual (inclusive a publicação em massa) sobrevive a qualquer
+     * rodada seguinte. Sem essa exceção, todo imóvel importado nasceria
+     * rascunho e morreria rascunho, sem nenhum caminho no painel para
+     * publicá-lo.
      */
     public const MANAGED_FIELDS = [
-        'titulo', 'descricao', 'tipo_negocio', 'tipo_imovel', 'preco', 'status',
+        'titulo', 'descricao', 'tipo_negocio', 'tipo_imovel', 'preco',
         'rua', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep',
         'latitude', 'longitude',
         'quartos', 'suites', 'banheiros', 'vagas',

@@ -303,6 +303,17 @@ class IntegrationSyncService
         $data['source']             = 'integration:' . $integration->provider_code;
         $data['external_synced_at'] = date('Y-m-d H:i:s');
 
+        // O mapper sempre devolve um `status` (initial_status da configuração,
+        // default DRAFT) porque ele não sabe se está mapeando uma criação ou
+        // uma atualização. Numa atualização, esse valor sobrescreveria
+        // silenciosamente qualquer publicação manual do tenant a cada rodada
+        // — `status` foi tirado de MANAGED_FIELDS (IntegrationService) por
+        // isso mesmo, e aqui é onde a exceção se aplica de fato: só entra na
+        // criação.
+        if ($existingId !== null) {
+            unset($data['status']);
+        }
+
         // trySaveProperty NÃO valida os campos — o model só valida account_id.
         // Quem chama é responsável por validar antes, como faz o
         // PropertyImportService. Sem isto, um imóvel sem cidade ou sem preço
