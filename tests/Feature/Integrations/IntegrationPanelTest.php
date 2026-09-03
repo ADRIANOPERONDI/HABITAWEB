@@ -70,8 +70,9 @@ final class IntegrationPanelTest extends HabitawebTestCase
         $html = $result->getBody();
         $this->assertStringContainsString('name="config[base_url]"', $html);
         $this->assertStringContainsString('name="config[token]"', $html);
-        // O campo opcional de JWT também vem do config_schema.
-        $this->assertStringContainsString('name="config[jwt_key]"', $html);
+        // jwt_key saiu do config_schema: nunca foi lido por SimobClient/SimobProvider
+        // e só confundia o tenant com um campo sem efeito nenhum.
+        $this->assertStringNotContainsString('name="config[jwt_key]"', $html);
         // O token é sensível: tem que sair como campo de senha.
         $this->assertMatchesRegularExpression('/type="password"[^>]*name="config\[token\]"/', $html);
     }
