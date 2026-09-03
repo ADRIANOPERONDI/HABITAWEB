@@ -30,22 +30,36 @@ class LeadsCloseCycle extends BaseCommand
 
     public function run(array $params)
     {
-        $periodo = CLI::getOption('periodo') ?: date('Y-m-01', strtotime('first day of last month'));
-        $dryRun  = CLI::getOption('dry-run') !== null;
+        $periodoExplicito = CLI::getOption('periodo');
+        $dryRun           = CLI::getOption('dry-run') !== null;
+        $chargeModel      = model(LeadChargeModel::class);
 
-        CLI::write('Fechando ciclo de cobranca de lead — periodo ' . $periodo . ($dryRun ? ' (dry-run)' : ''), 'yellow');
+        if ($periodoExplicito !== null) {
+            $pares = array_map(
+                static fn (int $accountId) => ['account_id' => $accountId, 'periodo' => $periodoExplicito],
+                $chargeModel->accountsWithApprovedForPeriod($periodoExplicito)
+            );
+            $rotulo = 'periodo ' . $periodoExplicito;
+        } else {
+            // Sem --periodo: fecha TODO período atrasado (mês passado e
+            // qualquer mês mais antigo que tenha ficado pra trás) — uma
+            // aprovação tardia ou um cron que não rodou não pode deixar
+            // cobrança presa pra sempre, esperando alguém lembrar de rodar
+            // com --periodo na mão.
+            $pares  = $chargeModel->approvedAccountPeriods(date('Y-m-01'));
+            $rotulo = 'todos os periodos atrasados';
+        }
 
-        $chargeModel = model(LeadChargeModel::class);
-        $accountIds  = $chargeModel->accountsWithApprovedForPeriod($periodo);
+        CLI::write('Fechando ciclo de cobranca de lead — ' . $rotulo . ($dryRun ? ' (dry-run)' : ''), 'yellow');
 
-        if ($accountIds === []) {
-            CLI::write('Nenhuma cobranca aprovada nesse periodo. Nada a fazer.', 'green');
+        if ($pares === []) {
+            CLI::write('Nenhuma cobranca aprovada pendente. Nada a fazer.', 'green');
 
             return;
         }
 
         if ($dryRun) {
-            $this->printDryRun($chargeModel, $accountIds, $periodo);
+            $this->printDryRun($chargeModel, $pares);
 
             return;
         }
@@ -53,46 +67,48 @@ class LeadsCloseCycle extends BaseCommand
         $service = new LeadChargeService();
         $resumo  = ['invoiced_free' => 0, 'invoiced_charged' => 0, 'gateway_indisponivel' => 0, 'nothing' => 0];
 
-        foreach ($accountIds as $accountId) {
+        foreach ($pares as $par) {
             try {
-                $resultado = $service->closeCycleForAccount($accountId, $periodo);
+                $resultado = $service->closeCycleForAccount($par['account_id'], $par['periodo']);
                 $resumo[$resultado['status']] = ($resumo[$resultado['status']] ?? 0) + 1;
 
                 CLI::write(sprintf(
-                    '  conta %d: %s — total R$ %.2f, credito R$ %.2f, cobrado R$ %.2f',
-                    $accountId,
+                    '  conta %d (%s): %s — total R$ %.2f, credito R$ %.2f, cobrado R$ %.2f',
+                    $par['account_id'],
+                    $par['periodo'],
                     $resultado['status'],
                     $resultado['total'],
                     $resultado['credit_applied'],
                     $resultado['charged']
                 ));
             } catch (\Throwable $e) {
-                CLI::error("  conta {$accountId}: erro — " . $e->getMessage());
+                CLI::error("  conta {$par['account_id']} ({$par['periodo']}): erro — " . $e->getMessage());
             }
         }
 
         CLI::write('Concluido: ' . json_encode($resumo), 'green');
     }
 
-    private function printDryRun(LeadChargeModel $chargeModel, array $accountIds, string $periodo): void
+    private function printDryRun(LeadChargeModel $chargeModel, array $pares): void
     {
         $creditModel = model(\App\Models\LeadCreditLedgerModel::class);
 
         CLI::table(
-            array_map(static function (int $accountId) use ($chargeModel, $creditModel, $periodo) {
-                $charges = $chargeModel->approvedForPeriod($accountId, $periodo);
+            array_map(static function (array $par) use ($chargeModel, $creditModel) {
+                $charges = $chargeModel->approvedForPeriod($par['account_id'], $par['periodo']);
                 $total   = array_sum(array_map(static fn ($c) => (float) $c->commission_value, $charges));
-                $saldo   = $creditModel->balanceFor($accountId, $periodo);
+                $saldo   = $creditModel->balanceFor($par['account_id'], $par['periodo']);
 
                 return [
-                    $accountId,
+                    $par['account_id'],
+                    $par['periodo'],
                     count($charges),
                     number_format($total, 2, ',', '.'),
                     number_format($saldo, 2, ',', '.'),
                     number_format(max(0, $total - $saldo), 2, ',', '.'),
                 ];
-            }, $accountIds),
-            ['Conta', 'Cobrancas', 'Total', 'Credito disponivel', 'A cobrar no gateway']
+            }, $pares),
+            ['Conta', 'Periodo', 'Cobrancas', 'Total', 'Credito disponivel', 'A cobrar no gateway']
         );
     }
 }

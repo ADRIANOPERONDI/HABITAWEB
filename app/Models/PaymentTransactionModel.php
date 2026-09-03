@@ -192,6 +192,29 @@ class PaymentTransactionModel extends Model
     {
         return $this->getLastPendingTransactionByAccount($accountId);
     }
+
+    /**
+     * Fatura de cobrança de leads (`type=LEAD_INVOICE`) já gerada para uma
+     * conta/período, se houver. `LeadChargeService::closeCycleForAccount()`
+     * reaproveita em vez de criar outra — rodar `leads:fechar-ciclo` duas
+     * vezes pro mesmo período não pode gerar duas cobranças no gateway.
+     *
+     * O período fica só em `metadata` (JSONB), não numa coluna própria — daí
+     * o `->>'periodo'` em vez de um `where()` comum.
+     */
+    public function findLeadInvoice(int $accountId, string $periodo): ?array
+    {
+        return $this->db->query(
+            "SELECT * FROM payment_transactions
+             WHERE account_id = ?
+               AND type = 'LEAD_INVOICE'
+               AND metadata->>'periodo' = ?
+               AND status != 'CANCELLED'
+             ORDER BY id DESC
+             LIMIT 1",
+            [$accountId, $periodo]
+        )->getRowArray();
+    }
     
     /**
      * Verifica se a conta está bloqueada por faturas atrasadas

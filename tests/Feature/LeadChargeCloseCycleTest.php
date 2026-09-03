@@ -14,6 +14,7 @@ use App\Services\LeadCreditService;
 use App\Services\PaymentService;
 use App\Services\WebhookService;
 use Tests\Support\Factories\TenantFactory;
+use Tests\Support\Fakes\FailingPaymentGateway;
 use Tests\Support\Fakes\FakePaymentGateway;
 use Tests\Support\HabitawebTestCase;
 
@@ -34,7 +35,7 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
         FakePaymentGateway::$paymentsCreated = [];
     }
 
-    private function ativarGatewayFake(): PaymentService
+    private function ativarGatewayFake(string $classeGateway = FakePaymentGateway::class): PaymentService
     {
         $db = \Config\Database::connect();
         $db->query('UPDATE payment_gateways SET is_primary = false');
@@ -42,7 +43,7 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
         $db->table('payment_gateways')->insert([
             'code'       => 'fake_' . bin2hex(random_bytes(4)),
             'name'       => 'Fake',
-            'class_name' => FakePaymentGateway::class,
+            'class_name' => $classeGateway,
             'is_active'  => true,
             'is_primary' => true,
         ]);
@@ -50,7 +51,8 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
         return new PaymentService();
     }
 
-    private function contaComCargas(float $valorPorLead, int $quantidade, ?float $credito = null): array
+    /** @return array{0: array, 1: int[], 2: string, 3: int} tenant, charge_ids, periodo, property_id */
+    private function contaComCargas(float $valorPorLead, int $quantidade, ?float $credito = null, ?string $periodo = null): array
     {
         $tenant = (new TenantFactory())->create();
 
@@ -90,39 +92,42 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
             'status'       => 'ACTIVE',
         ], true);
 
-        $periodo   = date('Y-m-01');
+        $periodo ??= date('Y-m-01');
         $chargeIds = [];
 
         for ($i = 0; $i < $quantidade; $i++) {
-            $leadId = (int) model(\App\Models\LeadModel::class)->insert([
-                'property_id'           => $propertyId,
-                'account_id_anunciante' => $tenant['account']->id,
-                'nome_visitante'        => 'Visitante ' . $i,
-                'email_visitante'       => 'ciclo_' . $i . '_' . bin2hex(random_bytes(3)) . '@teste.local',
-                'tipo_lead'             => 'MSG',
-                'origem'                => 'SITE',
-                'status'                => 'NOVO',
-                'tipo_negocio'          => 'VENDA',
-            ], true);
-
-            $chargeId = (int) model(LeadChargeModel::class)->insert([
-                'account_id'       => $tenant['account']->id,
-                'provider_code'    => null,
-                'lead_id'          => $leadId,
-                'property_id'      => $propertyId,
-                'rule_id'          => $ruleId,
-                'tipo_negocio'     => 'VENDA',
-                'origem'           => LeadChargeModel::ORIGEM_LEAD_RECEBIDO,
-                'periodo'          => $periodo,
-                'base_value'       => 0,
-                'commission_value' => $valorPorLead,
-                'status'           => LeadChargeModel::STATUS_APPROVED,
-            ], true);
-
-            $chargeIds[] = $chargeId;
+            $chargeIds[] = $this->criarCargaAprovada($tenant, $propertyId, $ruleId, $valorPorLead, $periodo, $i);
         }
 
-        return [$tenant, $chargeIds, $periodo];
+        return [$tenant, $chargeIds, $periodo, $propertyId];
+    }
+
+    private function criarCargaAprovada(array $tenant, int $propertyId, ?int $ruleId, float $valor, string $periodo, int $seq = 0): int
+    {
+        $leadId = (int) model(\App\Models\LeadModel::class)->insert([
+            'property_id'           => $propertyId,
+            'account_id_anunciante' => $tenant['account']->id,
+            'nome_visitante'        => 'Visitante ' . $seq,
+            'email_visitante'       => 'ciclo_' . $seq . '_' . bin2hex(random_bytes(3)) . '@teste.local',
+            'tipo_lead'             => 'MSG',
+            'origem'                => 'SITE',
+            'status'                => 'NOVO',
+            'tipo_negocio'          => 'VENDA',
+        ], true);
+
+        return (int) model(LeadChargeModel::class)->insert([
+            'account_id'       => $tenant['account']->id,
+            'provider_code'    => null,
+            'lead_id'          => $leadId,
+            'property_id'      => $propertyId,
+            'rule_id'          => $ruleId,
+            'tipo_negocio'     => 'VENDA',
+            'origem'           => LeadChargeModel::ORIGEM_LEAD_RECEBIDO,
+            'periodo'          => $periodo,
+            'base_value'       => 0,
+            'commission_value' => $valor,
+            'status'           => LeadChargeModel::STATUS_APPROVED,
+        ], true);
     }
 
     public function testFechamentoTotalmenteCobertoPorCreditoNaoTocaOGateway(): void
@@ -226,5 +231,158 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
         foreach ($chargeIds as $id) {
             $this->assertSame(LeadChargeModel::STATUS_PAID, model(LeadChargeModel::class)->find($id)->status);
         }
+    }
+
+    // ------------------------------------------------------- C5: robustez
+
+    private function runCloseCycleCommand(string $args = ''): void
+    {
+        ob_start();
+        command('leads:fechar-ciclo ' . $args);
+        ob_end_clean();
+    }
+
+    /**
+     * Sem `--periodo`, o comando fecha TODO período atrasado, não só o mês
+     * passado — uma aprovação tardia (`leads:aprovar-cobrancas` rodando
+     * depois do fechamento já ter passado) ou um cron fora do ar por dias
+     * não pode deixar cobrança presa pra sempre esperando alguém lembrar de
+     * rodar com `--periodo` na mão.
+     */
+    public function testFechaPeriodosAntigosComAprovadasTardias(): void
+    {
+        $this->ativarGatewayFake();
+
+        $periodoAntigo = date('Y-m-01', strtotime('-3 months'));
+        [, $chargeIdsAntigo] = $this->contaComCargas(80.0, 1, periodo: $periodoAntigo);
+
+        $periodoPassado = date('Y-m-01', strtotime('-1 month'));
+        [, $chargeIdsPassado] = $this->contaComCargas(80.0, 1, periodo: $periodoPassado);
+
+        $this->runCloseCycleCommand(); // sem --periodo
+
+        foreach ([...$chargeIdsAntigo, ...$chargeIdsPassado] as $id) {
+            $this->assertSame(
+                LeadChargeModel::STATUS_INVOICED,
+                model(LeadChargeModel::class)->find($id)->status,
+                'periodo antigo nao pode ficar preso so porque nao e o mes passado'
+            );
+        }
+    }
+
+    /**
+     * Falha na chamada ao gateway não pode deixar o crédito consumido sem
+     * nenhuma cobrança real ter acontecido — a conta perderia o crédito do
+     * mês de graça. O saldo e o status das cobranças precisam voltar
+     * exatamente ao que eram antes da tentativa.
+     *
+     * `HabitawebTestCase` já embrulha cada teste numa transação (rollback no
+     * tearDown), e o `transStart()`/`transRollback()` PRÓPRIO de
+     * `closeCycleForAccount()` vira só um contador de profundidade quando
+     * está aninhado (CI4 só executa o ROLLBACK de verdade na transação mais
+     * externa — ver `BaseConnection::transRollback()`). Sem "destravar" isso
+     * primeiro, o rollback do serviço seria inerte e este teste não provaria
+     * nada. Por isso commita a montagem do cenário antes de testar a falha, e
+     * limpa manualmente no `finally` (apagar `accounts` já casata tudo que
+     * depende dela — subscriptions, properties, leads, lead_charges,
+     * lead_charge_rules, lead_credit_ledger).
+     */
+    public function testFalhaNoGatewayDesfazODebitoDeCredito(): void
+    {
+        $this->ativarGatewayFake(FailingPaymentGateway::class);
+        [$tenant, $chargeIds, $periodo] = $this->contaComCargas(80.0, 2, credito: 100.0);
+        (new LeadCreditService())->grantMonthly($periodo);
+
+        $accountId = (int) $tenant['account']->id;
+        $planId    = (int) model(SubscriptionModel::class)->where('account_id', $accountId)->first()->plan_id;
+
+        $this->db->transCommit();
+
+        try {
+            try {
+                (new LeadChargeService())->closeCycleForAccount($accountId, $periodo);
+                $this->fail('deveria ter propagado a falha do gateway');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('Falha simulada no gateway.', $e->getMessage());
+            }
+
+            $this->assertSame(
+                100.0,
+                (new LeadCreditService())->balanceFor($accountId, $periodo),
+                'o debito de credito tem que ser desfeito junto com a falha'
+            );
+
+            foreach ($chargeIds as $id) {
+                $this->assertSame(
+                    LeadChargeModel::STATUS_APPROVED,
+                    model(LeadChargeModel::class)->find($id)->status,
+                    'nada pode ficar INVOICED sem cobranca real nenhuma'
+                );
+            }
+        } finally {
+            model(\App\Models\AccountModel::class)->delete($accountId, true);
+            model(PlanModel::class)->delete($planId, true);
+            $this->db->transStart();
+        }
+    }
+
+    /**
+     * Uma aprovação tardia no MESMO período depois que a fatura já foi
+     * gerada (cenário real: `leads:aprovar-cobrancas` aprova mais um lead
+     * daquele mês só depois do primeiro fechamento) precisa entrar na fatura
+     * já existente, não criar uma segunda cobrança no gateway.
+     */
+    public function testNaoCriaSegundaFaturaParaOMesmoPeriodo(): void
+    {
+        $this->ativarGatewayFake();
+        [$tenant, $chargeIds, $periodo, $propertyId] = $this->contaComCargas(80.0, 1);
+
+        $primeiro = (new LeadChargeService())->closeCycleForAccount((int) $tenant['account']->id, $periodo);
+        $this->assertSame('invoiced_charged', $primeiro['status']);
+        $this->assertCount(1, FakePaymentGateway::$paymentsCreated);
+
+        $novoChargeId = $this->criarCargaAprovada($tenant, $propertyId, null, 80.0, $periodo, 99);
+
+        $segundo = (new LeadChargeService())->closeCycleForAccount((int) $tenant['account']->id, $periodo);
+
+        $this->assertSame('invoiced_charged', $segundo['status']);
+        $this->assertSame(
+            $primeiro['payment_transaction_id'],
+            $segundo['payment_transaction_id'],
+            'reaproveita a fatura existente, nao cria outra'
+        );
+        $this->assertCount(1, FakePaymentGateway::$paymentsCreated, 'nao pode ter chamado o gateway de novo');
+        $this->assertSame(LeadChargeModel::STATUS_INVOICED, model(LeadChargeModel::class)->find($novoChargeId)->status);
+
+        foreach ($chargeIds as $id) {
+            $this->assertSame(LeadChargeModel::STATUS_INVOICED, model(LeadChargeModel::class)->find($id)->status);
+        }
+    }
+
+    /**
+     * O customer criado no gateway na primeira cobrança de lead precisa
+     * ficar salvo na assinatura — sem isso, toda cobrança de lead futura
+     * desta conta criaria um customer novo (o caso comum é uma conta em
+     * rampa gratuita, Fase 6, que chega aqui sem `asaas_customer_id` porque
+     * nunca pagou mensalidade nenhuma).
+     */
+    public function testGuardaOClienteDoGatewayNaAssinatura(): void
+    {
+        $this->ativarGatewayFake();
+        [$tenant, , $periodo] = $this->contaComCargas(80.0, 1);
+
+        $antes = model(SubscriptionModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->orderBy('id', 'DESC')
+            ->first();
+        $this->assertEmpty($antes->asaas_customer_id, 'conta nova nao tem customer no gateway ainda');
+
+        (new LeadChargeService())->closeCycleForAccount((int) $tenant['account']->id, $periodo);
+
+        $depois = model(SubscriptionModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->orderBy('id', 'DESC')
+            ->first();
+        $this->assertNotEmpty($depois->asaas_customer_id, 'o customer criado na cobranca de lead precisa sobreviver na assinatura');
     }
 }

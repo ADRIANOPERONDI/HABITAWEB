@@ -117,17 +117,30 @@ class LeadChargeModel extends Model
             ->findAll();
     }
 
-    /** Contas com cobrança aprovada esperando faturamento. */
-    public function accountsWithApproved(): array
+    /**
+     * Pares (account_id, periodo) com cobrança APPROVED num período anterior
+     * a `$antesDe` — inclui o mês passado e qualquer mês mais antigo que
+     * tenha ficado pra trás (cron que não rodou, aprovação tardia depois do
+     * fechamento do mês já ter passado). `leads:fechar-ciclo` sem
+     * `--periodo` usa isto pra não deixar cobrança presa pra sempre.
+     *
+     * @return list<array{account_id: int, periodo: string}>
+     */
+    public function approvedAccountPeriods(string $antesDe): array
     {
         $rows = $this->builder()
-            ->select('account_id')
+            ->select('account_id, periodo')
             ->where('status', self::STATUS_APPROVED)
-            ->groupBy('account_id')
+            ->where('periodo <', $antesDe)
+            ->groupBy(['account_id', 'periodo'])
+            ->orderBy('periodo', 'ASC')
             ->get()
             ->getResultArray();
 
-        return array_map(static fn ($r) => (int) $r['account_id'], $rows);
+        return array_map(
+            static fn ($r) => ['account_id' => (int) $r['account_id'], 'periodo' => (string) $r['periodo']],
+            $rows
+        );
     }
 
     /** Contas com cobrança aprovada esperando faturamento num período específico. */
