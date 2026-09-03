@@ -233,7 +233,6 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('subscription/upgrade/(:num)', 'SubscriptionController::upgrade/$1');
     $routes->post('subscription/payment-method/(:num)', 'SubscriptionController::changePaymentMethod/$1');
     $routes->get('subscription/preview-upgrade/(:num)', 'SubscriptionController::previewUpgrade/$1');
-    $routes->get('subscription/invoice/(:num)', 'SubscriptionController::downloadInvoice/$1');
     $routes->post('subscription/cancel/(:num)', 'SubscriptionController::cancel/$1');
     $routes->get('settings', 'SettingsController::index', ['filter' => 'group:superadmin']);
     $routes->post('settings', 'SettingsController::update', ['filter' => 'group:superadmin']);

@@ -12,7 +12,10 @@
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
                         <h5 class="fw-bold mb-1">Plano Atual</h5>
-                        <div class="text-muted small">Status da sua conta</div>
+                        <div class="text-muted small">
+                            Status da sua conta ·
+                            <a href="<?= site_url('admin/subscription/invoices') ?>">Ver faturas</a>
+                        </div>
                     </div>
                     <?php if(isset($lastTransaction) && $lastTransaction): ?>
                         <span class="badge bg-warning text-dark px-3 py-2 rounded-pill">Pagamento Pendente</span>

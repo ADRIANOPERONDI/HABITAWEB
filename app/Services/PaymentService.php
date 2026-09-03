@@ -1519,6 +1519,48 @@ class PaymentService
     }
 
     /**
+     * Efeitos que uma transação PAGA precisa disparar, além do próprio
+     * status — ativar a conta e, dependendo do tipo, ativar a turbinada
+     * comprada ou fechar a fatura de leads. Único ponto compartilhado entre
+     * `WebhookService::handlePaymentConfirmed()` e a reconciliação manual
+     * (`syncPendingPayments()`, abaixo): antes só o webhook aplicava estes
+     * efeitos — uma cobrança de TURBO ou LEAD_INVOICE recuperada pelo sync
+     * (por exemplo, porque o webhook falhou em ser entregue) marcava a
+     * transação como paga na tela, mas nunca ativava a turbinada nem fechava
+     * a cobrança do tenant.
+     *
+     * `$tx` é o array da transação já GRAVADA localmente (precisa de pelo
+     * menos `id`, `account_id`, `type`, `metadata`). Idempotente:
+     * `LeadChargeService::markPaidByTransaction` e `TurboService::activatePaid`
+     * já lidam com "chamado de novo" sem duplicar efeito.
+     */
+    public function settleTransaction(array $tx): void
+    {
+        $accountId = $tx['account_id'] ?? null;
+
+        if ($accountId) {
+            $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
+        }
+
+        if (($tx['type'] ?? null) === 'TURBO' && isset($tx['metadata'])) {
+            $meta     = is_string($tx['metadata']) ? json_decode($tx['metadata'], true) : (array) $tx['metadata'];
+            $promoKey = $meta['promo_key'] ?? $meta['package_key'] ?? null;
+
+            if ($promoKey && isset($meta['property_id'])) {
+                service('turboService')->activatePaid(
+                    (int) $meta['property_id'],
+                    (string) $promoKey,
+                    (int) $tx['id']
+                );
+            }
+        }
+
+        if (($tx['type'] ?? null) === 'LEAD_INVOICE') {
+            (new LeadChargeService())->markPaidByTransaction((int) $tx['id']);
+        }
+    }
+
+    /**
      * Sincroniza pagamentos pendentes do gateway para o banco local
      */
     public function syncPendingPayments(int $accountId): void
@@ -1564,6 +1606,8 @@ class PaymentService
                         $type = 'UPGRADE_PRORATA';
                     }
 
+                    $novaPaga = $gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED';
+
                     $this->transactionModel->insert([
                         'account_id'      => $accountId,
                         'subscription_id' => $subscription ? $subscription->id : null,
@@ -1572,7 +1616,7 @@ class PaymentService
                         'gateway_customer_id'    => $customerId,
                         'amount'          => $p['amount'],
                         'due_date'        => $p['dueDate'] ?? null,
-                        'status'          => ($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') ? 'SUCCESS' : 'PENDING',
+                        'status'          => $novaPaga ? 'SUCCESS' : 'PENDING',
                         'type'            => $type,
                         'payment_method'  => $p['billing_type'],
                         'invoice_url'     => $p['invoice_url'],
@@ -1580,9 +1624,22 @@ class PaymentService
                         'metadata'        => json_encode($p)
                     ]);
 
-                    // Se já estiver pago, ativa a assinatura imediatamente
-                    if (($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') && $subscription && $subscription->asaas_subscription_id) {
-                        $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
+                    // Se já estiver pago, ativa a assinatura (se for o caso)
+                    // e aplica o efeito do tipo — mesmo caminho de
+                    // WebhookService::handlePaymentConfirmed(), pra uma
+                    // cobrança descoberta só aqui (nunca chegou webhook) não
+                    // ficar com o status pago mas sem nenhum efeito.
+                    if ($novaPaga) {
+                        if ($subscription && $subscription->asaas_subscription_id) {
+                            $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
+                        }
+
+                        $this->settleTransaction([
+                            'id'         => $this->transactionModel->getInsertID(),
+                            'account_id' => $accountId,
+                            'type'       => $type,
+                            'metadata'   => json_encode($p),
+                        ]);
                     }
                 } else {
                     // Recupera também AWAITING_PAYMENT/OVERDUE. Antes, uma cobrança
@@ -1595,7 +1652,8 @@ class PaymentService
                     ) {
                         log_message('notice', "[PaymentService] Sync: Transação {$gatewayPaymentId} detectada como PAGA no gateway. Atualizando local...");
                         $this->transactionModel->update($localTransaction['id'], ['status' => 'SUCCESS']);
-                        
+                        $this->settleTransaction(array_merge($localTransaction, ['status' => 'SUCCESS']));
+
                         if ($subscription && $subscription->asaas_subscription_id) {
                             $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
                         }

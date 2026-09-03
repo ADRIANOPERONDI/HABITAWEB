@@ -42,11 +42,19 @@
                                     <div class="small text-muted"><?= date('H:i', strtotime($t->created_at)) ?></div>
                                 </td>
                                 <td>
-                                    <?php if($t->plan_name): ?>
-                                        <span class="badge bg-light text-dark border"><?= esc($t->plan_name) ?></span>
-                                    <?php else: ?>
-                                        Assinatura
-                                    <?php endif; ?>
+                                    <?php
+                                        // O tipo diz o que a cobrança É (assinatura, fatura de
+                                        // leads, turbinada, pró-rata de upgrade) — sem isso, tudo
+                                        // que não tinha plan_name virava "Assinatura" na tela,
+                                        // inclusive fatura de leads e turbinada avulsa.
+                                        $tipoLabel = match ($t->type ?? null) {
+                                            'LEAD_INVOICE'     => 'Fatura de leads',
+                                            'TURBO'            => 'Turbinada',
+                                            'UPGRADE_PRORATA'  => 'Pró-rata (upgrade)',
+                                            default            => $t->plan_name ?: 'Assinatura',
+                                        };
+                                    ?>
+                                    <span class="badge bg-light text-dark border"><?= esc($tipoLabel) ?></span>
                                     <div class="small text-muted mt-1">Ref: <?= substr($t->gateway_transaction_id ?? 'N/A', 0, 8) ?>...</div>
                                 </td>
                                 <td>
@@ -93,14 +101,16 @@
                                     <span class="badge <?= $statusClass ?> rounded-pill px-3"><?= $statusLabel ?></span>
                                 </td>
                                 <td class="pe-3 text-end">
-                                    <?php 
-                                        // Tentar link externo se houver metadados (simplificado)
-                                        // Se for Pendente, dar opção de pagar (redirecionar para tela de sucesso/checkout se possível, ou link externo)
-                                        // Como não temos URL fácil aqui sem json_decode do metadata, vamos apenas mostrar detalhes ou botão dummy se precisar.
-                                    ?>
-                                    <button class="btn btn-sm btn-light border" disabled title="Ver Detalhes">
-                                        <i class="fa-solid fa-eye text-muted"></i>
-                                    </button>
+                                    <?php if (! empty($t->invoice_url)): ?>
+                                        <a href="<?= esc($t->invoice_url, 'attr') ?>" target="_blank" rel="noopener noreferrer"
+                                           class="btn btn-sm btn-light border" title="Ver fatura">
+                                            <i class="fa-solid fa-arrow-up-right-from-square text-muted"></i>
+                                        </a>
+                                    <?php else: ?>
+                                        <button class="btn btn-sm btn-light border" disabled title="Sem link de fatura">
+                                            <i class="fa-solid fa-eye text-muted"></i>
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
