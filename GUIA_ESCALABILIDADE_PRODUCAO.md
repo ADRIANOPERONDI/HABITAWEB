@@ -221,7 +221,7 @@ pm.max_requests = 1000
 ### 3.4 Cron jobs: em UMA instância só
 
 Os comandos agendados (`php spark asaas:sync`, `subscription:check`,
-`send-property-alerts` etc.) devem rodar **em apenas uma** instância (ou num
+`alerts:send` etc.) devem rodar **em apenas uma** instância (ou num
 host worker dedicado). Rodar em todas dispararia sincronizações e e-mails
 duplicados. Marque uma instância como "worker" no seu provisionamento e instale
 o crontab só nela.
@@ -249,7 +249,12 @@ instância worker:
 `integration:sync` percorre as integrações ativas e vencidas (mais de 25 min
 desde o último sync, ou com "sincronizar agora" pedido no painel), mais
 antigas/prioritárias primeiro, e é seguro rodar concorrentemente por engano:
-cada integração tem uma trava em cache durante a rodada. Rodar a cada minuto
+cada integração tem uma trava atômica na própria linha de
+`account_integrations` (`sync_locked_until`, `UPDATE ... WHERE ... IS NULL OR
+< now()`) — sobrevive a um Fatal Error de PHP (que não passa por
+`catch`/`finally`) porque expira sozinha depois do TTL, e um
+`register_shutdown_function` libera na hora quando o processo consegue
+detectar a queda. Rodar a cada minuto
 (em vez de a cada 30) é o que dá latência baixa para o botão "Sincronizar
 agora" do painel sem martelar a origem de todo tenant a todo minuto — quem
 garante isso é o filtro de "vencido" em
