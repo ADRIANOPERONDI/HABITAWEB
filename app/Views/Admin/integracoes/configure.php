@@ -26,12 +26,60 @@
             => ['danger', 'Erro'],
         default => ['secondary', 'Aguardando teste'],
     };
+
+    // Passo atual do onboarding: o primeiro que ainda não foi cumprido. Sem
+    // isto, um tenant que só salvou credenciais e nunca testou não tinha
+    // como saber, olhando a tela, o que falta pra sincronizar de verdade.
+    $onboardingSteps = [
+        1 => ['label' => 'Credenciais', 'done' => $credentials !== []],
+        2 => ['label' => 'Testar',      'done' => $integration->isConnected()],
+        3 => ['label' => 'Mapear',      'done' => $integration->isConnected() && $unconfirmed === 0],
+        4 => ['label' => 'Ativar',      'done' => $integration->is_active],
+    ];
+
+    $onboardingCurrentStep = 4;
+
+    foreach ($onboardingSteps as $n => $step) {
+        if (! $step['done']) {
+            $onboardingCurrentStep = $n;
+
+            break;
+        }
+    }
+
+    $onboardingConcluido = $onboardingSteps[4]['done'];
 ?>
 
 <div class="mb-3">
     <a href="<?= site_url('admin/integracoes') ?>" class="text-decoration-none text-muted small">
         <i class="fa-solid fa-arrow-left me-1"></i> Voltar para integrações
     </a>
+</div>
+
+<div class="panel-card p-3 mb-3" data-onboarding-current-step="<?= $onboardingCurrentStep ?>">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <?php foreach ($onboardingSteps as $n => $step): ?>
+            <span class="badge rounded-pill <?= $step['done'] ? 'bg-success' : ($n === $onboardingCurrentStep ? 'bg-primary' : 'bg-light text-dark') ?>">
+                <?php if ($step['done']): ?><i class="fa-solid fa-check me-1"></i><?php endif; ?>
+                <?= $n ?>. <?= esc($step['label']) ?>
+            </span>
+            <?php if ($n < 4): ?><i class="fa-solid fa-arrow-right text-muted small"></i><?php endif; ?>
+        <?php endforeach; ?>
+    </div>
+    <?php if (! $onboardingConcluido): ?>
+        <p class="text-muted small mt-2 mb-0">
+            Passo atual: <strong><?= esc($onboardingSteps[$onboardingCurrentStep]['label']) ?></strong>
+        </p>
+    <?php endif; ?>
+</div>
+
+<div class="panel-card p-3 mb-4">
+    <h6 class="mb-2"><i class="fa-solid fa-circle-info me-1 text-muted"></i> Como funciona</h6>
+    <ul class="small text-muted mb-0 ps-3">
+        <li>Os imóveis do <?= esc($provider->name) ?> entram automaticamente no Habitaweb.</li>
+        <li>Leads capturados no portal voltam para o CRM do <?= esc($provider->name) ?>.</li>
+        <li>Imóveis importados são espelhos: você só edita status (pausar/publicar) e fotos — os demais dados vêm da próxima sincronização.</li>
+    </ul>
 </div>
 
 <div class="row g-4">
@@ -123,6 +171,13 @@
                         <label class="form-label" for="max_images">Máximo de fotos por imóvel</label>
                         <input type="number" class="form-control" id="max_images" name="settings[max_images]"
                                min="1" max="50" value="<?= (int) $settings['max_images'] ?>">
+                        <?php if ($planPhotoLimit !== null && (int) $settings['max_images'] > $planPhotoLimit): ?>
+                            <div class="field-help mt-1 text-warning">
+                                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                                Seu plano permite só <?= (int) $planPhotoLimit ?> foto(s) por imóvel — o excedente é
+                                descartado na sincronização.
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 

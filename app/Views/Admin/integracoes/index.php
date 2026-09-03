@@ -17,7 +17,10 @@
 <div class="row mb-4">
     <div class="col-12">
         <p class="text-muted mb-0">
-            Conecte o sistema que a sua imobiliária já usa e traga o catálogo automaticamente para o Habitaweb.
+            Conecte o sistema que a sua imobiliária já usa: os imóveis entram automaticamente no Habitaweb, e os
+            leads capturados no portal voltam para o CRM de origem. Imóveis importados são espelhos — só o status
+            (pausar/publicar) e as fotos podem ser editados por aqui; os demais dados vêm da própria origem a cada
+            sincronização.
         </p>
     </div>
 </div>

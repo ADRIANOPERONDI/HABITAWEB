@@ -60,18 +60,23 @@ class IntegrationsController extends BaseController
         $runModel    = model(IntegrationSyncRunModel::class);
 
         return view('Admin/integracoes/configure', [
-            'provider'    => $provider,
-            'integration' => $integration,
-            'credentials' => $this->service->maskedCredentials($integration),
-            'settings'    => $integration->settings(),
-            'unconfirmed' => $this->service->countUnconfirmed($integration),
-            'synced'      => $this->service->countSyncedProperties($this->accountId(), $code),
+            'provider'       => $provider,
+            'integration'    => $integration,
+            'credentials'    => $this->service->maskedCredentials($integration),
+            'settings'       => $integration->settings(),
+            'unconfirmed'    => $this->service->countUnconfirmed($integration),
+            'synced'         => $this->service->countSyncedProperties($this->accountId(), $code),
             // Imóvel importado entra como rascunho (initial_status): sem ver
             // quantos estão parados nessa fila, o tenant não descobre que
             // precisa publicá-los — e nem que existe um botão pra isso.
-            'drafts'      => model(\App\Models\PropertyExternalRefModel::class)
+            'drafts'         => model(\App\Models\PropertyExternalRefModel::class)
                 ->countDraftsFor($this->accountId(), $code),
-            'lastRun'     => $runModel->lastFor((int) $integration->id),
+            'lastRun'        => $runModel->lastFor((int) $integration->id),
+            // Simob traz até `max_images` fotos por imóvel; se isso passar do
+            // teto do plano, o excedente é descartado silenciosamente na
+            // hora do sync (ver SyncResult::photoLimitHits) — o tenant
+            // precisa saber disso ANTES de estranhar por que faltam fotos.
+            'planPhotoLimit' => $this->planPhotoLimit(),
         ]);
     }
 
@@ -327,7 +332,15 @@ class IntegrationsController extends BaseController
         return $this->response->setJSON($result->toArray());
     }
 
-    /** POST: grava o de/para revisado. */
+    /**
+     * POST: grava o de/para revisado.
+     *
+     * `confirm_all_suggestions=1` é o atalho "Confirmar todas as sugestões":
+     * em vez de gravar cada `<select>` do formulário (que exigiria o tenant
+     * ter revisado a tela inteira antes de submeter), confirma só o que já
+     * tinha destino pelo palpite automático — o resto (inclusive
+     * "— Não importar —") continua pendente pra revisão manual depois.
+     */
     public function saveMappings(string $code)
     {
         $integration = $this->resolve($code);
@@ -336,13 +349,16 @@ class IntegrationsController extends BaseController
             return redirect()->to(site_url('admin/integracoes'))->with('error', 'Integração não encontrada.');
         }
 
-        $total = 0;
+        $confirmAllSuggested = $this->request->getPost('confirm_all_suggestions') === '1';
+        $total               = 0;
 
         foreach ([IntegrationMappingModel::KIND_CATEGORY, IntegrationMappingModel::KIND_CHARACTERISTIC] as $kind) {
-            $total += $this->service->saveMappings($integration, $kind, $this->request->getPost($kind) ?? []);
+            $total += $confirmAllSuggested
+                ? $this->service->confirmAllSuggested($integration, $kind)
+                : $this->service->saveMappings($integration, $kind, $this->request->getPost($kind) ?? []);
         }
 
-        audit_log('integration.mappings_saved', ['provider' => $code, 'count' => $total]);
+        audit_log('integration.mappings_saved', ['provider' => $code, 'count' => $total, 'confirm_all' => $confirmAllSuggested]);
 
         return redirect()->to(site_url("admin/integracoes/{$code}/mapeamentos"))
             ->with('message', "{$total} mapeamento(s) confirmado(s).");
@@ -430,5 +446,23 @@ class IntegrationsController extends BaseController
         }
 
         return max(0, self::MANUAL_SYNC_COOLDOWN - (time() - (int) $iniciadoEm));
+    }
+
+    /** Teto de fotos por imóvel do plano ativo da conta — null = sem limite. */
+    private function planPhotoLimit(): ?int
+    {
+        $subscription = model(\App\Models\SubscriptionModel::class)
+            ->where('account_id', $this->accountId())
+            ->whereIn('status', ['ACTIVE', 'TRIAL'])
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        if ($subscription === null) {
+            return null;
+        }
+
+        $plan = model(\App\Models\PlanModel::class)->find($subscription->plan_id);
+
+        return ($plan === null || empty($plan->limite_fotos_por_imovel)) ? null : (int) $plan->limite_fotos_por_imovel;
     }
 }

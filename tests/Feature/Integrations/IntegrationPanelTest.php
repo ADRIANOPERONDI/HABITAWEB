@@ -629,4 +629,79 @@ final class IntegrationPanelTest extends HabitawebTestCase
         $this->assertFalse($body['success']);
         $this->assertSame(IntegrationSyncRunModel::STATUS_RUNNING, $runModel->find($runId)->status);
     }
+
+    // ------------------------------------------------ onboarding e mapeamentos
+
+    /**
+     * O passo atual é o primeiro que ainda não foi cumprido — sem isto, um
+     * tenant que só salvou credenciais e nunca testou não tinha como saber,
+     * olhando a tela, o que falta pra sincronizar de verdade.
+     */
+    public function testTelaMostraOPassoAtualDoOnboarding(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $html = (string) $this->actingAs($tenant['user'])->get('admin/integracoes/simob')->getBody();
+        $this->assertStringContainsString('data-onboarding-current-step="1"', $html, 'sem credencial, o passo é o 1');
+
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob', $this->withCsrf([
+            'config' => ['base_url' => 'https://x.simob.com.br', 'token' => 'ABC'],
+        ]));
+
+        $html = (string) $this->actingAs($tenant['user'])->get('admin/integracoes/simob')->getBody();
+        $this->assertStringContainsString('data-onboarding-current-step="2"', $html, 'credencial salva, falta testar');
+    }
+
+    /**
+     * Confirma só quem já tem destino pelo palpite automático — a linha sem
+     * sugestão continua pendente pra revisão manual, mesmo com o clique.
+     */
+    public function testConfirmarTodasAsSugestoes(): void
+    {
+        $tenant       = (new TenantFactory())->create();
+        $int          = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        $mappingModel = model(IntegrationMappingModel::class);
+
+        $mappingModel->seedSuggestion((int) $int->id, IntegrationMappingModel::KIND_CATEGORY, [
+            'external_id'    => '17',
+            'external_label' => 'APARTAMENTO',
+            'target_value'   => 'APARTAMENTO',
+        ]);
+        $mappingModel->seedSuggestion((int) $int->id, IntegrationMappingModel::KIND_CATEGORY, [
+            'external_id'    => '99',
+            'external_label' => 'CATEGORIA DESCONHECIDA',
+        ]);
+
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob/mapeamentos', $this->withCsrf([
+            'confirm_all_suggestions' => '1',
+        ]))->assertRedirect();
+
+        $mapped = $mappingModel->indexedBy((int) $int->id, IntegrationMappingModel::KIND_CATEGORY);
+
+        $this->assertTrue($mapped['17']->is_confirmed, 'linha com destino sugerido devia ser confirmada');
+        $this->assertFalse($mapped['99']->is_confirmed, 'sem destino, continua pendente de revisão manual');
+    }
+
+    /**
+     * Nenhuma finalidade marcada traria catálogo vazio: nada seria importado
+     * e nenhum imóvel existente teria como ser reconfirmado no próximo sync.
+     * saveSettings() agora recusa em vez de cair num padrão silencioso.
+     */
+    public function testNenhumaFinalidadeMarcadaEDevolvidaComoErro(): void
+    {
+        $tenant  = (new TenantFactory())->create();
+        $service = new IntegrationService();
+        $int     = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $antes   = model(AccountIntegrationModel::class)->find($int->id)->settings();
+
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob', $this->withCsrf([
+            'config'   => [],
+            // settings[finalidades][] de propósito ausente do POST.
+            'settings' => ['initial_status' => 'DRAFT', 'max_images' => '20'],
+        ]))->assertRedirect();
+
+        $depois = model(AccountIntegrationModel::class)->find($int->id)->settings();
+        $this->assertSame($antes, $depois, 'sem finalidade marcada, as preferências não podem ser sobrescritas');
+    }
 }

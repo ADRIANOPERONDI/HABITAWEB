@@ -221,22 +221,32 @@ class IntegrationService
     {
         $current = $integration->settings();
 
+        // Sem fallback pro valor atual: no formulário de verdade, os dois
+        // checkboxes desmarcados fazem `settings[finalidades][]` sumir do
+        // POST inteiro, do mesmo jeito que "eu nunca mencionei isso" — e as
+        // duas situações precisam de tratamento diferente. Cair pro valor
+        // atual mascararia justamente o caso que precisa virar erro.
+        $finalidades = array_values(array_intersect(
+            array_map('intval', (array) ($settings['finalidades'] ?? [])),
+            [1, 2]
+        ));
+
+        // Nenhuma finalidade marcada traria catálogo vazio: nada é importado
+        // e nenhum imóvel existente teria como ser reconfirmado no próximo
+        // sync. Melhor recusar o salvamento e deixar o tenant corrigir do que
+        // silenciosamente cair num padrão que ele não escolheu.
+        if ($finalidades === []) {
+            throw new IntegrationException('Marque ao menos uma finalidade (venda ou locação) para sincronizar.');
+        }
+
         $clean = [
-            'finalidades'    => array_values(array_intersect(
-                array_map('intval', (array) ($settings['finalidades'] ?? $current['finalidades'])),
-                [1, 2]
-            )),
+            'finalidades'    => $finalidades,
             'initial_status' => in_array($settings['initial_status'] ?? '', ['DRAFT', 'ACTIVE'], true)
                 ? $settings['initial_status']
                 : $current['initial_status'],
             'import_images'  => (bool) ($settings['import_images'] ?? false),
             'max_images'     => max(1, min(50, (int) ($settings['max_images'] ?? $current['max_images']))),
         ];
-
-        // Nenhuma finalidade marcada traria catálogo vazio e pausaria tudo.
-        if ($clean['finalidades'] === []) {
-            $clean['finalidades'] = [1, 2];
-        }
 
         return (bool) $this->integrationModel->update($integration->id, ['settings' => $clean]);
     }
@@ -413,6 +423,20 @@ class IntegrationService
         }
 
         return $saved;
+    }
+
+    /**
+     * Confirma de uma vez toda sugestão que já tem destino atribuído pelo
+     * palpite automático, sem tocar no valor escolhido — atalho para quando o
+     * tenant concorda com a maioria e só quer revisar manualmente o que
+     * sobrou sem destino (inclusive "— Não importar —", que continua
+     * pendente de decisão explícita).
+     *
+     * @return int quantas linhas foram confirmadas
+     */
+    public function confirmAllSuggested(AccountIntegration $integration, string $kind): int
+    {
+        return $this->mappingModel->confirmAllWithTarget((int) $integration->id, $kind);
     }
 
     /** @return \App\Entities\IntegrationMapping[] */

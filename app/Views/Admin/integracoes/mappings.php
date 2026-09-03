@@ -28,7 +28,12 @@
     que ainda não foram revisadas — confira e salve.
 </div>
 
-<form method="post" action="<?= site_url('admin/integracoes/' . $provider->code . '/mapeamentos') ?>">
+<div class="form-check form-switch mb-3">
+    <input class="form-check-input" type="checkbox" id="filtroNaoRevisados">
+    <label class="form-check-label" for="filtroNaoRevisados">Mostrar só o que falta revisar</label>
+</div>
+
+<form method="post" action="<?= site_url('admin/integracoes/' . $provider->code . '/mapeamentos') ?>" id="formMapeamentos">
     <?= csrf_field() ?>
 
     <div class="panel-card p-4 mb-4">
@@ -54,7 +59,7 @@
                     </thead>
                     <tbody>
                         <?php foreach ($categories as $map): ?>
-                            <tr class="<?= $map->is_confirmed ? '' : 'row-suggestion' ?>">
+                            <tr class="<?= $map->is_confirmed ? '' : 'row-suggestion' ?>" data-confirmed="<?= $map->is_confirmed ? 1 : 0 ?>">
                                 <td>
                                     <div class="external-label"><?= esc($map->external_label ?: $map->external_id) ?></div>
                                     <div class="external-id">código <?= esc($map->external_id) ?></div>
@@ -98,7 +103,7 @@
                     </thead>
                     <tbody>
                         <?php foreach ($characteristics as $map): ?>
-                            <tr class="<?= $map->is_confirmed ? '' : 'row-suggestion' ?>">
+                            <tr class="<?= $map->is_confirmed ? '' : 'row-suggestion' ?>" data-confirmed="<?= $map->is_confirmed ? 1 : 0 ?>">
                                 <td>
                                     <div class="external-label"><?= esc($map->external_label ?: $map->external_id) ?></div>
                                     <div class="external-id">código <?= esc($map->external_id) ?></div>
@@ -123,9 +128,13 @@
         <?php endif; ?>
     </div>
 
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
         <button type="submit" class="btn btn-primary">
             <i class="fa-solid fa-check me-1"></i> Salvar e confirmar mapeamentos
+        </button>
+        <button type="submit" name="confirm_all_suggestions" value="1" class="btn btn-outline-success"
+                title="Confirma só as linhas que já têm um destino sugerido — o que ficou sem destino continua pendente">
+            <i class="fa-solid fa-check-double me-1"></i> Confirmar todas as sugestões
         </button>
         <a href="<?= site_url('admin/integracoes/' . $provider->code) ?>" class="btn btn-outline-secondary">Cancelar</a>
     </div>
@@ -135,16 +144,48 @@
 
 <?= $this->section('scripts') ?>
 <script>
+// Rastreia edição não salva: recarregar a página depois de "Redescobrir"
+// descartaria qualquer escolha que o tenant já tenha feito nos <select> e
+// ainda não submeteu.
+let formularioSujo = false;
+$('#formMapeamentos select').on('change', function () { formularioSujo = true; });
+
+$('#filtroNaoRevisados').on('change', function () {
+    const somenteNaoRevisados = this.checked;
+
+    $('#formMapeamentos tr[data-confirmed]').each(function () {
+        const confirmado = $(this).data('confirmed') === 1;
+        $(this).toggle(!somenteNaoRevisados || !confirmado);
+    });
+});
+
 $('#btnRedescobrir').on('click', function () {
     Swal.fire({ title: 'Consultando a origem...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     $.post('<?= site_url('admin/integracoes/' . $provider->code . '/redescobrir') ?>')
         .done(function (r) {
+            if (!r.success) {
+                Swal.fire({ icon: 'error', title: 'Não deu', text: r.message });
+                return;
+            }
+
+            if (!formularioSujo) {
+                Swal.fire({ icon: 'success', title: 'Pronto', text: r.message }).then(() => location.reload());
+                return;
+            }
+
+            // Tem edição não salva nesta tela: recarregar agora a descartaria
+            // sem aviso. Deixa a decisão explícita com o tenant.
             Swal.fire({
-                icon: r.success ? 'success' : 'error',
-                title: r.success ? 'Pronto' : 'Não deu',
-                text: r.message,
-            }).then(() => { if (r.success) location.reload(); });
+                icon: 'question',
+                title: 'Pronto — mas você tem alterações não salvas aqui',
+                text: r.message + ' Recarregar a página agora descarta o que você já marcou nos mapeamentos e ainda não salvou. Recarregar mesmo assim?',
+                showCancelButton: true,
+                confirmButtonText: 'Recarregar',
+                cancelButtonText: 'Manter minhas alterações',
+            }).then(function (res) {
+                if (res.isConfirmed) { location.reload(); }
+            });
         })
         .fail(function () {
             Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível consultar a origem.' });
