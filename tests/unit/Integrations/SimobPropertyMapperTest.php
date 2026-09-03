@@ -532,18 +532,62 @@ final class SimobPropertyMapperTest extends TestCase
         $this->assertArrayNotHasKey('estado', $p->fields, 'validatePropertyData exige exatamente 2 caracteres');
     }
 
-    public function testLatitudeELongitudeDoEnderecoDetalhado(): void
+    /**
+     * 'endereco' é o NOME DA RUA (string) no payload real — nunca uma
+     * estrutura com 'localizacao' aninhada. Esse formato nunca existiu contra
+     * a API de verdade; nenhuma coordenada pode vir daqui.
+     */
+    public function testEnderecoComoStringNaoProduzCoordenada(): void
     {
         $p = $this->mapperGenerico()->mapDetail([
             'id'          => '51',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
             'categoria'   => self::CATEGORIA_GENERICA,
-            'endereco'    => ['localizacao' => ['latitude' => '-27.1022939', 'longitude' => '-52.6129464']],
+            'endereco'    => 'RUA A',
         ]);
 
-        $this->assertSame(-27.1022939, $p->fields['latitude']);
-        $this->assertSame(-52.6129464, $p->fields['longitude']);
+        $this->assertArrayNotHasKey('latitude', $p->fields);
+        $this->assertArrayNotHasKey('longitude', $p->fields);
+    }
+
+    /**
+     * @dataProvider linksDoGoogleMaps
+     */
+    public function testCoordenadasDoLinkGoogleMaps(string $link, ?float $lat, ?float $lng): void
+    {
+        $p = $this->mapperGenerico()->mapDetail([
+            'id'            => '52',
+            'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
+            'cidade'        => 'Chapecó',
+            'categoria'     => self::CATEGORIA_GENERICA,
+            'linkGoogleMaps' => $link,
+        ]);
+
+        $this->assertSame($lat, $p->fields['latitude'] ?? null);
+        $this->assertSame($lng, $p->fields['longitude'] ?? null);
+    }
+
+    public static function linksDoGoogleMaps(): array
+    {
+        return [
+            'query string ?q='   => ['https://maps.google.com/?q=-27.1022939,-52.6129464', -27.1022939, -52.6129464],
+            'formato /@lat,lng'  => ['https://www.google.com/maps/@-27.1022939,-52.6129464,17z', -27.1022939, -52.6129464],
+            'par !3d/!4d do link de compartilhar' => [
+                'https://www.google.com/maps/place/X/@-27.1,-52.6,17z/data=!3d-27.1022939!4d-52.6129464',
+                -27.1022939,
+                -52.6129464,
+            ],
+            // O link REAL que a Giusti manda: busca por endereço em texto,
+            // sem nenhuma coordenada — é exatamente por isso que o parser
+            // sozinho não resolve o problema (ver NominatimGeocoder).
+            'link de endereço em texto, sem coordenada' => [
+                'https://www.google.com.br/maps/place/RUA HELIO WASSUN 160 CENTRO SÃO MIGUEL DO OESTE, 89900000',
+                null,
+                null,
+            ],
+            'sem link nenhum' => ['', null, null],
+        ];
     }
 
     public function testItemSemIdEDescartado(): void

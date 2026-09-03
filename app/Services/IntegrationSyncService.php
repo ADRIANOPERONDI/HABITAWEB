@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Entities\AccountIntegration;
+use App\Libraries\Geo\GeocoderInterface;
+use App\Libraries\Geo\NullGeocoder;
 use App\Libraries\Integrations\Dto\CatalogItem;
 use App\Libraries\Integrations\Dto\ExternalProperty;
 use App\Libraries\Integrations\Dto\SyncCursor;
@@ -41,6 +43,17 @@ class IntegrationSyncService
     /** Trava para não haver duas rodadas simultâneas da mesma integração. */
     private const LOCK_TTL = 1800;
 
+    /**
+     * Geocodificação é I/O externo lento (a Nominatim exige ~1 req/s) — um
+     * catálogo de milhares de imóveis sem coordenada não pode multiplicar o
+     * tempo da rodada por mil. O que passar do teto fica sem lat/lng nesta
+     * rodada e tenta de novo na próxima (o item só entra aqui quando ainda
+     * não tem coordenada, então nunca fica de fora para sempre).
+     */
+    private const MAX_GEOCODE_PER_RUN = 100;
+
+    private int $geocodedThisRun = 0;
+
     public function __construct(
         private ?IntegrationService $integrationService = null,
         private ?PropertyService $propertyService = null,
@@ -48,6 +61,7 @@ class IntegrationSyncService
         private ?AccountIntegrationModel $integrationModel = null,
         private ?IntegrationSyncRunModel $runModel = null,
         private ?PropertyModel $propertyModel = null,
+        private ?GeocoderInterface $geocoder = null,
     ) {
         $this->integrationService ??= new IntegrationService();
         $this->propertyService    ??= new PropertyService();
@@ -55,6 +69,12 @@ class IntegrationSyncService
         $this->integrationModel   ??= model(AccountIntegrationModel::class);
         $this->runModel           ??= model(IntegrationSyncRunModel::class);
         $this->propertyModel      ??= model(PropertyModel::class);
+        // NullGeocoder por padrão de propósito — não NominatimGeocoder: um
+        // geocoder real faz I/O de rede de verdade (com throttle de ~1s por
+        // consulta), e este é o construtor que TODA a suíte de testes usa
+        // quando não injeta nada explicitamente. O único chamador de
+        // produção (spark integration:sync) passa NominatimGeocoder na mão.
+        $this->geocoder           ??= new NullGeocoder();
     }
 
     /**
@@ -67,6 +87,7 @@ class IntegrationSyncService
         $result   = new SyncResult();
         $lockKey  = 'integration_sync_lock_' . $integration->id;
         $startedAt = date('Y-m-d H:i:s');
+        $this->geocodedThisRun = 0;
 
         if (cache($lockKey) !== null) {
             $result->addError('Já existe uma sincronização em andamento para esta integração.');
@@ -348,6 +369,8 @@ class IntegrationSyncService
             unset($data['status']);
         }
 
+        $this->fillMissingCoordinates($data, $existingId, $result);
+
         // trySaveProperty NÃO valida os campos — o model só valida account_id.
         // Quem chama é responsável por validar antes, como faz o
         // PropertyImportService. Sem isto, um imóvel sem cidade ou sem preço
@@ -394,6 +417,57 @@ class IntegrationSyncService
         $haystack = mb_strtolower($message . ' ' . implode(' ', $errors));
 
         return str_contains($haystack, 'limite') || str_contains($haystack, 'plano');
+    }
+
+    /**
+     * Geocodifica quando o item ainda não tem coordenada — nem no payload
+     * desta rodada, nem já salva de uma rodada anterior. Sem essa segunda
+     * checagem, toda ATUALIZAÇÃO de um imóvel que já tem lat/lng geocodificada
+     * bateria a Nominatim de novo, porque o mapper não devolve coordenada
+     * nenhuma quando a origem não fornece (e a origem, no caso da Giusti,
+     * nunca fornece).
+     */
+    private function fillMissingCoordinates(array &$data, ?int $existingId, SyncResult $result): void
+    {
+        if (isset($data['latitude'], $data['longitude'])) {
+            return;
+        }
+
+        if ($existingId !== null) {
+            $atual = $this->propertyModel->find($existingId);
+
+            if ($atual !== null && $atual->latitude !== null && $atual->longitude !== null) {
+                return;
+            }
+        }
+
+        if ($this->geocodedThisRun >= self::MAX_GEOCODE_PER_RUN) {
+            return;
+        }
+
+        $cidade = trim((string) ($data['cidade'] ?? ''));
+
+        if ($cidade === '') {
+            return;
+        }
+
+        $this->geocodedThisRun++;
+
+        $coordenadas = $this->geocoder->geocode([
+            'rua'    => $data['rua'] ?? null,
+            'numero' => $data['numero'] ?? null,
+            'bairro' => $data['bairro'] ?? null,
+            'cidade' => $data['cidade'] ?? null,
+            'estado' => $data['estado'] ?? null,
+        ]);
+
+        if ($coordenadas === null) {
+            return;
+        }
+
+        $data['latitude']  = $coordenadas['lat'];
+        $data['longitude'] = $coordenadas['lng'];
+        $result->geocoded++;
     }
 
     /**

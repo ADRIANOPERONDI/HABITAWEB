@@ -19,6 +19,7 @@ final class SyncResult
     public int $ignored      = 0;
     public int $paused       = 0;
     public int $images       = 0;
+    public int $geocoded     = 0;
     public int $errors       = 0;
 
     /** @var string[] */
@@ -85,7 +86,7 @@ final class SyncResult
     /** Resumo curto para o toast do painel e para o output do comando. */
     public function humanSummary(): string
     {
-        return sprintf(
+        $resumo = sprintf(
             '%d criado(s), %d atualizado(s), %d sem alteração, %d ignorado(s) (sem mapeamento), %d pausado(s), %d imagem(ns), %d erro(s)',
             $this->created,
             $this->updated,
@@ -95,5 +96,14 @@ final class SyncResult
             $this->images,
             $this->errors,
         );
+
+        // geocoded não é persistido em integration_sync_runs (não é um
+        // contador de destino/estado do item, é só uma métrica de custo desta
+        // rodada) — aparece só no resumo textual do comando/toast.
+        if ($this->geocoded > 0) {
+            $resumo .= sprintf(', %d geocodificado(s)', $this->geocoded);
+        }
+
+        return $resumo;
     }
 }

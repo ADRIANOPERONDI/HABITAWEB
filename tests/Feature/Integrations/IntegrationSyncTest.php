@@ -16,10 +16,12 @@ use App\Models\IntegrationSyncRunModel;
 use App\Models\PropertyExternalRefModel;
 use App\Models\PropertyModel;
 use App\Services\IntegrationService;
+use App\Libraries\Geo\NullGeocoder;
 use App\Services\IntegrationSyncService;
 use CodeIgniter\Test\DatabaseTestTrait;
 use Tests\Support\Factories\TenantFactory;
 use Tests\Support\Integrations\FakeConnector;
+use Tests\Support\Integrations\FakeGeocoder;
 use Tests\Support\Integrations\FakeIntegrationService;
 use Tests\Support\HabitawebTestCase;
 
@@ -60,7 +62,17 @@ final class IntegrationSyncTest extends HabitawebTestCase
 
         $connector = new FakeConnector($catalogo, $erro);
 
-        $sync = new IntegrationSyncService(new FakeIntegrationService($connector));
+        // NullGeocoder de propósito: a maioria dos testes deste arquivo não
+        // tem nada a ver com coordenada, e sem isso o default de produção
+        // (NominatimGeocoder) bateria rede de verdade, com o throttle de
+        // ~1s por chamada, em toda criação/atualização de imóvel sintético
+        // daqui. Os testes que testam geocoding de verdade (ver seção
+        // "coordenadas" abaixo) montam o IntegrationSyncService na mão, com
+        // um FakeGeocoder.
+        $sync = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService($connector),
+            geocoder: new NullGeocoder(),
+        );
 
         return [$sync, $service->find((int) $tenant['account']->id, 'simob'), $tenant, $connector];
     }
@@ -468,14 +480,78 @@ final class IntegrationSyncTest extends HabitawebTestCase
         };
 
         $sync = new IntegrationSyncService(
-            new FakeIntegrationService(new FakeConnector($catalogo)),
-            $propertyService
+            integrationService: new FakeIntegrationService(new FakeConnector($catalogo)),
+            propertyService: $propertyService,
+            geocoder: new NullGeocoder(),
         );
 
         $result = $sync->run($service->find((int) $tenant['account']->id, 'simob'));
 
         $this->assertSame(1, $result->images);
         $this->assertSame(['https://203.0.113.10/cdn/imovelImages/100/a.jpg'], $propertyService->urls);
+    }
+
+    // --------------------------------------------------------- coordenadas
+
+    /**
+     * A origem (Simob) não fornece coordenada de verdade — o mapper nunca
+     * preenche latitude/longitude sozinho. É o sync que geocodifica pelo
+     * endereço, depois do upsert, quando o imóvel ainda não tem coordenada.
+     */
+    public function testGeocodificaImovelNovoSemCoordenadas(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, ['finalidades' => [1, 2], 'initial_status' => 'ACTIVE', 'import_images' => false]);
+
+        $geocoder = new FakeGeocoder(['lat' => -27.5, 'lng' => -52.1]);
+
+        $sync = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([$this->property('100')])),
+            geocoder: $geocoder,
+        );
+
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $geocoder->calls);
+        $this->seeInDatabase('properties', [
+            'account_id' => $tenant['account']->id,
+            'latitude'   => -27.5,
+            'longitude'  => -52.1,
+        ]);
+    }
+
+    /** Imóvel que já tem coordenada não bate o geocoder de novo a cada atualização. */
+    public function testNaoGeocodificaDeNovoQuandoJaTemCoordenada(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, ['finalidades' => [1, 2], 'initial_status' => 'ACTIVE', 'import_images' => false]);
+
+        $geocoder = new FakeGeocoder();
+
+        $sync = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([$this->property('100')])),
+            geocoder: $geocoder,
+        );
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $geocoder->calls);
+
+        // Conteúdo muda (força update), a origem continua sem mandar coordenada.
+        $sync2 = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([
+                $this->property('100', ['preco' => 399000], [], '2026-08-05 09:00:00'),
+            ])),
+            geocoder: $geocoder,
+        );
+        $sync2->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $geocoder->calls, 'coordenada já salva não deveria geocodificar de novo');
     }
 
     // ---------------------------------------------------------------- trava

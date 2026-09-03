@@ -270,6 +270,18 @@ class SimobPropertyMapper
 
         $uf = strtoupper(trim((string) ($get('uf') ?? '')));
 
+        // 'endereco' é o NOME DA RUA (string) — não tem 'localizacao' aninhada
+        // de verdade. A leitura antiga (detail['endereco']['localizacao']...)
+        // acessava um offset de string, que `??` silenciosamente resolve pra
+        // null sem aviso nenhum: todo imóvel Simob nascia sem coordenada, sem
+        // nenhum log ou exceção apontando o motivo. A única fonte de
+        // coordenada que a origem eventualmente dá é linkGoogleMaps — quando
+        // ele já vem em formato de coordenada, e não de endereço em texto
+        // (ver parseGoogleMapsLink()). Quando nem isso resolve, é o
+        // IntegrationSyncService que geocodifica pelo endereço, depois do
+        // upsert — não é responsabilidade do mapper fazer I/O.
+        $coordenadas = $this->parseGoogleMapsLink((string) ($get('linkGoogleMaps') ?? ''));
+
         return array_filter([
             'rua'         => $this->str($get('endereco')),
             'numero'      => $this->str($get('numero')),
@@ -279,9 +291,48 @@ class SimobPropertyMapper
             // validatePropertyData exige exatamente 2 caracteres.
             'estado'      => strlen($uf) === 2 ? $uf : null,
             'cep'         => $this->str($get('cep')),
-            'latitude'    => $this->parseNumber($detail['endereco']['localizacao']['latitude'] ?? null),
-            'longitude'   => $this->parseNumber($detail['endereco']['localizacao']['longitude'] ?? null),
+            'latitude'    => $coordenadas['lat'] ?? null,
+            'longitude'   => $coordenadas['lng'] ?? null,
         ], static fn ($v) => $v !== null);
+    }
+
+    /**
+     * Extrai lat/lng de um link do Google Maps, quando ele já vier nesse
+     * formato — o link real que a Giusti manda é uma busca por ENDEREÇO em
+     * texto (`/maps/place/RUA X, BAIRRO, CIDADE`), sem coordenada nenhuma, e
+     * pra esse caso este método sempre devolve null de propósito (não é
+     * responsabilidade dele geocodificar texto — isso é o
+     * IntegrationSyncService + NominatimGeocoder). Mas a mesma coluna já foi
+     * vista, em outras integrações Simob, carregando um link já resolvido em
+     * coordenada — os formatos abaixo cobrem esse caso sem custar nenhuma
+     * chamada de rede.
+     *
+     * @return array{lat:float, lng:float}|null
+     */
+    private function parseGoogleMapsLink(string $link): ?array
+    {
+        if ($link === '') {
+            return null;
+        }
+
+        // Ordem importa: um link de "compartilhar" do Google Maps costuma
+        // trazer OS DOIS — /@lat,lng,zoom (o centro aproximado da tela) e
+        // !3dlat!4dlng (a posição exata do pino) — e o par !3d/!4d precisa
+        // ser checado primeiro, senão o parser pega o centro da tela em vez
+        // do pino.
+        $padroes = [
+            '/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/',
+            '/[?&]q=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/',
+            '/\/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/',
+        ];
+
+        foreach ($padroes as $padrao) {
+            if (preg_match($padrao, $link, $m) === 1) {
+                return ['lat' => (float) $m[1], 'lng' => (float) $m[2]];
+            }
+        }
+
+        return null;
     }
 
     // ------------------------------------------------------- características
