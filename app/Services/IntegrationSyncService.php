@@ -38,7 +38,8 @@ use App\Models\PropertyModel;
 class IntegrationSyncService
 {
     /** Uma rodada nunca passa disto, para o cron não ficar preso num tenant. */
-    private const MAX_ITEMS_PER_RUN = 2000;
+    /** Testável via construtor — o valor de produção é o default. */
+    private int $maxItemsPerRun = 2000;
 
     /** Trava para não haver duas rodadas simultâneas da mesma integração. */
     private const LOCK_TTL = 1800;
@@ -75,6 +76,12 @@ class IntegrationSyncService
         // quando não injeta nada explicitamente. O único chamador de
         // produção (spark integration:sync) passa NominatimGeocoder na mão.
         $this->geocoder           ??= new NullGeocoder();
+    }
+
+    /** Só para teste: exercitar o corte do teto de itens sem simular 2000 imóveis de verdade. */
+    public function setMaxItemsPerRun(int $max): void
+    {
+        $this->maxItemsPerRun = $max;
     }
 
     /**
@@ -117,20 +124,31 @@ class IntegrationSyncService
                 $connector->loadMappings((int) $integration->id);
             }
 
-            $this->consume($integration, $connector, $result, $runId, $forceFull);
-            $this->pauseVanished($integration, $result, $runId);
+            $catalogoCompleto = $this->consume($integration, $connector, $result, $runId, $forceFull);
+            $this->pauseVanished($integration, $result, $runId, $forceFull && $catalogoCompleto);
 
             $this->runModel->finish($runId, $result->status(), $result->toCounters(), $result->errorSummary());
 
-            // O corte incremental da PRÓXIMA rodada é o instante em que ESTA
-            // começou, e não o de agora: o que a origem alterou durante a
-            // execução precisa entrar da próxima vez.
-            $this->integrationModel->update($integration->id, [
-                'last_sync_at'               => $startedAt,
+            $atualizacoes = [
                 'status'                     => AccountIntegrationModel::STATUS_CONNECTED,
                 // Pedido de "sincronizar agora" foi atendido nesta rodada.
                 'sync_priority_requested_at' => null,
-            ]);
+            ];
+
+            // Só avança o corte incremental quando o catálogo foi percorrido
+            // até o fim. Se o teto de itens da rodada interrompeu no meio,
+            // avançar last_sync_at faria a PRÓXIMA rodada (incremental,
+            // corte a partir de agora) nunca mais alcançar o que ficou pra
+            // trás na listagem — a mensagem de erro promete "continua de
+            // onde parou", e só é verdade se o cursor não se mover daqui.
+            if ($catalogoCompleto) {
+                // O corte incremental da PRÓXIMA rodada é o instante em que ESTA
+                // começou, e não o de agora: o que a origem alterou durante a
+                // execução precisa entrar da próxima vez.
+                $atualizacoes['last_sync_at'] = $startedAt;
+            }
+
+            $this->integrationModel->update($integration->id, $atualizacoes);
         } catch (AuthException $e) {
             // Credencial recusada: desliga o sync. Insistir de 30 em 30 minutos
             // com token inválido só empilha erro e pode virar bloqueio do lado
@@ -166,28 +184,41 @@ class IntegrationSyncService
 
     // ------------------------------------------------------------- catálogo
 
+    /**
+     * @return bool true quando o catálogo foi percorrido até o fim (nenhum
+     *              corte pelo teto de itens) — só nesse caso é seguro avançar
+     *              o cursor incremental e pausar quem sumiu (ver run()).
+     */
     private function consume(
         AccountIntegration $integration,
         IntegrationProviderInterface $connector,
         SyncResult $result,
         int $runId,
         bool $forceFull,
-    ): void {
+    ): bool {
         $accountId = (int) $integration->account_id;
         $provider  = (string) $integration->provider_code;
         $cursor    = SyncCursor::fromIntegration($integration, $forceFull);
         $settings  = $integration->settings();
 
+        // Conta só o que custou uma busca de detalhe — não o total_fetched
+        // (que inclui os "nada mudou" resolvidos na listagem, e é a métrica
+        // que o resumo da rodada mostra pro tenant). Um catálogo de milhares
+        // de itens, quase todos inalterados, não pode estourar o teto antes
+        // de alcançar o punhado que de fato precisava de trabalho.
+        $processados = 0;
+
         foreach ($connector->fetchCatalog($cursor, $settings) as $item) {
-            if ($result->totalFetched >= self::MAX_ITEMS_PER_RUN) {
+            if ($processados >= $this->maxItemsPerRun) {
                 $result->addError('Limite de itens por rodada atingido; a próxima sincronização continua de onde parou.');
-                break;
+
+                return false;
             }
 
             $result->totalFetched++;
 
             try {
-                $this->syncItem($integration, $item, $result, $runId, $settings);
+                $custouDetalhe = $this->syncItem($integration, $item, $result, $runId, $settings);
             } catch (AuthException | RateLimitException $e) {
                 // Estas param a rodada inteira: não adianta seguir para o
                 // próximo item se a credencial caiu ou o servidor pediu calma.
@@ -202,17 +233,30 @@ class IntegrationSyncService
                     $item->externalId,
                     $e->getMessage()
                 ));
+                $custouDetalhe = true;
+            }
+
+            if ($custouDetalhe) {
+                $processados++;
             }
         }
+
+        return true;
     }
 
+    /**
+     * @return bool true quando o item custou uma busca de detalhe (conta
+     *              contra o teto de itens da rodada em consume()); false no atalho
+     *              barato de "nada mudou", que não devia consumir o teto de
+     *              uma rodada só porque o catálogo inteiro foi listado.
+     */
     private function syncItem(
         AccountIntegration $integration,
         CatalogItem $item,
         SyncResult $result,
         int $runId,
         array $settings,
-    ): void {
+    ): bool {
         $accountId = (int) $integration->account_id;
         $provider  = (string) $integration->provider_code;
 
@@ -227,7 +271,7 @@ class IntegrationSyncService
             ]);
             $result->skipped++;
 
-            return;
+            return false;
         }
 
         $external = $item->resolve();
@@ -245,7 +289,7 @@ class IntegrationSyncService
                 $result->paused++;
             }
 
-            return;
+            return true;
         }
 
         if ($external->ignoreReason !== null) {
@@ -260,7 +304,7 @@ class IntegrationSyncService
 
             $result->ignored++;
 
-            return;
+            return true;
         }
 
         // Segunda barreira: o updatedAt pode ter mudado sem o conteúdo mudar
@@ -275,20 +319,45 @@ class IntegrationSyncService
             ]);
             $result->skipped++;
 
-            return;
+            return true;
         }
 
         $isNew = $ref === null;
 
         if ($isNew && $result->planLimitReached) {
             // Já estourou o plano nesta rodada: não adianta tentar de novo.
-            return;
+            return true;
         }
 
-        $propertyId = $this->upsertProperty($integration, $external, $ref?->property_id, $result);
+        try {
+            $propertyId = $this->upsertProperty($integration, $external, $ref?->property_id, $result);
+        } catch (\Throwable $e) {
+            // Falha de validação (bairro/cidade ausentes, etc.): grava o
+            // vínculo MESMO ASSIM, com property_id nulo e o motivo em
+            // last_error. Sem isto, o item nunca ganha payload_hash nem
+            // external_updated_at, e a próxima rodada não tem como saber que
+            // ele já foi tentado — rebusca o detalhe, falha de novo, pra
+            // sempre. Com o vínculo gravado, uma origem que não mudou nada
+            // cai no atalho de "hash igual" (acima) e para de custar uma
+            // busca de detalhe por rodada.
+            $this->refModel->upsertRef([
+                'property_id'         => $ref?->property_id,
+                'account_id'          => $accountId,
+                'provider_code'       => $provider,
+                'external_id'         => $item->externalId,
+                'external_code'       => $external->externalCode,
+                'external_updated_at' => $external->externalUpdatedAt,
+                'payload_hash'        => $hash,
+                'last_synced_at'      => date('Y-m-d H:i:s'),
+                'last_sync_run_id'    => $runId,
+                'last_error'          => mb_substr($e->getMessage(), 0, 500),
+            ]);
+
+            throw $e;
+        }
 
         if ($propertyId === null) {
-            return;
+            return true;
         }
 
         $this->refModel->upsertRef([
@@ -308,6 +377,9 @@ class IntegrationSyncService
             'payload_hash'        => $hash,
             'last_synced_at'      => date('Y-m-d H:i:s'),
             'last_sync_run_id'    => $runId,
+            // Limpa um last_error de uma tentativa anterior que falhou: este
+            // upsert só chega aqui depois de upsertProperty() ter funcionado.
+            'last_error'          => null,
         ]);
 
         $isNew ? $result->created++ : $result->updated++;
@@ -315,6 +387,8 @@ class IntegrationSyncService
         if (! empty($settings['import_images'])) {
             $result->images += $this->syncImages($propertyId, $external, $result);
         }
+
+        return true;
     }
 
     /**
@@ -508,11 +582,24 @@ class IntegrationSyncService
      * é só o que mudou, então "não apareceu" não significa "sumiu" — pausar
      * aqui derrubaria o catálogo inteiro do tenant.
      */
-    private function pauseVanished(AccountIntegration $integration, SyncResult $result, int $runId): void
+    /**
+     * "Sumiu do catálogo" só pode ser concluído quando a rodada varreu o
+     * catálogo INTEIRO — incremental por natureza só vê quem mudou, e pausar
+     * com base nisso pausaria todo o resto do catálogo por engano.
+     *
+     * O antigo `empty($integration->last_sync_at)` capturava só a PRIMEIRA
+     * rodada de todas; qualquer `--full` depois da primeira nunca detectava
+     * sumido. E o corte por `$result->errors > 0` — pensado pra não confiar
+     * numa varredura "incompleta" — deixou de fazer sentido depois que item
+     * com erro de validação passou a gravar vínculo mesmo assim (ver
+     * upsertProperty): ele já é contado como "visto" pela rodada, erro isolado
+     * de item não impede mais a conclusão da rodada completa.
+     */
+    private function pauseVanished(AccountIntegration $integration, SyncResult $result, int $runId, bool $forceFull): void
     {
-        $foiCompleta = empty($integration->last_sync_at);
+        $foiCompleta = $forceFull || empty($integration->last_sync_at);
 
-        if (! $foiCompleta || $result->errors > 0) {
+        if (! $foiCompleta) {
             return;
         }
 

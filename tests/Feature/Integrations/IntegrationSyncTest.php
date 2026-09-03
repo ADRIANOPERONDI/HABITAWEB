@@ -292,6 +292,46 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $this->assertSame(2, model(PropertyModel::class)
             ->where('account_id', $tenant['account']->id)
             ->countAllResults());
+
+        // O item que falhou grava vínculo mesmo sem virar imóvel: property_id
+        // nulo, com o motivo em last_error — é o que evita rebuscar o
+        // detalhe pra sempre (ver o teste seguinte).
+        $ref = model(PropertyExternalRefModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->where('external_id', '101')
+            ->first();
+
+        $this->assertNotNull($ref);
+        $this->assertNull($ref->property_id);
+        $this->assertNotNull($ref->last_error);
+    }
+
+    /**
+     * O item que falhou validação numa rodada não pode custar uma busca de
+     * detalhe TODA rodada seguinte, enquanto a origem não mudar nada nele —
+     * o vínculo gravado com property_id nulo já basta pro atalho de
+     * "hash igual" reconhecer que nada mudou.
+     */
+    public function testItemComErroDeValidacaoNaoERebuscadoSeNaoMudou(): void
+    {
+        $itemInvalido = $this->property('101', ['cidade' => '', 'bairro' => '']);
+
+        [$sync, $integration] = $this->syncService([$itemInvalido]);
+        $sync->run($integration);
+
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+
+        // Mesmo externalUpdatedAt e mesmo conteúdo: se o vínculo não tivesse
+        // sido gravado na primeira rodada, isUnchanged() não teria como
+        // detectar isso, e o conector buscaria o detalhe de novo.
+        $connector2 = new FakeConnector([$itemInvalido]);
+        $sync2      = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService($connector2),
+            geocoder: new NullGeocoder(),
+        );
+        $sync2->run($integration);
+
+        $this->assertSame(0, $connector2->resolveCalls, 'item inalterado não deveria buscar detalhe de novo');
     }
 
     /**
@@ -420,6 +460,43 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $property = model(PropertyModel::class)->find($sumido->property_id);
         $this->assertNotNull($property, 'não pode ter sido apagado');
         $this->assertSame('PAUSED', $property->status);
+    }
+
+    /**
+     * `--full` faz o sync varrer o catálogo inteiro mesmo quando NÃO é a
+     * primeira rodada (last_sync_at já preenchido) — e por isso PRECISA
+     * pausar quem sumiu, com a mesma confiança de uma primeira rodada. O bug
+     * antigo (`empty($integration->last_sync_at)` sozinho) fazia todo --full
+     * depois da primeira rodada nunca detectar sumido.
+     */
+    public function testSyncFullPausaQuemSumiuMesmoNaoSendoAPrimeiraRodada(): void
+    {
+        [$sync, $integration, $tenant] = $this->syncService([
+            $this->property('100'),
+            $this->property('101'),
+        ]);
+
+        $sync->run($integration);
+
+        // last_sync_at preenchido: esta NÃO é a primeira rodada.
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+        $this->assertNotNull($integration->last_sync_at);
+
+        $sync2 = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([
+                $this->property('100', [], [], '2026-08-09 10:00:00'),
+            ])),
+            geocoder: new NullGeocoder(),
+        );
+        $result = $sync2->run($integration, IntegrationSyncRunModel::TRIGGER_MANUAL, forceFull: true);
+
+        $this->assertSame(1, $result->paused);
+
+        $sumidoAindaExiste = model(PropertyModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->where('status', 'PAUSED')
+            ->countAllResults();
+        $this->assertSame(1, $sumidoAindaExiste);
     }
 
     /**
@@ -552,6 +629,48 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $sync2->run($service->find((int) $tenant['account']->id, 'simob'));
 
         $this->assertSame(1, $geocoder->calls, 'coordenada já salva não deveria geocodificar de novo');
+    }
+
+    /**
+     * O teto de itens da rodada só pode custar contra quem de fato exigiu
+     * uma busca de detalhe — um catálogo de milhares de itens quase todos
+     * inalterados não pode travar antes de alcançar o punhado que precisava
+     * de trabalho de verdade.
+     */
+    public function testLimiteDaRodadaNaoContaOsPulados(): void
+    {
+        [$sync, $integration, $tenant] = $this->syncService([
+            $this->property('100'),
+            $this->property('101'),
+            $this->property('102'),
+        ]);
+        $sync->run($integration);
+
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+
+        // 100 e 101 vêm com o MESMO updatedAt de antes (pulam pelo atalho
+        // barato); só 102 mudou. Com teto 1, se pulados contassem, o sync
+        // pararia antes de alcançar o 102.
+        $sync2 = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([
+                $this->property('100'),
+                $this->property('101'),
+                $this->property('102', ['preco' => 500000], [], '2026-08-09 10:00:00'),
+            ])),
+            geocoder: new NullGeocoder(),
+        );
+        $sync2->setMaxItemsPerRun(1);
+
+        $result = $sync2->run($integration);
+
+        $this->assertSame(2, $result->skipped);
+        $this->assertSame(1, $result->updated);
+        $this->assertSame(0, $result->errors, 'não devia ter estourado o teto');
+
+        $this->seeInDatabase('properties', [
+            'account_id' => $tenant['account']->id,
+            'preco'      => 500000,
+        ]);
     }
 
     // ---------------------------------------------------------------- trava

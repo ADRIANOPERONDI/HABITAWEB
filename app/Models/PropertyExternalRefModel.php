@@ -19,6 +19,7 @@ class PropertyExternalRefModel extends Model
     protected $allowedFields    = [
         'property_id', 'account_id', 'provider_code', 'external_id', 'external_code',
         'external_updated_at', 'payload_hash', 'last_synced_at', 'last_sync_run_id',
+        'last_error',
     ];
 
     protected $useTimestamps = true;
@@ -81,6 +82,10 @@ class PropertyExternalRefModel extends Model
         $rows = $this->select('property_id')
             ->where('account_id', $accountId)
             ->where('provider_code', $providerCode)
+            // Vínculo sem imóvel (falha de validação, ver upsertProperty) não
+            // tem o que pausar — sem este filtro, (int) null vira 0 e entra
+            // na lista como um id de imóvel inexistente.
+            ->where('property_id IS NOT NULL', null, false)
             ->groupStart()
                 ->where('last_sync_run_id !=', $runId)
                 ->orWhere('last_sync_run_id', null)
