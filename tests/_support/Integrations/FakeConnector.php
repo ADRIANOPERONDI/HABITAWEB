@@ -21,14 +21,19 @@ class FakeConnector implements IntegrationProviderInterface
     public array $pushedLeads = [];
 
     /**
-     * @param list<ExternalProperty|null> $catalogo   itens devolvidos pelo catálogo
-     * @param \Throwable|null             $erro       lançado no catálogo e no push
-     * @param TestResult|null             $leadResult resposta do pushLead
+     * @param list<ExternalProperty|null> $catalogo         itens devolvidos pelo catálogo
+     * @param \Throwable|null             $erro             lançado no catálogo e no push
+     * @param TestResult|null             $leadResult       resposta do pushLead
+     * @param array<int, string>          $listingIdOverride índice do item -> externalId DA LISTAGEM, quando
+     *                                                       precisa divergir do externalId do ExternalProperty
+     *                                                       resolvido (simula detalhe e listagem discordando —
+     *                                                       ver IntegrationSyncTest::testVinculoUsaOIdDaListagem)
      */
     public function __construct(
         public array $catalogo = [],
         private ?\Throwable $erro = null,
         private ?TestResult $leadResult = null,
+        private array $listingIdOverride = [],
     ) {
     }
 
@@ -53,7 +58,7 @@ class FakeConnector implements IntegrationProviderInterface
 
         foreach ($this->catalogo as $i => $property) {
             yield new CatalogItem(
-                externalId: $property?->externalId ?? "vazio{$i}",
+                externalId: $this->listingIdOverride[$i] ?? ($property?->externalId ?? "vazio{$i}"),
                 externalCode: $property?->externalCode ?? "vazio{$i}",
                 externalUpdatedAt: $property?->externalUpdatedAt,
                 resolver: function () use ($property) {

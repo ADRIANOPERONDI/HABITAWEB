@@ -16,6 +16,7 @@ final class SyncResult
     public int $created      = 0;
     public int $updated      = 0;
     public int $skipped      = 0;
+    public int $ignored      = 0;
     public int $paused       = 0;
     public int $images       = 0;
     public int $errors       = 0;
@@ -57,6 +58,7 @@ final class SyncResult
             'created_count' => $this->created,
             'updated_count' => $this->updated,
             'skipped_count' => $this->skipped,
+            'ignored_count' => $this->ignored,
             'paused_count'  => $this->paused,
             'images_count'  => $this->images,
             'error_count'   => $this->errors,
@@ -84,10 +86,11 @@ final class SyncResult
     public function humanSummary(): string
     {
         return sprintf(
-            '%d criado(s), %d atualizado(s), %d sem alteração, %d pausado(s), %d imagem(ns), %d erro(s)',
+            '%d criado(s), %d atualizado(s), %d sem alteração, %d ignorado(s) (sem mapeamento), %d pausado(s), %d imagem(ns), %d erro(s)',
             $this->created,
             $this->updated,
             $this->skipped,
+            $this->ignored,
             $this->paused,
             $this->images,
             $this->errors,

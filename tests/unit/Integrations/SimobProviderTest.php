@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Integrations;
 
+use App\Entities\IntegrationMapping;
 use App\Libraries\Integrations\Dto\CatalogItem;
 use App\Libraries\Integrations\Dto\SyncCursor;
 use App\Libraries\Integrations\Exceptions\IntegrationException;
@@ -212,10 +213,14 @@ final class SimobProviderTest extends TestCase
                 'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '300000.00'],
                 'cidade'      => 'Chapecó',
                 'bairro'      => 'Centro',
+                'categoria'   => ['id' => 1, 'descricao' => 'CASA'],
             ]],
         ]);
 
-        $itens = iterator_to_array($this->provider($client)->fetchCatalog(
+        $provider = $this->provider($client);
+        $provider->setMappings(['1' => new IntegrationMapping(['external_id' => '1', 'target_value' => 'CASA'])], []);
+
+        $itens = iterator_to_array($provider->fetchCatalog(
             new SyncCursor(null),
             ['finalidades' => [SimobClient::FINALIDADE_LOCACAO]]
         ));
@@ -244,12 +249,16 @@ final class SimobProviderTest extends TestCase
                 'valor'      => '1500.00',
                 'cidade'     => 'Chapecó',
                 'bairro'     => 'Centro',
+                'idCategoria'        => 1,
                 'descricaoCategoria' => 'APARTAMENTO',
             ]]]],
             'detail' => [],
         ]);
 
-        $itens    = iterator_to_array($this->provider($client)->fetchCatalog(new SyncCursor(null), ['finalidades' => [1]]));
+        $provider = $this->provider($client);
+        $provider->setMappings(['1' => new IntegrationMapping(['external_id' => '1', 'target_value' => 'APARTAMENTO'])], []);
+
+        $itens    = iterator_to_array($provider->fetchCatalog(new SyncCursor(null), ['finalidades' => [1]]));
         $property = $itens[0]->resolve();
 
         $this->assertNotNull($property);

@@ -14,9 +14,13 @@ namespace App\Libraries\Integrations\Dto;
 final class ExternalProperty
 {
     /**
-     * @param array<string, mixed> $fields    Colunas de properties prontas para o upsert
+     * @param array<string, mixed> $fields       Colunas de properties prontas para o upsert
      * @param ExternalImage[]      $images
-     * @param array<string, mixed> $raw       Payload original, só para debug/hash
+     * @param array<string, mixed> $raw          Payload original, só para debug/hash
+     * @param ?string              $ignoreReason Não-nulo = item deliberadamente NÃO importado
+     *                                            (ex.: categoria sem de/para confirmado).
+     *                                            `fields`/`images` ficam vazios nesse caso —
+     *                                            o chamador nunca deve tentar salvar isto.
      */
     public function __construct(
         public readonly string $externalId,
@@ -25,7 +29,13 @@ final class ExternalProperty
         public readonly ?string $externalCode = null,
         public readonly ?string $externalUpdatedAt = null,
         public readonly array $raw = [],
+        public readonly ?string $ignoreReason = null,
     ) {
+    }
+
+    public static function ignored(string $externalId, string $reason): self
+    {
+        return new self(externalId: $externalId, fields: [], ignoreReason: $reason);
     }
 
     /**
@@ -60,6 +70,7 @@ final class ExternalProperty
             $this->externalCode,
             $this->externalUpdatedAt,
             $this->raw,
+            $this->ignoreReason,
         );
     }
 }

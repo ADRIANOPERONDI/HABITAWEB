@@ -89,6 +89,19 @@ class SimobPropertyMapper
             return null;
         }
 
+        $tipoImovel = $this->resolveTipoImovel($detail, $listItem);
+
+        // Categoria sem de/para confirmado: ignora em vez de adivinhar. O
+        // palpite por nome (SimobVocabulary::guessPropertyType) só entra como
+        // SUGESTÃO em IntegrationService::seedMappings() — decidir o tipo do
+        // imóvel em tempo de sync, sem o tenant confirmar, é o que fazia uma
+        // "SEDE ESPORTIVA" virar CASA em silêncio.
+        if ($tipoImovel === null) {
+            $descricao = (string) ($detail['categoria']['descricao'] ?? $listItem['descricaoCategoria'] ?? 'desconhecida');
+
+            return ExternalProperty::ignored($externalId, "categoria não mapeada: {$descricao}");
+        }
+
         $fields = [];
 
         [$tipoNegocio, $preco] = $this->resolveNegocioEPreco($detail, $listItem);
@@ -101,7 +114,7 @@ class SimobPropertyMapper
 
         $fields['tipo_negocio'] = $tipoNegocio;
         $fields['preco']        = $preco;
-        $fields['tipo_imovel']  = $this->resolveTipoImovel($detail, $listItem);
+        $fields['tipo_imovel']  = $tipoImovel;
 
         $fields += $this->mapAddress($detail, $listItem);
 
@@ -152,20 +165,29 @@ class SimobPropertyMapper
         $venda   = $this->activeConfig($detail['configVenda'] ?? null);
         $locacao = $this->activeConfig($detail['configLocacao'] ?? null);
 
-        if ($venda !== null && $locacao !== null) {
+        if (is_float($venda) && is_float($locacao)) {
             return ['VENDA_ALUGUEL', $venda];
         }
 
-        if ($venda !== null) {
+        if (is_float($venda)) {
             return ['VENDA', $venda];
         }
 
-        if ($locacao !== null) {
+        if (is_float($locacao)) {
             return ['ALUGUEL', $locacao];
         }
 
-        // Detalhe sem config (a doc marca "Dados Imóvel" como nem sempre
-        // online): cai para a finalidade pela qual a listagem devolveu o item.
+        // Alguma das duas configs chegou no detalhe mas foi recusada de
+        // propósito (inativo ou fora do portal): não é "sem informação", é
+        // "a imobiliária tirou isso do ar" — não cai pro palpite da listagem,
+        // que traria de volta uma finalidade que o Simob já desativou.
+        if ($venda === false || $locacao === false) {
+            return [null, 0.0];
+        }
+
+        // Nenhuma das duas veio no detalhe (a doc marca "Dados Imóvel" como
+        // nem sempre online): cai para a finalidade pela qual a listagem
+        // devolveu o item.
         $finalidade = (int) ($listItem['finalidade'] ?? 0);
         $valor      = $this->parseNumber($listItem['valor'] ?? null) ?? 0.0;
 
@@ -177,23 +199,29 @@ class SimobPropertyMapper
     }
 
     /**
-     * Preço de uma config, ou null se ela não conta.
+     * Preço de uma config — ou o motivo dela não contar.
      *
      * `inativo` e `disponibilizarPortal` são do lado do Simob: um imóvel
      * inativo ou não liberado para portal não pode aparecer no Habitaweb.
+     *
+     * @return float|false|null float = ativa, com preço; false = a config
+     *                          existe no payload mas foi recusada de propósito
+     *                          (inativo, ou fora do portal); null = a config
+     *                          nem veio — o chamador distingue os dois porque
+     *                          só o segundo caso cai pro palpite da listagem.
      */
-    private function activeConfig(mixed $config): ?float
+    private function activeConfig(mixed $config): float|false|null
     {
         if (! is_array($config)) {
             return null;
         }
 
         if (! empty($config['inativo'])) {
-            return null;
+            return false;
         }
 
         if (array_key_exists('disponibilizarPortal', $config) && empty($config['disponibilizarPortal'])) {
-            return null;
+            return false;
         }
 
         return $this->parseNumber($config['valor'] ?? null) ?? 0.0;
@@ -216,24 +244,22 @@ class SimobPropertyMapper
         return in_array($default, ['DRAFT', 'ACTIVE', 'PAUSED'], true) ? $default : 'DRAFT';
     }
 
-    private function resolveTipoImovel(array $detail, array $listItem): string
+    /**
+     * Tipo do imóvel no vocabulário do Habitaweb, ou null se a categoria
+     * ainda não tem de/para confirmado — o chamador trata null como "ignorar
+     * este item", não como "adivinhar".
+     */
+    private function resolveTipoImovel(array $detail, array $listItem): ?string
     {
         $categoriaId = (string) ($detail['categoria']['id'] ?? $listItem['idCategoria'] ?? '');
 
-        if ($categoriaId !== '' && isset($this->categoryMap[$categoriaId])) {
-            $target = $this->categoryMap[$categoriaId]->target_value;
-
-            if (! empty($target)) {
-                return (string) $target;
-            }
+        if ($categoriaId === '' || ! isset($this->categoryMap[$categoriaId])) {
+            return null;
         }
 
-        // Sem de/para cadastrado, tenta o palpite pelo nome e, no limite, cai
-        // em CASA — tipo_imovel é obrigatório e um imóvel sem categoria
-        // mapeada não pode travar a rodada inteira.
-        $descricao = (string) ($detail['categoria']['descricao'] ?? $listItem['descricaoCategoria'] ?? '');
+        $target = $this->categoryMap[$categoriaId]->target_value;
 
-        return SimobVocabulary::guessPropertyType($descricao) ?? 'CASA';
+        return $target !== null && $target !== '' ? (string) $target : null;
     }
 
     // ------------------------------------------------------------- endereço

@@ -11,6 +11,7 @@ use App\Libraries\Integrations\Exceptions\AuthException;
 use App\Libraries\Integrations\Exceptions\IntegrationException;
 use App\Libraries\Integrations\Exceptions\RateLimitException;
 use App\Libraries\Integrations\IntegrationProviderInterface;
+use App\Libraries\Integrations\Simob\SimobProvider;
 use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationSyncRunModel;
 use App\Models\PropertyExternalRefModel;
@@ -82,6 +83,17 @@ class IntegrationSyncService
 
             if (! $connector->supports(IntegrationProviderInterface::CAP_IMPORT_PROPERTIES)) {
                 throw new IntegrationException('Este conector não importa imóveis.');
+            }
+
+            // Rodada completa: semeia sugestão pra categoria/característica
+            // NUNCA vista antes de processar o catálogo. Sem isto, um item
+            // de categoria nova ficaria "ignorado" até alguém abrir a tela de
+            // mapeamentos e clicar em "Redescobrir" manualmente — o --full já
+            // busca o catálogo inteiro da origem, então descobrir o de/para
+            // junto é a mesma viagem, não uma chamada extra.
+            if ($forceFull && $connector instanceof SimobProvider) {
+                $this->integrationService->seedMappings($integration, $connector);
+                $connector->loadMappings((int) $integration->id);
             }
 
             $this->consume($integration, $connector, $result, $runId, $forceFull);
@@ -203,7 +215,7 @@ class IntegrationSyncService
             // O conector não conseguiu montar um imóvel publicável (sem preço,
             // sem finalidade ativa). Se já existe aqui, pausa em vez de deixar
             // um anúncio inválido no ar.
-            if ($ref !== null) {
+            if ($ref !== null && $ref->property_id !== null) {
                 $this->pauseProperty((int) $ref->property_id);
                 $this->refModel->update($ref->id, [
                     'last_synced_at'   => date('Y-m-d H:i:s'),
@@ -211,6 +223,21 @@ class IntegrationSyncService
                 ]);
                 $result->paused++;
             }
+
+            return;
+        }
+
+        if ($external->ignoreReason !== null) {
+            // Item deliberadamente não importado (ex.: categoria ainda sem
+            // de/para confirmado em /admin/integracoes/{code}/mapeamentos).
+            // Não é erro nem "sumiu da origem" — se já existia um imóvel
+            // publicado, o mapeamento que o sustentava mudou de baixo dele, e
+            // ele pausa; se nunca existiu, só conta como ignorado.
+            if ($ref !== null && $ref->property_id !== null) {
+                $this->pauseProperty((int) $ref->property_id);
+            }
+
+            $result->ignored++;
 
             return;
         }
@@ -247,7 +274,14 @@ class IntegrationSyncService
             'property_id'         => $propertyId,
             'account_id'          => $accountId,
             'provider_code'       => $provider,
-            'external_id'         => $external->externalId,
+            // A chave do vínculo é a mesma usada no findRef() lá em cima
+            // ($item->externalId, vindo da LISTAGEM) — não $external->externalId
+            // (o mapper prefere o id do DETALHE, e só cai pro da listagem
+            // quando o detalhe não trouxe 'id'). Os dois costumam coincidir,
+            // mas gravar com uma chave e buscar com outra faria a próxima
+            // rodada não encontrar o vínculo, criar um imóvel duplicado, e
+            // órfão o primeiro.
+            'external_id'         => $item->externalId,
             'external_code'       => $external->externalCode,
             'external_updated_at' => $external->externalUpdatedAt,
             'payload_hash'        => $hash,

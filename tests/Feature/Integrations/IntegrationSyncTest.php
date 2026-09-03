@@ -317,6 +317,65 @@ final class IntegrationSyncTest extends HabitawebTestCase
             ->countAllResults());
     }
 
+    /**
+     * Categoria sem de/para confirmado conta como "ignorado" — não é erro
+     * (não devia virar PARTIAL na rodada) nem imóvel pausado (nunca existiu).
+     */
+    public function testItemIgnoradoPorMapeamentoContaComoIgnoradoNaoComoErro(): void
+    {
+        [$sync, $integration, $tenant] = $this->syncService([
+            ExternalProperty::ignored('102', 'categoria não mapeada: SEDE ESPORTIVA'),
+        ]);
+
+        $result = $sync->run($integration);
+
+        $this->assertSame(1, $result->ignored);
+        $this->assertSame(0, $result->errors);
+        $this->assertSame(0, $result->created);
+        $this->assertSame(IntegrationSyncRunModel::STATUS_SUCCESS, $result->status());
+        $this->assertSame(0, model(PropertyModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->countAllResults());
+    }
+
+    /**
+     * A chave do vínculo é o externalId da LISTAGEM (o que findRef() usou pra
+     * localizar o item no início de syncItem()) — nunca o do ExternalProperty
+     * resolvido, que o mapper monta preferindo o id do DETALHE. Gravar com uma
+     * chave e buscar com outra faria toda rodada seguinte não achar o vínculo,
+     * recriar o imóvel, e órfão o primeiro (ver SimobPropertyMapper::mapDetail).
+     */
+    public function testVinculoUsaOIdDaListagem(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, [
+            'finalidades'    => [1, 2],
+            'initial_status' => 'ACTIVE',
+            'import_images'  => false,
+        ]);
+
+        $connector = new FakeConnector(
+            catalogo: [$this->property('id-do-detalhe')],
+            listingIdOverride: [0 => 'id-da-listagem'],
+        );
+
+        $sync = new IntegrationSyncService(new FakeIntegrationService($connector));
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->seeInDatabase('property_external_refs', [
+            'account_id'  => $tenant['account']->id,
+            'external_id' => 'id-da-listagem',
+        ]);
+        $this->dontSeeInDatabase('property_external_refs', [
+            'account_id'  => $tenant['account']->id,
+            'external_id' => 'id-do-detalhe',
+        ]);
+    }
+
     // ---------------------------------------------------------- desaparecidos
 
     /**
