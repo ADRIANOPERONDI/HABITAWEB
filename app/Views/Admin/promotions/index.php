@@ -25,6 +25,52 @@
 
     <?= view('Admin/partials/alerts') ?>
 
+    <?php
+        // Turbinadas incluídas no plano (Fase 1) — o mesmo pacote das compras
+        // avulsas abaixo, só que sem custo, dentro da cota mensal.
+        $jaTurbinado = false;
+        foreach ($activePromos as $promo) {
+            if ($promo->tipo_promocao === \App\Services\PromotionService::TIPO_TURBO && $promo->ativo) {
+                $jaTurbinado = true;
+                break;
+            }
+        }
+        $temCota = ($quota['incluidas'] ?? 0) !== 0; // null = ilimitado, >0 = tem cota
+    ?>
+    <?php if ($temCota): ?>
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4 d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <div>
+                        <h6 class="fw-bold mb-1"><i class="fa-solid fa-gauge-high text-success me-1"></i> Turbinadas do plano</h6>
+                        <div class="text-muted small">
+                            <?php if ($quota['incluidas'] === null): ?>
+                                <?= (int) $quota['usadas'] ?> usada(s) este mês · cota ilimitada
+                            <?php else: ?>
+                                <?= (int) $quota['usadas'] ?> usada(s) de <?= (int) $quota['incluidas'] ?>
+                                — <?= (int) $quota['restantes'] ?> restante(s) este mês
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php if ($jaTurbinado): ?>
+                        <span class="badge bg-success rounded-pill px-3 py-2">Este imóvel já está turbinado</span>
+                    <?php elseif ($quota['restantes'] === null || $quota['restantes'] > 0): ?>
+                        <form action="<?= site_url('admin/properties/' . $property->id . '/turbo/cota') ?>" method="post" class="quota-form">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-success rounded-pill fw-bold px-4">
+                                <i class="fa-solid fa-bolt me-1"></i> Usar turbinada do plano
+                            </button>
+                        </form>
+                    <?php else: ?>
+                        <span class="badge bg-secondary rounded-pill px-3 py-2">Cota do mês esgotada</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
      <div class="row mb-4">
          <div class="col-md-12">
              <div class="card bg-light">
@@ -116,6 +162,25 @@ $('.promo-form').on('submit', function(e) {
         confirmButtonText: 'Sim, Turbinar!',
         cancelButtonText: 'Cancelar',
         borderRadius: '24px'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            form.submit();
+        }
+    });
+});
+
+$('.quota-form').on('submit', function(e) {
+    e.preventDefault();
+    const form = this;
+    Swal.fire({
+        title: 'Usar turbinada do plano?',
+        text: 'Consome uma das turbinadas incluídas no seu plano este mês.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: 'var(--primary-color)',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sim, usar!',
+        cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
             form.submit();

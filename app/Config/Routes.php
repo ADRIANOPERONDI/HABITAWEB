@@ -186,10 +186,16 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('/', 'DashboardController::index');
     // Custom Property Routes (Must come before resource)
     $routes->get('properties/(:num)/turbo', 'PromotionController::turbo/$1');
+    $routes->post('properties/(:num)/turbo/cota', 'PromotionController::useQuota/$1');
     $routes->post('properties/(:num)/media', 'PropertyMediaController::upload/$1');
 
-    $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1');
-    $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit');
+    // is_destaque é selo editorial da Habitaweb (P5), não algo que o tenant
+    // compra ou controla — desde a Fase 1 quem quer exposição paga usa
+    // turbinada. Ficam staff-only pra fechar a rota que ainda dava pro
+    // tenant alcançar o toggle direto por fora da tela (a UI já não mostra,
+    // mas nada no servidor impedia um POST direto).
+    $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1', ['filter' => 'group:superadmin']);
+    $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit', ['filter' => 'group:superadmin']);
     $routes->resource('properties', ['controller' => 'PropertyController']);
     $routes->post('properties/(:num)/restore', 'PropertyController::restore/$1');
     $routes->get('properties/(:num)/closure-leads', 'PropertyController::getLeadsForClosure/$1');
