@@ -878,6 +878,84 @@ class PaymentService
     }
 
     /**
+     * Cria a assinatura no gateway pra uma assinatura LOCAL que já existe em
+     * modo FREE (rampa, Fase 6) e está na virada 0%→X% — a primeira cobrança
+     * real da conta. Ação do OPERADOR (AccountSubscriptionController::startGateway),
+     * não automática: ver `ApplyLaunchRamp`, que só registra a transição e
+     * espera esta chamada.
+     *
+     * Diferente de `initializeSubscription()` (checkout de cadastro novo),
+     * aqui a assinatura já existe e não há cupom nem cartão tokenizado — o
+     * operador só está ligando a cobrança que a rampa já previu.
+     *
+     * @return array{success: bool, subscription_id: string, amount: float}
+     */
+    public function startGatewaySubscriptionForRamp(int $subscriptionId, string $billingType): array
+    {
+        if (!$this->activeGateway) {
+            throw new \Exception("Serviço de pagamento indisponível.");
+        }
+
+        if (!in_array($billingType, ['PIX', 'BOLETO', 'CREDIT_CARD'], true)) {
+            throw new \Exception("Forma de pagamento inválida.");
+        }
+
+        $subscription = $this->subscriptionModel->find($subscriptionId);
+
+        if (!$subscription) {
+            throw new \Exception("Assinatura não encontrada.");
+        }
+
+        if (!empty($subscription->asaas_subscription_id)) {
+            throw new \Exception("Esta assinatura já tem cobrança no gateway.");
+        }
+
+        $plan = model('App\Models\PlanModel')->find($subscription->plan_id);
+
+        if (!$plan) {
+            throw new \Exception("Plano inválido.");
+        }
+
+        $accountId  = (int) $subscription->account_id;
+        $customerId = $this->getOrCreateCustomer($accountId);
+
+        $billingCycle = (string) ($subscription->billing_cycle ?? 'MONTHLY');
+        $rampService  = new LaunchRampService($this);
+        $amount       = $rampService->amountFor($plan, $billingCycle, $subscription);
+        $monthsToAdd  = $this->getBillingCycleMonths($billingCycle);
+
+        $data = [
+            'billing_type'        => $billingType,
+            'amount'              => $amount,
+            'description'         => "Assinatura Plano {$plan->nome}",
+            'external_reference'  => 'plan_' . $plan->id . '_acc_' . $accountId,
+            'cycle'               => $billingCycle,
+            'next_due_date'       => date('Y-m-d', strtotime('+3 days')),
+        ];
+
+        try {
+            $subscriptionData = $this->activeGateway->createSubscription($customerId, (string) $plan->id, $data);
+        } catch (\Exception $e) {
+            throw new \Exception("Erro no gateway: " . $e->getMessage());
+        }
+
+        $subId = $subscriptionData['subscription_id'];
+
+        $this->subscriptionModel->update($subscriptionId, [
+            'status'                => 'ACTIVE',
+            'asaas_subscription_id' => $subId,
+            'asaas_customer_id'     => $customerId,
+            'valor'                 => $amount,
+            'payment_method'        => $billingType,
+            'ramp_percent_atual'    => $rampService->percentFor($subscription),
+            'next_billing_date'     => $subscriptionData['next_billing_date']
+                ?? date('Y-m-d', strtotime("+{$monthsToAdd} months")),
+        ]);
+
+        return ['success' => true, 'subscription_id' => $subId, 'amount' => $amount];
+    }
+
+    /**
      * Trocar plano de uma assinatura (Upgrade/Downgrade) com lógica de pró-rata
      */
     public function changeSubscriptionPlan(int $accountId, int $newPlanId, string $billingType)

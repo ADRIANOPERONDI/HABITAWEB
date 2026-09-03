@@ -72,7 +72,7 @@ class ApplyLaunchRamp extends BaseCommand
             return;
         }
 
-        $this->applyTransitions($subscriptions, $rampService);
+        return $this->applyTransitions($subscriptions, $rampService);
     }
 
     private function printDryRun(array $subscriptions, LaunchRampService $rampService): void
@@ -107,7 +107,7 @@ class ApplyLaunchRamp extends BaseCommand
         CLI::table($rows, ['Conta', 'Assinatura', 'Data', 'De', 'Para', 'Acao']);
     }
 
-    private function applyTransitions(array $subscriptions, LaunchRampService $rampService): void
+    private function applyTransitions(array $subscriptions, LaunchRampService $rampService): int
     {
         $planModel   = model(PlanModel::class);
         $resumo      = ['sem_mudanca' => 0, 'baseline' => 0, 'atualizado' => 0, 'acao_manual' => 0, 'erro' => 0];
@@ -135,7 +135,14 @@ class ApplyLaunchRamp extends BaseCommand
 
                 if (empty($subscription->asaas_subscription_id)) {
                     // 0%→X%: primeira cobrança real. Não automatiza — ver
-                    // docblock da classe.
+                    // docblock da classe. Grava ramp_percent_atual JUNTO com
+                    // o audit_log: sem isso, toda execução diária seguinte
+                    // encontraria o mesmo "percentGravado !== percentAtual"
+                    // e reabriria a mesma transição — auditando (e avisando
+                    // o operador) todo santo dia até alguém completar a
+                    // virada manual em admin/subscription.
+                    model(SubscriptionModel::class)->update($subscription->id, ['ramp_percent_atual' => $percentAtual]);
+
                     audit_log('ramp.pronta_para_cobranca_inicial', [
                         'account_id'  => $subscription->account_id,
                         'entity_type' => 'subscription',
@@ -177,5 +184,10 @@ class ApplyLaunchRamp extends BaseCommand
         }
 
         CLI::write('Concluido: ' . json_encode($resumo), 'green');
+
+        // Cron sem supervisão: sem um exit code de erro, uma falha
+        // silenciosa (gateway fora do ar, plano apagado) só aparece se
+        // alguém for ler o log manualmente.
+        return $resumo['erro'] > 0 ? EXIT_ERROR : EXIT_SUCCESS;
     }
 }

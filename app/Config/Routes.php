@@ -318,6 +318,7 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('accounts/(:num)/subscription/upgrade', 'AccountSubscriptionController::upgrade/$1', ['filter' => 'group:superadmin,admin']);
     $routes->post('accounts/(:num)/subscription/suspend', 'AccountSubscriptionController::suspend/$1', ['filter' => 'group:superadmin,admin']);
     $routes->post('accounts/(:num)/subscription/cancel', 'AccountSubscriptionController::cancel/$1', ['filter' => 'group:superadmin,admin']);
+    $routes->post('accounts/(:num)/subscription/start-gateway', 'AccountSubscriptionController::startGateway/$1', ['filter' => 'group:superadmin,admin']);
     
     $routes->get('users', 'UsersController::index', ['filter' => 'group:superadmin,admin']);
     $routes->get('users/(:num)/edit', 'UsersController::edit/$1', ['filter' => 'group:superadmin,admin']);
