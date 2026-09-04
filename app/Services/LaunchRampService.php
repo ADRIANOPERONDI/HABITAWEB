@@ -81,6 +81,16 @@ class LaunchRampService
      * Percentual do preço do ciclo que deve ser cobrado agora. 100 (preço
      * cheio) para assinatura fora da rampa ou sem faixa configurada que
      * cubra o mês de vida — nunca um default generoso.
+     *
+     * `valid_from`/`valid_to` são checados na data de ADESÃO da conta
+     * (`ramp_started_at`), não em `$onDate` — essa janela existe pra limitar
+     * quem consegue ENTRAR na promoção (é o que `enrollmentDateForNewSignup`
+     * verifica, contra hoje), não pra cortar o benefício de quem já está no
+     * meio da própria rampa. Sem essa distinção, uma conta que aderiu dentro
+     * do prazo perderia o desconto restante assim que o calendário da
+     * promoção fechasse, mesmo com meses de rampa ainda por vir — o
+     * combinado com o cliente é "quem entrar até a data X leva os 6 meses
+     * inteiros", não "os 6 meses valem só até a data X".
      */
     public function percentFor(?Subscription $subscription, ?string $onDate = null): int
     {
@@ -89,7 +99,7 @@ class LaunchRampService
             return 100;
         }
 
-        $faixa = $this->rampModel->forMonth($mesVida, $onDate);
+        $faixa = $this->rampModel->forMonth($mesVida, $subscription->ramp_started_at);
 
         return $faixa['percentual'] ?? 100;
     }
@@ -121,12 +131,14 @@ class LaunchRampService
             return null;
         }
 
-        $atual = $this->rampModel->forMonth($mesVida, $onDate);
+        // Mesma razão de percentFor(): valid_from/valid_to são da data de
+        // adesão da conta, não de $onDate.
+        $atual = $this->rampModel->forMonth($mesVida, $subscription->ramp_started_at);
         if ($atual === null || $atual['mes_ate'] === null) {
             return null;
         }
 
-        $proxima = $this->rampModel->forMonth((int) $atual['mes_ate'] + 1, $onDate);
+        $proxima = $this->rampModel->forMonth((int) $atual['mes_ate'] + 1, $subscription->ramp_started_at);
         if ($proxima === null) {
             return null;
         }
