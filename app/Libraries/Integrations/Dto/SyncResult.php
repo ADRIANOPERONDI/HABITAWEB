@@ -16,9 +16,21 @@ final class SyncResult
     public int $created      = 0;
     public int $updated      = 0;
     public int $skipped      = 0;
+    public int $ignored      = 0;
     public int $paused       = 0;
     public int $images       = 0;
+    public int $geocoded     = 0;
     public int $errors       = 0;
+
+    /**
+     * Fotos que falharam ao baixar (rede, formato) — não invalidam o imóvel,
+     * mas ficavam completamente invisíveis: a tela de execuções só mostrava
+     * "0 imagem(ns)", sem dizer se foi porque a origem não tinha foto
+     * nenhuma ou porque todas falharam.
+     */
+    public int $imageErrors     = 0;
+    /** Fotos descartadas pelo teto de fotos do PLANO, não por falha técnica. */
+    public int $photoLimitHits  = 0;
 
     /** @var string[] */
     public array $errorMessages = [];
@@ -57,6 +69,7 @@ final class SyncResult
             'created_count' => $this->created,
             'updated_count' => $this->updated,
             'skipped_count' => $this->skipped,
+            'ignored_count' => $this->ignored,
             'paused_count'  => $this->paused,
             'images_count'  => $this->images,
             'error_count'   => $this->errors,
@@ -65,32 +78,55 @@ final class SyncResult
 
     public function errorSummary(): ?string
     {
-        if ($this->errorMessages === []) {
-            return $this->planLimitReached
-                ? 'Limite de imóveis do plano atingido: os imóveis existentes continuaram sendo atualizados, mas nenhum novo foi criado.'
-                : null;
+        $partes = [];
+
+        if ($this->errorMessages !== []) {
+            $summary = implode(' | ', $this->errorMessages);
+
+            if ($this->errors > count($this->errorMessages)) {
+                $summary .= sprintf(' (+%d erro(s) não listado(s))', $this->errors - count($this->errorMessages));
+            }
+
+            $partes[] = $summary;
+        } elseif ($this->planLimitReached) {
+            $partes[] = 'Limite de imóveis do plano atingido: os imóveis existentes continuaram sendo '
+                . 'atualizados, mas nenhum novo foi criado.';
         }
 
-        $summary = implode(' | ', $this->errorMessages);
-
-        if ($this->errors > count($this->errorMessages)) {
-            $summary .= sprintf(' (+%d erro(s) não listado(s))', $this->errors - count($this->errorMessages));
+        if ($this->imageErrors > 0 || $this->photoLimitHits > 0) {
+            $partes[] = sprintf(
+                '%d foto(s) falharam ao baixar%s.',
+                $this->imageErrors,
+                $this->photoLimitHits > 0
+                    ? sprintf(' (%d descartada(s) pelo limite de fotos do plano)', $this->photoLimitHits)
+                    : ''
+            );
         }
 
-        return $summary;
+        return $partes === [] ? null : implode(' ', $partes);
     }
 
     /** Resumo curto para o toast do painel e para o output do comando. */
     public function humanSummary(): string
     {
-        return sprintf(
-            '%d criado(s), %d atualizado(s), %d sem alteração, %d pausado(s), %d imagem(ns), %d erro(s)',
+        $resumo = sprintf(
+            '%d criado(s), %d atualizado(s), %d sem alteração, %d ignorado(s) (sem mapeamento), %d pausado(s), %d imagem(ns), %d erro(s)',
             $this->created,
             $this->updated,
             $this->skipped,
+            $this->ignored,
             $this->paused,
             $this->images,
             $this->errors,
         );
+
+        // geocoded não é persistido em integration_sync_runs (não é um
+        // contador de destino/estado do item, é só uma métrica de custo desta
+        // rodada) — aparece só no resumo textual do comando/toast.
+        if ($this->geocoded > 0) {
+            $resumo .= sprintf(', %d geocodificado(s)', $this->geocoded);
+        }
+
+        return $resumo;
     }
 }

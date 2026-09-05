@@ -221,7 +221,7 @@ pm.max_requests = 1000
 ### 3.4 Cron jobs: em UMA instância só
 
 Os comandos agendados (`php spark asaas:sync`, `subscription:check`,
-`send-property-alerts` etc.) devem rodar **em apenas uma** instância (ou num
+`alerts:send` etc.) devem rodar **em apenas uma** instância (ou num
 host worker dedicado). Rodar em todas dispararia sincronizações e e-mails
 duplicados. Marque uma instância como "worker" no seu provisionamento e instale
 o crontab só nela.
@@ -242,19 +242,40 @@ Redis cair, o app volta sozinho a gravar visitas direto no banco (fallback).
 instância worker:
 
 ```cron
-*/30 * * * * cd /var/www/habitaweb && php spark integration:sync >> writable/logs/integration-sync.log 2>&1
+* * * * * cd /var/www/habitaweb && php spark integration:sync >> writable/logs/integration-sync.log 2>&1
+* * * * * cd /var/www/habitaweb && php spark integration:outbox --max-time=55 >> writable/logs/integration-outbox.log 2>&1
 ```
 
-O comando percorre as integrações ativas, mais antigas primeiro, e é seguro
-rodar concorrentemente por engano: cada integração tem uma trava em cache
-durante a rodada. Meia hora é folgado de propósito — a sincronização é
-incremental (só busca o detalhe de quem mudou de data na origem), então o custo
-de uma rodada sem novidade é de poucas requisições.
+`integration:sync` percorre as integrações ativas e vencidas (mais de 25 min
+desde o último sync, ou com "sincronizar agora" pedido no painel), mais
+antigas/prioritárias primeiro, e é seguro rodar concorrentemente por engano:
+cada integração tem uma trava atômica na própria linha de
+`account_integrations` (`sync_locked_until`, `UPDATE ... WHERE ... IS NULL OR
+< now()`) — sobrevive a um Fatal Error de PHP (que não passa por
+`catch`/`finally`) porque expira sozinha depois do TTL, e um
+`register_shutdown_function` libera na hora quando o processo consegue
+detectar a queda. Rodar a cada minuto
+(em vez de a cada 30) é o que dá latência baixa para o botão "Sincronizar
+agora" do painel sem martelar a origem de todo tenant a todo minuto — quem
+garante isso é o filtro de "vencido" em
+`AccountIntegrationModel::dueForSync()`, não a frequência do cron; o
+intervalo automático de cada integração continua sendo de ~25-30 min. O
+botão do painel nunca roda o sync dentro do request web (isso já causou
+timeout real, com download de imagens de um catálogo médio estourando os 30s
+de `max_execution_time` do PHP) — ele só marca a integração como prioritária,
+e é esta mesma passada do cron que processa de fato, sem limite de tempo por
+rodar via CLI.
 
-Cada execução fica registrada em `integration_sync_runs` e aparece para o
-tenant em `/admin/integracoes/<conector>/execucoes`. Se a credencial de um
-tenant for recusada, aquela integração é desligada sozinha e marcada com o
-erro — as demais continuam rodando normalmente.
+`integration:outbox` entrega os leads capturados no Habitaweb de volta pro
+CRM da plataforma externa (`crm_interesse/create` no caso do Simob) — fila
+baseada em tabela (`integration_outbox`), não Redis, porque durabilidade
+importa mais que latência aqui: um lead não pode sumir num restart.
+
+Cada execução do sync fica registrada em `integration_sync_runs` e aparece
+para o tenant em `/admin/integracoes/<conector>/execucoes`. Se a credencial
+de um tenant for recusada, aquela integração é desligada sozinha e marcada
+com o erro — as demais continuam rodando normalmente.
+
 **Turbinadas vencidas** — o `promo:cleanup` existia desde a criação de
 `promotions` e nunca esteve em crontab nenhum. Adicione à mesma instância worker:
 

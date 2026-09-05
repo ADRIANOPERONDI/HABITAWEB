@@ -20,6 +20,9 @@ final class SyncCursor
     ) {
     }
 
+    /** Folga do corte incremental contra deriva de relógio entre este servidor e a origem. */
+    private const CLOCK_SKEW_MARGIN_SECONDS = 24 * 60 * 60;
+
     public static function fromIntegration(\App\Entities\AccountIntegration $integration, bool $forceFull = false): self
     {
         if ($forceFull) {
@@ -32,7 +35,18 @@ final class SyncCursor
             $since = $since->toDateTimeString();
         }
 
-        return new self($since === null ? null : (string) $since, $since === null);
+        if ($since === null) {
+            return new self(null, true);
+        }
+
+        // Sem esta margem, o relógio deste servidor adiantado (ou atrasado)
+        // em relação ao da origem faz o corte incremental descartar, em
+        // silêncio, um item que a origem só terminou de gravar depois do
+        // instante que registramos como "início" da rodada anterior — ele
+        // nunca mais aparece pra ser buscado de novo.
+        $comMargem = strtotime((string) $since) - self::CLOCK_SKEW_MARGIN_SECONDS;
+
+        return new self(date('Y-m-d H:i:s', $comMargem), false);
     }
 
     /**

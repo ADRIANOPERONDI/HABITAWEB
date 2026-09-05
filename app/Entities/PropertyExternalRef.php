@@ -8,7 +8,10 @@ class PropertyExternalRef extends Entity
 {
     protected $casts = [
         'id'          => 'integer',
-        'property_id' => 'integer',
+        // Nullable: um vinculo com falha de validacao (upsertProperty) nao
+        // tem imovel nenhum atras dele — cast 'integer' puro transformaria
+        // esse NULL em 0, um id de imovel que nao existe.
+        'property_id' => '?integer',
         'account_id'  => 'integer',
     ];
 

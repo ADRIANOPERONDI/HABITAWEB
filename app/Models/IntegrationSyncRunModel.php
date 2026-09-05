@@ -15,7 +15,7 @@ class IntegrationSyncRunModel extends Model
     protected $returnType       = \App\Entities\IntegrationSyncRun::class;
     protected $allowedFields    = [
         'account_integration_id', 'trigger_type', 'status', 'started_at', 'finished_at',
-        'total_fetched', 'created_count', 'updated_count', 'skipped_count',
+        'total_fetched', 'created_count', 'updated_count', 'skipped_count', 'ignored_count',
         'paused_count', 'images_count', 'error_count', 'error_message',
     ];
 
@@ -63,5 +63,59 @@ class IntegrationSyncRunModel extends Model
         return $this->where('account_integration_id', $accountIntegrationId)
             ->orderBy('started_at', 'DESC')
             ->first();
+    }
+
+    /**
+     * Fecha rodadas que ficaram RUNNING além do razoável — um Fatal Error de
+     * PHP (max_execution_time, por exemplo) mata o processo antes de
+     * qualquer finally rodar, e a linha nunca é fechada sozinha. Sem isto, a
+     * tela de execuções mostra "Rodando" com duração "—" para sempre, e não
+     * há como saber se a integração está travada ou só lenta.
+     *
+     * @return int quantas rodadas foram fechadas
+     */
+    public function closeStaleRunning(int $maxAgeSeconds): int
+    {
+        $cutoff = date('Y-m-d H:i:s', time() - $maxAgeSeconds);
+
+        $stale = $this->where('status', self::STATUS_RUNNING)
+            ->where('started_at <', $cutoff)
+            ->findAll();
+
+        foreach ($stale as $run) {
+            $this->finish(
+                (int) $run->id,
+                self::STATUS_ERROR,
+                [],
+                'Rodada interrompida — processo encerrado sem finalizar (Fatal Error ou reinício do servidor).'
+            );
+        }
+
+        return count($stale);
+    }
+
+    /**
+     * Erros seguidos (as ÚLTIMAS rodadas, sem nenhum sucesso no meio) — o
+     * sinal usado pra decidir se um erro de transporte pontual (Simob fora
+     * do ar por um instante) já virou algo estrutural que justifica desligar
+     * o sync (ver IntegrationSyncService::run()).
+     */
+    public function consecutiveErrors(int $accountIntegrationId, int $limit = 5): int
+    {
+        $runs = $this->where('account_integration_id', $accountIntegrationId)
+            ->orderBy('started_at', 'DESC')
+            ->findAll($limit);
+
+        $count = 0;
+
+        foreach ($runs as $run) {
+            if ($run->status !== self::STATUS_ERROR) {
+                break;
+            }
+
+            $count++;
+        }
+
+        return $count;
     }
 }

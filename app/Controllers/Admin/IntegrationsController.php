@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Entities\AccountIntegration;
 use App\Libraries\Integrations\Exceptions\IntegrationException;
 use App\Libraries\Integrations\Simob\SimobVocabulary;
+use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationMappingModel;
 use App\Models\IntegrationSyncRunModel;
 use App\Services\IntegrationService;
@@ -24,6 +25,13 @@ class IntegrationsController extends BaseController
 
     /** Intervalo mínimo entre dois "Sincronizar agora" do mesmo tenant. */
     private const MANUAL_SYNC_COOLDOWN = 300;
+
+    /**
+     * A partir de quantos segundos rodando uma execução RUNNING é oferecida
+     * pra abortar manualmente. Mesmo TTL de IntegrationSyncService::LOCK_TTL —
+     * antes disso, ela pode só estar lenta, não travada.
+     */
+    private const STALE_RUN_SECONDS = 900;
 
     public function __construct()
     {
@@ -52,13 +60,23 @@ class IntegrationsController extends BaseController
         $runModel    = model(IntegrationSyncRunModel::class);
 
         return view('Admin/integracoes/configure', [
-            'provider'    => $provider,
-            'integration' => $integration,
-            'credentials' => $this->service->maskedCredentials($integration),
-            'settings'    => $integration->settings(),
-            'unconfirmed' => $this->service->countUnconfirmed($integration),
-            'synced'      => $this->service->countSyncedProperties($this->accountId(), $code),
-            'lastRun'     => $runModel->lastFor((int) $integration->id),
+            'provider'       => $provider,
+            'integration'    => $integration,
+            'credentials'    => $this->service->maskedCredentials($integration),
+            'settings'       => $integration->settings(),
+            'unconfirmed'    => $this->service->countUnconfirmed($integration),
+            'synced'         => $this->service->countSyncedProperties($this->accountId(), $code),
+            // Imóvel importado entra como rascunho (initial_status): sem ver
+            // quantos estão parados nessa fila, o tenant não descobre que
+            // precisa publicá-los — e nem que existe um botão pra isso.
+            'drafts'         => model(\App\Models\PropertyExternalRefModel::class)
+                ->countDraftsFor($this->accountId(), $code),
+            'lastRun'        => $runModel->lastFor((int) $integration->id),
+            // Simob traz até `max_images` fotos por imóvel; se isso passar do
+            // teto do plano, o excedente é descartado silenciosamente na
+            // hora do sync (ver SyncResult::photoLimitHits) — o tenant
+            // precisa saber disso ANTES de estranhar por que faltam fotos.
+            'planPhotoLimit' => $this->planPhotoLimit(),
         ]);
     }
 
@@ -89,9 +107,10 @@ class IntegrationsController extends BaseController
         }
 
         return view('Admin/integracoes/runs', [
-            'integration' => $integration,
-            'provider'    => $this->service->findProvider($code),
-            'runs'        => model(IntegrationSyncRunModel::class)->recentFor((int) $integration->id, 30),
+            'integration'     => $integration,
+            'provider'        => $this->service->findProvider($code),
+            'runs'            => model(IntegrationSyncRunModel::class)->recentFor((int) $integration->id, 30),
+            'staleRunSeconds' => self::STALE_RUN_SECONDS,
         ]);
     }
 
@@ -146,7 +165,22 @@ class IntegrationsController extends BaseController
         return $this->response->setJSON($result->toArray());
     }
 
-    /** POST (AJAX): sincroniza agora, com trava de intervalo. */
+    /**
+     * POST (AJAX): agenda "sincronizar agora" — não roda mais dentro do
+     * request web.
+     *
+     * Rodar a sincronização de verdade aqui dentro (chamando
+     * IntegrationSyncService::run() direto) travava o request web até o
+     * catálogo inteiro (imagens incluídas) terminar de baixar — contra um
+     * catálogo do tamanho normal de uma imobiliária isso estoura o
+     * max_execution_time do PHP com um Fatal Error, que não é capturável, e
+     * as travas de cache do serviço ficam presas até expirar sozinhas (até
+     * 30 min), sem nenhuma rota pra destravar. Quem processa de fato agora é
+     * o cron `integration:sync` (a cada 1 min), que trata esta integração
+     * antes das outras via `sync_priority_requested_at`
+     * (AccountIntegrationModel::dueForSync()) — sem o limite de tempo do PHP
+     * em CLI.
+     */
     public function syncNow(string $code)
     {
         $integration = $this->resolve($code);
@@ -163,30 +197,121 @@ class IntegrationsController extends BaseController
             ]);
         }
 
-        // Sync manual é caro: centenas de chamadas à origem e download de
-        // imagens. Sem trava, clicar repetido derruba o servidor do tenant.
+        // Trava só contra clique repetido — o trabalho pesado não roda mais
+        // aqui, mas nada impede o tenant de martelar o botão.
         $cacheKey = "integration_manual_sync_{$integration->id}";
 
         if (cache($cacheKey) !== null) {
             return $this->response->setJSON([
                 'success' => false,
-                'message' => 'Uma sincronização manual foi disparada há pouco. Aguarde alguns minutos.',
+                'message' => 'Uma sincronização já foi agendada há pouco. Aguarde alguns minutos.',
             ]);
         }
 
         cache()->save($cacheKey, time(), self::MANUAL_SYNC_COOLDOWN);
 
-        $result = (new \App\Services\IntegrationSyncService())->run(
-            $integration,
-            IntegrationSyncRunModel::TRIGGER_MANUAL
-        );
+        $this->service->markPriority($integration);
 
-        audit_log('integration.synced', ['provider' => $code, 'trigger' => 'manual']);
+        audit_log('integration.sync_requested', ['provider' => $code]);
 
         return $this->response->setJSON([
             'success' => true,
-            'message' => 'Sincronização concluída: ' . $result->humanSummary(),
-            'details' => $result->toCounters(),
+            'message' => 'Sincronização agendada. Deve rodar em até 1 minuto — atualize esta página daqui a pouco para ver o resultado.',
+        ]);
+    }
+
+    /**
+     * GET (AJAX, polling): o painel só sabe que "agendou" — este endpoint é
+     * quem diz se já rodou. Sem ele, depois de clicar em "Sincronizar agora"
+     * o tenant só descobre o resultado atualizando a página na mão de vez em
+     * quando.
+     */
+    public function status(string $code)
+    {
+        $integration = $this->resolve($code);
+
+        if ($integration === null) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Integração não encontrada.']);
+        }
+
+        $lastRun = model(IntegrationSyncRunModel::class)->lastFor((int) $integration->id);
+        $running = $lastRun !== null && $lastRun->status === IntegrationSyncRunModel::STATUS_RUNNING;
+
+        return $this->response->setJSON([
+            'success'            => true,
+            'status'             => $integration->status,
+            'is_active'          => $integration->is_active,
+            'priority_pending'   => $integration->sync_priority_requested_at !== null,
+            'running'            => $running,
+            'running_seconds'    => $running ? max(0, time() - strtotime((string) $lastRun->started_at)) : null,
+            'last_run'           => $lastRun === null ? null : [
+                'id'            => (int) $lastRun->id,
+                'status'        => $lastRun->status,
+                'trigger_type'  => $lastRun->trigger_type,
+                'finished_at'   => $lastRun->finished_at ? (string) $lastRun->finished_at : null,
+                'duration'      => $lastRun->durationSeconds(),
+                'created_count' => (int) $lastRun->created_count,
+                'updated_count' => (int) $lastRun->updated_count,
+                'skipped_count' => (int) $lastRun->skipped_count,
+                'ignored_count' => (int) $lastRun->ignored_count,
+                'paused_count'  => (int) $lastRun->paused_count,
+                'images_count'  => (int) $lastRun->images_count,
+                'error_count'   => (int) $lastRun->error_count,
+                'error_message' => $lastRun->error_message,
+            ],
+            'cooldown_remaining' => $this->cooldownRemaining($integration),
+        ]);
+    }
+
+    /**
+     * POST: aborta manualmente uma execução presa em RUNNING além do tempo
+     * razoável. `closeStaleRunning()` (início de `run()`) já cobre o caso
+     * comum — a próxima rodada do cron fecha sozinha —, mas entre uma
+     * execução travar e o próximo cron passar por ali pode levar minutos, e
+     * o tenant não tem por que esperar sem poder fazer nada.
+     */
+    public function abortRun(string $code, int $runId)
+    {
+        $integration = $this->resolve($code);
+
+        if ($integration === null) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Integração não encontrada.']);
+        }
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $run      = $runModel->find($runId);
+
+        if ($run === null || (int) $run->account_integration_id !== (int) $integration->id) {
+            return $this->response->setStatusCode(404)
+                ->setJSON(['success' => false, 'message' => 'Execução não encontrada.']);
+        }
+
+        if ($run->status !== IntegrationSyncRunModel::STATUS_RUNNING) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Esta execução já terminou.']);
+        }
+
+        if (time() - strtotime((string) $run->started_at) < self::STALE_RUN_SECONDS) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Esta execução ainda está dentro do tempo esperado. Aguarde mais um pouco antes de abortar.',
+            ]);
+        }
+
+        $runModel->finish(
+            (int) $run->id,
+            IntegrationSyncRunModel::STATUS_ERROR,
+            [],
+            'Abortada manualmente pelo tenant — trava liberada.'
+        );
+        model(AccountIntegrationModel::class)->releaseLock((int) $integration->id);
+
+        audit_log('integration.sync_aborted', ['provider' => $code, 'run_id' => $runId]);
+
+        return $this->response->setJSON([
+            'success' => true,
+            'message' => 'Execução abortada. Você já pode sincronizar novamente.',
         ]);
     }
 
@@ -207,7 +332,15 @@ class IntegrationsController extends BaseController
         return $this->response->setJSON($result->toArray());
     }
 
-    /** POST: grava o de/para revisado. */
+    /**
+     * POST: grava o de/para revisado.
+     *
+     * `confirm_all_suggestions=1` é o atalho "Confirmar todas as sugestões":
+     * em vez de gravar cada `<select>` do formulário (que exigiria o tenant
+     * ter revisado a tela inteira antes de submeter), confirma só o que já
+     * tinha destino pelo palpite automático — o resto (inclusive
+     * "— Não importar —") continua pendente pra revisão manual depois.
+     */
     public function saveMappings(string $code)
     {
         $integration = $this->resolve($code);
@@ -216,13 +349,16 @@ class IntegrationsController extends BaseController
             return redirect()->to(site_url('admin/integracoes'))->with('error', 'Integração não encontrada.');
         }
 
-        $total = 0;
+        $confirmAllSuggested = $this->request->getPost('confirm_all_suggestions') === '1';
+        $total               = 0;
 
         foreach ([IntegrationMappingModel::KIND_CATEGORY, IntegrationMappingModel::KIND_CHARACTERISTIC] as $kind) {
-            $total += $this->service->saveMappings($integration, $kind, $this->request->getPost($kind) ?? []);
+            $total += $confirmAllSuggested
+                ? $this->service->confirmAllSuggested($integration, $kind)
+                : $this->service->saveMappings($integration, $kind, $this->request->getPost($kind) ?? []);
         }
 
-        audit_log('integration.mappings_saved', ['provider' => $code, 'count' => $total]);
+        audit_log('integration.mappings_saved', ['provider' => $code, 'count' => $total, 'confirm_all' => $confirmAllSuggested]);
 
         return redirect()->to(site_url("admin/integracoes/{$code}/mapeamentos"))
             ->with('message', "{$total} mapeamento(s) confirmado(s).");
@@ -239,18 +375,27 @@ class IntegrationsController extends BaseController
         }
 
         try {
-            $created = $this->service->seedMappings($integration);
+            $resumo = $this->service->seedMappings($integration);
         } catch (IntegrationException $e) {
             return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
         }
 
+        // "0 novas" na origem sozinho lê como falha — testConnection() já
+        // semeia sozinho a cada teste bem-sucedido, então redescobrir logo
+        // depois legitimamente não acha nada novo. Mostrar quantas foram
+        // ENCONTRADAS (não só as novas) deixa claro que a busca funcionou.
+        $formata = static fn (array $r, string $rotulo): string => sprintf(
+            '%d %s encontrada(s) (%d nova(s), %d atualizada(s))',
+            $r['found'],
+            $rotulo,
+            $r['new'],
+            $r['updated']
+        );
+
         return $this->response->setJSON([
             'success' => true,
-            'message' => sprintf(
-                '%d categoria(s) e %d característica(s) nova(s) encontrada(s).',
-                $created['category'],
-                $created['characteristic']
-            ),
+            'message' => $formata($resumo['category'], 'categoria(s)') . '; '
+                . $formata($resumo['characteristic'], 'característica(s)'),
         ]);
     }
 
@@ -289,5 +434,35 @@ class IntegrationsController extends BaseController
     private function resolve(string $code): ?AccountIntegration
     {
         return $this->service->find($this->accountId(), $code);
+    }
+
+    /** Segundos restantes do cooldown de "Sincronizar agora" — 0 se livre. */
+    private function cooldownRemaining(AccountIntegration $integration): int
+    {
+        $iniciadoEm = cache("integration_manual_sync_{$integration->id}");
+
+        if ($iniciadoEm === null) {
+            return 0;
+        }
+
+        return max(0, self::MANUAL_SYNC_COOLDOWN - (time() - (int) $iniciadoEm));
+    }
+
+    /** Teto de fotos por imóvel do plano ativo da conta — null = sem limite. */
+    private function planPhotoLimit(): ?int
+    {
+        $subscription = model(\App\Models\SubscriptionModel::class)
+            ->where('account_id', $this->accountId())
+            ->whereIn('status', ['ACTIVE', 'TRIAL'])
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        if ($subscription === null) {
+            return null;
+        }
+
+        $plan = model(\App\Models\PlanModel::class)->find($subscription->plan_id);
+
+        return ($plan === null || empty($plan->limite_fotos_por_imovel)) ? null : (int) $plan->limite_fotos_por_imovel;
     }
 }

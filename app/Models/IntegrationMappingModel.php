@@ -64,7 +64,12 @@ class IntegrationMappingModel extends Model
      * Nunca sobrescreve: se o tenant já revisou aquele de/para, uma nova rodada
      * de descoberta não pode desfazer a escolha dele.
      */
-    public function seedSuggestion(int $accountIntegrationId, string $kind, array $data): bool
+    public const SEED_NEW       = 'new';
+    public const SEED_UPDATED   = 'updated';
+    public const SEED_UNCHANGED = 'unchanged';
+
+    /** @return self::SEED_* */
+    public function seedSuggestion(int $accountIntegrationId, string $kind, array $data): string
     {
         $exists = $this->where('account_integration_id', $accountIntegrationId)
             ->where('kind', $kind)
@@ -75,16 +80,20 @@ class IntegrationMappingModel extends Model
             // Atualiza só o rótulo, que pode ter sido renomeado na origem.
             if (isset($data['external_label']) && $exists->external_label !== $data['external_label']) {
                 $this->update($exists->id, ['external_label' => $data['external_label']]);
+
+                return self::SEED_UPDATED;
             }
 
-            return false;
+            return self::SEED_UNCHANGED;
         }
 
-        return (bool) $this->insert(array_merge($data, [
+        $this->insert(array_merge($data, [
             'account_integration_id' => $accountIntegrationId,
             'kind'                   => $kind,
             'is_confirmed'           => false,
         ]));
+
+        return self::SEED_NEW;
     }
 
     public function countUnconfirmed(int $accountIntegrationId): int
@@ -92,5 +101,28 @@ class IntegrationMappingModel extends Model
         return $this->where('account_integration_id', $accountIntegrationId)
             ->where('is_confirmed', false)
             ->countAllResults();
+    }
+
+    /**
+     * Confirma toda linha ainda não revisada que já tem destino atribuído —
+     * pelo palpite automático ou por uma escolha anterior que não chegou a
+     * ser salva como confirmada. O que ficou sem destino (inclusive
+     * "— Não importar —") não é tocado: continua pendente de revisão.
+     *
+     * @return int linhas afetadas
+     */
+    public function confirmAllWithTarget(int $accountIntegrationId, string $kind): int
+    {
+        $column = $kind === self::KIND_CATEGORY ? 'target_value' : 'target_field';
+
+        $this->builder()
+            ->where('account_integration_id', $accountIntegrationId)
+            ->where('kind', $kind)
+            ->where('is_confirmed', false)
+            ->where($column . ' IS NOT NULL', null, false)
+            ->set('is_confirmed', true)
+            ->update();
+
+        return $this->db->affectedRows();
     }
 }

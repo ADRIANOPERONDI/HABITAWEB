@@ -89,6 +89,19 @@ class SimobPropertyMapper
             return null;
         }
 
+        $tipoImovel = $this->resolveTipoImovel($detail, $listItem);
+
+        // Categoria sem de/para confirmado: ignora em vez de adivinhar. O
+        // palpite por nome (SimobVocabulary::guessPropertyType) só entra como
+        // SUGESTÃO em IntegrationService::seedMappings() — decidir o tipo do
+        // imóvel em tempo de sync, sem o tenant confirmar, é o que fazia uma
+        // "SEDE ESPORTIVA" virar CASA em silêncio.
+        if ($tipoImovel === null) {
+            $descricao = (string) ($detail['categoria']['descricao'] ?? $listItem['descricaoCategoria'] ?? 'desconhecida');
+
+            return ExternalProperty::ignored($externalId, "categoria não mapeada: {$descricao}");
+        }
+
         $fields = [];
 
         [$tipoNegocio, $preco] = $this->resolveNegocioEPreco($detail, $listItem);
@@ -101,7 +114,7 @@ class SimobPropertyMapper
 
         $fields['tipo_negocio'] = $tipoNegocio;
         $fields['preco']        = $preco;
-        $fields['tipo_imovel']  = $this->resolveTipoImovel($detail, $listItem);
+        $fields['tipo_imovel']  = $tipoImovel;
 
         $fields += $this->mapAddress($detail, $listItem);
 
@@ -128,7 +141,7 @@ class SimobPropertyMapper
         return new ExternalProperty(
             externalId: $externalId,
             fields: array_filter($fields, static fn ($v) => $v !== null && $v !== ''),
-            images: $this->mapImages($detail, $listItem, $externalId),
+            images: $this->mapImages($detail, $listItem),
             externalCode: (string) ($detail['codigo'] ?? $listItem['codigo'] ?? $externalId),
             externalUpdatedAt: $this->cleanDate($listItem['updatedAt'] ?? $detail['updatedAt'] ?? null),
             raw: $detail,
@@ -152,20 +165,29 @@ class SimobPropertyMapper
         $venda   = $this->activeConfig($detail['configVenda'] ?? null);
         $locacao = $this->activeConfig($detail['configLocacao'] ?? null);
 
-        if ($venda !== null && $locacao !== null) {
+        if (is_float($venda) && is_float($locacao)) {
             return ['VENDA_ALUGUEL', $venda];
         }
 
-        if ($venda !== null) {
+        if (is_float($venda)) {
             return ['VENDA', $venda];
         }
 
-        if ($locacao !== null) {
+        if (is_float($locacao)) {
             return ['ALUGUEL', $locacao];
         }
 
-        // Detalhe sem config (a doc marca "Dados Imóvel" como nem sempre
-        // online): cai para a finalidade pela qual a listagem devolveu o item.
+        // Alguma das duas configs chegou no detalhe mas foi recusada de
+        // propósito (inativo ou fora do portal): não é "sem informação", é
+        // "a imobiliária tirou isso do ar" — não cai pro palpite da listagem,
+        // que traria de volta uma finalidade que o Simob já desativou.
+        if ($venda === false || $locacao === false) {
+            return [null, 0.0];
+        }
+
+        // Nenhuma das duas veio no detalhe (a doc marca "Dados Imóvel" como
+        // nem sempre online): cai para a finalidade pela qual a listagem
+        // devolveu o item.
         $finalidade = (int) ($listItem['finalidade'] ?? 0);
         $valor      = $this->parseNumber($listItem['valor'] ?? null) ?? 0.0;
 
@@ -177,23 +199,29 @@ class SimobPropertyMapper
     }
 
     /**
-     * Preço de uma config, ou null se ela não conta.
+     * Preço de uma config — ou o motivo dela não contar.
      *
      * `inativo` e `disponibilizarPortal` são do lado do Simob: um imóvel
      * inativo ou não liberado para portal não pode aparecer no Habitaweb.
+     *
+     * @return float|false|null float = ativa, com preço; false = a config
+     *                          existe no payload mas foi recusada de propósito
+     *                          (inativo, ou fora do portal); null = a config
+     *                          nem veio — o chamador distingue os dois porque
+     *                          só o segundo caso cai pro palpite da listagem.
      */
-    private function activeConfig(mixed $config): ?float
+    private function activeConfig(mixed $config): float|false|null
     {
         if (! is_array($config)) {
             return null;
         }
 
         if (! empty($config['inativo'])) {
-            return null;
+            return false;
         }
 
         if (array_key_exists('disponibilizarPortal', $config) && empty($config['disponibilizarPortal'])) {
-            return null;
+            return false;
         }
 
         return $this->parseNumber($config['valor'] ?? null) ?? 0.0;
@@ -216,24 +244,22 @@ class SimobPropertyMapper
         return in_array($default, ['DRAFT', 'ACTIVE', 'PAUSED'], true) ? $default : 'DRAFT';
     }
 
-    private function resolveTipoImovel(array $detail, array $listItem): string
+    /**
+     * Tipo do imóvel no vocabulário do Habitaweb, ou null se a categoria
+     * ainda não tem de/para confirmado — o chamador trata null como "ignorar
+     * este item", não como "adivinhar".
+     */
+    private function resolveTipoImovel(array $detail, array $listItem): ?string
     {
         $categoriaId = (string) ($detail['categoria']['id'] ?? $listItem['idCategoria'] ?? '');
 
-        if ($categoriaId !== '' && isset($this->categoryMap[$categoriaId])) {
-            $target = $this->categoryMap[$categoriaId]->target_value;
-
-            if (! empty($target)) {
-                return (string) $target;
-            }
+        if ($categoriaId === '' || ! isset($this->categoryMap[$categoriaId])) {
+            return null;
         }
 
-        // Sem de/para cadastrado, tenta o palpite pelo nome e, no limite, cai
-        // em CASA — tipo_imovel é obrigatório e um imóvel sem categoria
-        // mapeada não pode travar a rodada inteira.
-        $descricao = (string) ($detail['categoria']['descricao'] ?? $listItem['descricaoCategoria'] ?? '');
+        $target = $this->categoryMap[$categoriaId]->target_value;
 
-        return SimobVocabulary::guessPropertyType($descricao) ?? 'CASA';
+        return $target !== null && $target !== '' ? (string) $target : null;
     }
 
     // ------------------------------------------------------------- endereço
@@ -244,6 +270,18 @@ class SimobPropertyMapper
 
         $uf = strtoupper(trim((string) ($get('uf') ?? '')));
 
+        // 'endereco' é o NOME DA RUA (string) — não tem 'localizacao' aninhada
+        // de verdade. A leitura antiga (detail['endereco']['localizacao']...)
+        // acessava um offset de string, que `??` silenciosamente resolve pra
+        // null sem aviso nenhum: todo imóvel Simob nascia sem coordenada, sem
+        // nenhum log ou exceção apontando o motivo. A única fonte de
+        // coordenada que a origem eventualmente dá é linkGoogleMaps — quando
+        // ele já vem em formato de coordenada, e não de endereço em texto
+        // (ver parseGoogleMapsLink()). Quando nem isso resolve, é o
+        // IntegrationSyncService que geocodifica pelo endereço, depois do
+        // upsert — não é responsabilidade do mapper fazer I/O.
+        $coordenadas = $this->parseGoogleMapsLink((string) ($get('linkGoogleMaps') ?? ''));
+
         return array_filter([
             'rua'         => $this->str($get('endereco')),
             'numero'      => $this->str($get('numero')),
@@ -253,9 +291,48 @@ class SimobPropertyMapper
             // validatePropertyData exige exatamente 2 caracteres.
             'estado'      => strlen($uf) === 2 ? $uf : null,
             'cep'         => $this->str($get('cep')),
-            'latitude'    => $this->parseNumber($detail['endereco']['localizacao']['latitude'] ?? null),
-            'longitude'   => $this->parseNumber($detail['endereco']['localizacao']['longitude'] ?? null),
+            'latitude'    => $coordenadas['lat'] ?? null,
+            'longitude'   => $coordenadas['lng'] ?? null,
         ], static fn ($v) => $v !== null);
+    }
+
+    /**
+     * Extrai lat/lng de um link do Google Maps, quando ele já vier nesse
+     * formato — o link real que a Giusti manda é uma busca por ENDEREÇO em
+     * texto (`/maps/place/RUA X, BAIRRO, CIDADE`), sem coordenada nenhuma, e
+     * pra esse caso este método sempre devolve null de propósito (não é
+     * responsabilidade dele geocodificar texto — isso é o
+     * IntegrationSyncService + NominatimGeocoder). Mas a mesma coluna já foi
+     * vista, em outras integrações Simob, carregando um link já resolvido em
+     * coordenada — os formatos abaixo cobrem esse caso sem custar nenhuma
+     * chamada de rede.
+     *
+     * @return array{lat:float, lng:float}|null
+     */
+    private function parseGoogleMapsLink(string $link): ?array
+    {
+        if ($link === '') {
+            return null;
+        }
+
+        // Ordem importa: um link de "compartilhar" do Google Maps costuma
+        // trazer OS DOIS — /@lat,lng,zoom (o centro aproximado da tela) e
+        // !3dlat!4dlng (a posição exata do pino) — e o par !3d/!4d precisa
+        // ser checado primeiro, senão o parser pega o centro da tela em vez
+        // do pino.
+        $padroes = [
+            '/!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/',
+            '/[?&]q=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/',
+            '/\/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/',
+        ];
+
+        foreach ($padroes as $padrao) {
+            if (preg_match($padrao, $link, $m) === 1) {
+                return ['lat' => (float) $m[1], 'lng' => (float) $m[2]];
+            }
+        }
+
+        return null;
     }
 
     // ------------------------------------------------------- características
@@ -430,13 +507,17 @@ class SimobPropertyMapper
     /**
      * @return ExternalImage[]
      */
-    private function mapImages(array $detail, array $listItem, string $externalId): array
+    private function mapImages(array $detail, array $listItem): array
     {
         $raw = $detail['imagens'] ?? $listItem['imagens'] ?? [];
 
         if (! is_array($raw)) {
             return [];
         }
+
+        // Vem no mesmo nível de `imagens`, não por imagem — é o segmento de
+        // caminho que a própria API dá pra montar a URL (ver SimobClient::imageUrl).
+        $baseUrlImagem = trim((string) ($detail['baseUrlImagem'] ?? $listItem['baseUrlImagem'] ?? ''));
 
         $max    = (int) ($this->settings['max_images'] ?? 20);
         $images = [];
@@ -449,7 +530,7 @@ class SimobPropertyMapper
             $nome = trim((string) ($img['baseNomeImagem'] ?? ''));
             $ext  = trim((string) ($img['extensao'] ?? ''));
 
-            if ($nome === '' || $ext === '') {
+            if ($nome === '' || $ext === '' || $baseUrlImagem === '') {
                 continue;
             }
 
@@ -457,7 +538,7 @@ class SimobPropertyMapper
             $ordem = (int) ($img['posicao'] ?? $img['ordem'] ?? count($images) + 1);
 
             $images[] = new ExternalImage(
-                url: SimobClient::imageUrl($this->baseUrl, $externalId, $nome, $ext),
+                url: SimobClient::imageUrl($this->baseUrl, $baseUrlImagem, $nome, $ext),
                 ordem: $ordem,
                 principal: false,
                 descricao: $this->str($img['descricao'] ?? null),

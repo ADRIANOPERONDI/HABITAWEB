@@ -188,5 +188,40 @@ final class IntegrationDtoTest extends TestCase
         $this->assertSame(2, $counters['created_count']);
         $this->assertSame(7, $counters['images_count']);
         $this->assertArrayHasKey('paused_count', $counters);
+        $this->assertArrayHasKey('ignored_count', $counters);
+    }
+
+    /**
+     * Falha de foto era invisível: "0 imagem(ns)" na tela de execuções não
+     * dizia se a origem não tinha foto nenhuma ou se todas falharam.
+     */
+    public function testFalhaDeImagemApareceNoResumoMesmoSemOutroErro(): void
+    {
+        $r              = new SyncResult();
+        $r->created     = 1;
+        $r->imageErrors = 3;
+
+        $this->assertStringContainsString('3 foto(s) falharam', $r->errorSummary());
+    }
+
+    public function testFotoDescartadaPeloLimiteDoPlanoApareceSeparada(): void
+    {
+        $r                  = new SyncResult();
+        $r->imageErrors     = 5;
+        $r->photoLimitHits  = 2;
+
+        $this->assertStringContainsString('5 foto(s) falharam', $r->errorSummary());
+        $this->assertStringContainsString('2 descartada(s) pelo limite de fotos do plano', $r->errorSummary());
+    }
+
+    public function testErroDeItemEFalhaDeImagemAparecemJuntosNoResumo(): void
+    {
+        $r = new SyncResult();
+        $r->addError('imóvel 42: preço inválido');
+        $r->imageErrors = 1;
+
+        $resumo = $r->errorSummary();
+        $this->assertStringContainsString('imóvel 42', $resumo);
+        $this->assertStringContainsString('1 foto(s) falharam', $resumo);
     }
 }
