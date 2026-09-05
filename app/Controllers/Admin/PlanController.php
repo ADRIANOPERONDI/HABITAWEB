@@ -37,7 +37,11 @@ class PlanController extends BaseController
         if (empty($data['chave']) && !empty($data['nome'])) {
             $data['chave'] = url_title($data['nome'], '-', true);
         }
-        $data['limite_imoveis_ativos'] = empty($data['limite_imoveis_ativos']) ? null : $data['limite_imoveis_ativos'];
+        // Campo vazio significa "ilimitado" (NULL), não string vazia — que o
+        // Postgres rejeitaria numa coluna INT.
+        foreach (['limite_imoveis_ativos', 'limite_turbo_mensal'] as $limite) {
+            $data[$limite] = ($data[$limite] ?? '') === '' ? null : $data[$limite];
+        }
         $data['ativo'] = isset($data['ativo']) ? 't' : 'f';
 
         // Sanitize Currency
@@ -69,7 +73,11 @@ class PlanController extends BaseController
         $data = $this->request->getPost();
         $data['id'] = $id;
         
-        $data['limite_imoveis_ativos'] = empty($data['limite_imoveis_ativos']) ? null : $data['limite_imoveis_ativos'];
+        // Campo vazio significa "ilimitado" (NULL), não string vazia — que o
+        // Postgres rejeitaria numa coluna INT.
+        foreach (['limite_imoveis_ativos', 'limite_turbo_mensal'] as $limite) {
+            $data[$limite] = ($data[$limite] ?? '') === '' ? null : $data[$limite];
+        }
         $data['ativo'] = isset($data['ativo']) ? 't' : 'f';
 
         // Sanitize Currency
@@ -89,11 +97,26 @@ class PlanController extends BaseController
 
     public function delete($id)
     {
-        // Soft delete ou check se há assinaturas ativas antes
-        // Por simplificação, delete direto (model deve ter soft delete se configurado)
+        // Guard herdado do PlansController removido: remover um plano em uso
+        // deixaria assinaturas apontando para um plano soft-deleted, e todo
+        // caminho que resolve limite/preço via `plans` passaria a falhar para
+        // aquelas contas. Desative o plano em vez de removê-lo.
+        $activeSubscriptions = model('App\Models\SubscriptionModel')
+            ->where('plan_id', $id)
+            ->whereIn('status', ['ACTIVE', 'TRIAL', 'PENDING', 'AWAITING_PAYMENT'])
+            ->countAllResults();
+
+        if ($activeSubscriptions > 0) {
+            return redirect()->to('admin/plans')->with(
+                'error',
+                "Não é possível remover: {$activeSubscriptions} assinatura(s) usam este plano. Desative-o em vez de removê-lo."
+            );
+        }
+
         if ($this->planModel->delete($id)) {
             return redirect()->to('admin/plans')->with('message', 'Plano removido.');
         }
+
         return redirect()->to('admin/plans')->with('error', 'Erro ao remover plano.');
     }
 }

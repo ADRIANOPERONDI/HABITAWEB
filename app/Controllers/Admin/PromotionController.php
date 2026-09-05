@@ -31,21 +31,39 @@ class PromotionController extends BaseController
     /**
      * Tela de Turbinar um Imóvel Específico
      */
-    public function turbo($propertyId)
+    /**
+     * Regra única de acesso ao turbo de um imóvel: staff da plataforma ou dono.
+     *
+     * Antes `turbo()` aceitava superadmin|admin|dono e `store()` só
+     * superadmin|dono. Um admin da plataforma abria a tela de um imóvel de
+     * terceiro e levava "Acesso negado" ao submeter.
+     *
+     * @return object|null O imóvel autorizado, ou null se não existe/não pode.
+     */
+    private function authorizedProperty($propertyId): ?object
     {
-        // 1. Verifica Propriedade e Dono
-        $propertyModel = model('App\Models\PropertyModel');
-        $property = $propertyModel->find($propertyId);
+        $property = model('App\Models\PropertyModel')->find($propertyId);
 
         if (!$property) {
-            return redirect()->back()->with('error', 'Imóvel não encontrado.');
+            return null;
         }
 
-        $user = auth()->user();
-        // Permite se for SuperAdmin ou se for o dono da conta
-        $isAdmin = $user->inGroup('superadmin') || $user->inGroup('admin');
-        if (!$isAdmin && $property->account_id != $user->account_id) {
-             return redirect()->back()->with('error', 'Acesso negado.');
+        $user    = auth()->user();
+        $isStaff = $user->inGroup('superadmin') || $user->inGroup('admin');
+
+        if (!$isStaff && $property->account_id != $user->account_id) {
+            return null;
+        }
+
+        return $property;
+    }
+
+    public function turbo($propertyId)
+    {
+        $property = $this->authorizedProperty($propertyId);
+
+        if (!$property) {
+            return redirect()->back()->with('error', 'Imóvel não encontrado ou acesso negado.');
         }
 
         // 2. Carrega Pacotes e Promoções Ativas
@@ -66,17 +84,10 @@ class PromotionController extends BaseController
 
     public function store($propertyId)
     {
-        // 1. Verifica Propriedade e Dono (Mesma checagem)
-        $propertyModel = model('App\Models\PropertyModel');
-        $property = $propertyModel->find($propertyId);
+        $property = $this->authorizedProperty($propertyId);
 
         if (!$property) {
-            return redirect()->back()->with('error', 'Imóvel não encontrado.');
-        }
-
-        $user = auth()->user();
-        if (!$user->inGroup('superadmin') && $property->account_id != $user->account_id) {
-             return redirect()->back()->with('error', 'Acesso negado.');
+            return redirect()->back()->with('error', 'Imóvel não encontrado ou acesso negado.');
         }
 
         $packageKey = $this->request->getPost('package_key');

@@ -17,12 +17,28 @@ class PromotionService
         $this->packageModel   = Factories::models(PromotionPackageModel::class);
     }
 
+    /** Pacotes que representam exposição de imóvel por prazo. */
+    public const TIPO_TURBO = 'TURBO_IMOVEL';
+
     /**
-     * Lista todos os pacotes de promoção disponíveis.
+     * Lista os pacotes compráveis de um tipo.
+     *
+     * O default é TURBO_IMOVEL porque `promotion_packages` também guarda os
+     * pacotes de LEAD (LEAD_COMPRA, LEAD_ALUGUEL), que são preço por unidade e
+     * têm duracao_dias = 0. Sem este filtro a tela de turbinar os oferecia como
+     * se fossem exposição — e comprá-los criava promoção com data_fim igual à
+     * data_inicio, ou seja, destaque já nascido expirado.
+     *
+     * O filtro por duracao_dias > 0 é cinto e suspensório: pacote de exposição
+     * sem prazo não é comprável, qualquer que seja o tipo.
      */
-    public function listPackages()
+    public function listPackages(string $tipo = self::TIPO_TURBO)
     {
-        return $this->packageModel->findAll();
+        return $this->packageModel
+            ->where('tipo_promocao', $tipo)
+            ->where('duracao_dias >', 0)
+            ->orderBy('preco', 'ASC')
+            ->findAll();
     }
 
     /**
@@ -34,6 +50,12 @@ class PromotionService
 
         if (!$package) {
             return ['success' => false, 'message' => 'Pacote não encontrado.'];
+        }
+
+        // Barra no serviço, não só na tela: um POST direto com package_key de um
+        // pacote de LEAD geraria cobrança e, na confirmação, um destaque expirado.
+        if ($package->tipo_promocao !== self::TIPO_TURBO || (int) $package->duracao_dias <= 0) {
+            return ['success' => false, 'message' => 'Este pacote não pode ser aplicado a um imóvel.'];
         }
 
         $propertyModel = new \App\Models\PropertyModel();
@@ -171,13 +193,31 @@ class PromotionService
         $startDate = date('Y-m-d H:i:s');
         $endDate   = date('Y-m-d H:i:s', strtotime("+{$package->duracao_dias} days"));
 
-        // Define Nível de Destaque
+        // Define Nível de Destaque.
+        //
+        // TURBO_IMOVEL é o único tipo realmente vendido hoje (TURBO_7_DIAS) e não
+        // tinha braço próprio: caía no `default => 1` por coincidência. Tipo
+        // desconhecido agora falha alto em vez de virar destaque de graça — se um
+        // pacote novo for cadastrado sem mapeamento, queremos saber pelo log, não
+        // descobrir meses depois que ele concedia exposição sem regra.
         $level = match ($package->tipo_promocao) {
+            self::TIPO_TURBO => 1,
             'DESTAQUE'       => 1,
             'SUPER_DESTAQUE' => 2,
             'VITRINE'        => 3,
-            default          => 1,
+            default          => null,
         };
+
+        if ($level === null) {
+            log_message('error', sprintf(
+                '[Promocao] tipo_promocao sem nivel mapeado: "%s" (pacote %s, imovel %d). Ativacao abortada.',
+                $package->tipo_promocao,
+                $package->chave,
+                $propertyId
+            ));
+
+            return false;
+        }
 
         $db = \Config\Database::connect();
         $db->transStart();
