@@ -462,6 +462,38 @@ final class IntegrationPanelTest extends HabitawebTestCase
     // -------------------------------------------------- sincronizar agora
 
     /**
+     * `dueForSync()` (quem o cron usa pra achar o que processar) exige
+     * `is_active=true` — sem essa mesma checagem aqui, "Sincronizar agora"
+     * aceitava o pedido de uma integração pausada, gravava
+     * `sync_priority_requested_at` e a tela ficava mostrando "Agendado,
+     * aguardando o cron..." pra sempre, porque o cron nunca ia pegar aquele
+     * pedido. Recusar na hora, com o motivo, é melhor que um agendamento
+     * que nunca se resolve.
+     */
+    public function testSincronizarAgoraRecusaIntegracaoPausada(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        model(AccountIntegrationModel::class)->update($int->id, [
+            'status'    => AccountIntegrationModel::STATUS_CONNECTED,
+            'is_active' => false,
+        ]);
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])
+                ->post('admin/integracoes/simob/sincronizar', $this->withCsrf())
+                ->getJSON(),
+            true
+        );
+
+        $this->assertFalse($body['success']);
+        $this->assertStringContainsString('Ative a sincronização automática', $body['message']);
+
+        $reloaded = model(AccountIntegrationModel::class)->find($int->id);
+        $this->assertNull($reloaded->sync_priority_requested_at, 'nao pode agendar um pedido que o cron nunca vai atender');
+    }
+
+    /**
      * "Sincronizar agora" rodava a sincronização de verdade dentro deste
      * mesmo request — download de imagens incluído — e estourava o
      * max_execution_time do PHP em catálogos do tamanho normal de uma
@@ -473,7 +505,10 @@ final class IntegrationPanelTest extends HabitawebTestCase
     {
         $tenant = (new TenantFactory())->create();
         $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
-        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+        // is_active=true: "Sincronizar agora" recusa integracao pausada
+        // (ver IntegrationsController::syncNow()) — sem isso o pedido ficaria
+        // "agendado" pra sempre, ja que dueForSync() tambem exige is_active.
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED, 'is_active' => true]);
 
         $body = json_decode(
             (string) $this->actingAs($tenant['user'])
@@ -495,7 +530,10 @@ final class IntegrationPanelTest extends HabitawebTestCase
     {
         $tenant = (new TenantFactory())->create();
         $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
-        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+        // is_active=true: "Sincronizar agora" recusa integracao pausada
+        // (ver IntegrationsController::syncNow()) — sem isso o pedido ficaria
+        // "agendado" pra sempre, ja que dueForSync() tambem exige is_active.
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED, 'is_active' => true]);
 
         $this->actingAs($tenant['user'])->post('admin/integracoes/simob/sincronizar', $this->withCsrf());
 
@@ -521,7 +559,10 @@ final class IntegrationPanelTest extends HabitawebTestCase
     {
         $tenant = (new TenantFactory())->create();
         $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
-        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+        // is_active=true: "Sincronizar agora" recusa integracao pausada
+        // (ver IntegrationsController::syncNow()) — sem isso o pedido ficaria
+        // "agendado" pra sempre, ja que dueForSync() tambem exige is_active.
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED, 'is_active' => true]);
 
         $runModel = model(IntegrationSyncRunModel::class);
         $runId    = $runModel->start((int) $int->id, IntegrationSyncRunModel::TRIGGER_CRON);
