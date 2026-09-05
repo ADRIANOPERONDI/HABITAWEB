@@ -146,7 +146,16 @@ class PropertyService
      * @param bool $isStaff Se true, ignora limites de plano.
      * @return array
      */
-    public function trySaveProperty(array $data, ?int $id = null, bool $isStaff = false, bool $partialUpdate = false): array
+    /**
+     * @param bool $fromSync true SÓ quando quem chama é o próprio sync de
+     *                       integração (IntegrationSyncService) — é o único
+     *                       caminho autorizado a escrever os campos que ele
+     *                       mesmo gerencia. Qualquer outro chamador (admin,
+     *                       API v1) tem esses campos removidos do payload
+     *                       silenciosamente, com o nome deles devolvido em
+     *                       `ignored_fields` pra quem chamou avisar o usuário.
+     */
+    public function trySaveProperty(array $data, ?int $id = null, bool $isStaff = false, bool $partialUpdate = false, bool $fromSync = false): array
     {
         try {
             // 0. Load or New
@@ -159,6 +168,25 @@ class PropertyService
                     'errors'  => [],
                     'message' => 'Imóvel não encontrado.',
                 ];
+            }
+
+            // 0a. IMÓVEL ESPELHADO DE INTEGRAÇÃO
+            // Centralizado aqui porque PropertyController::update() era o
+            // ÚNICO lugar que aplicava essa guarda — a API v1
+            // (Api\V1\PropertyController::update) e o delete de ambos
+            // reescreviam ou apagavam um imóvel gerenciado sem check nenhum.
+            // A origem é a fonte da verdade pra estes campos; a próxima
+            // rodada de sync sobrescreveria a edição de qualquer forma, o
+            // que é pior que recusar agora.
+            $ignoredFields = [];
+
+            if ($id && !$fromSync && model(\App\Models\PropertyExternalRefModel::class)->isManaged($id)) {
+                foreach (\App\Services\IntegrationService::MANAGED_FIELDS as $field) {
+                    if (array_key_exists($field, $data)) {
+                        $ignoredFields[] = $field;
+                        unset($data[$field]);
+                    }
+                }
             }
 
             // 0b. CAMPOS PRIVILEGIADOS
@@ -327,11 +355,12 @@ class PropertyService
             $rankingService->updateScore($savedId);
 
             return [
-                'success'     => true,
-                'property_id' => (int) $savedId,
-                'data'        => $this->propertyModel->find($savedId),
-                'errors'      => [],
-                'message'     => 'Imóvel salvo com sucesso.',
+                'success'        => true,
+                'property_id'    => (int) $savedId,
+                'data'           => $this->propertyModel->find($savedId),
+                'errors'         => [],
+                'message'        => 'Imóvel salvo com sucesso.',
+                'ignored_fields' => $ignoredFields,
             ];
 
         } catch (\Exception $e) {
@@ -1086,6 +1115,32 @@ class PropertyService
     }
 
     /**
+     * "Apagar" um imóvel espelhado de integração não pode ser um soft-delete
+     * de verdade: o vínculo (property_external_refs) sobrevive, então a
+     * PRÓXIMA sincronização não teria como saber que o tenant tentou remover
+     * aquilo — o item simplesmente reapareceria como se nada tivesse
+     * acontecido, sem nenhum aviso. Em vez disso, pausa (o mesmo estado que o
+     * sync já usa para "sumiu da origem"), respeitando a mesma regra que o
+     * botão de excluir do admin promete ("Imóvel desativado").
+     *
+     * @return array{success:bool, paused:bool}
+     */
+    public function deleteOrPauseProperty(int $id): array
+    {
+        if (model(\App\Models\PropertyExternalRefModel::class)->isManaged($id)) {
+            $updated = (bool) $this->propertyModel->update($id, ['status' => 'PAUSED']);
+
+            if ($updated) {
+                PublicPropertyVisibilityService::invalidateCaches();
+            }
+
+            return ['success' => $updated, 'paused' => true];
+        }
+
+        return ['success' => $this->deleteProperty($id), 'paused' => false];
+    }
+
+    /**
      * Restaura um imóvel deletado logicamente.
      */
     public function restoreProperty(int $id): bool
@@ -1462,7 +1517,13 @@ class PropertyService
         $urlHash    = hash('sha256', trim($url));
 
         // Dedupe: reimportar o mesmo catálogo não deve rebaixar as mesmas fotos.
-        $existing = $mediaModel->where('property_id', $propertyId)
+        // withDeleted() de propósito: PropertyMediaModel usa soft delete, e sem
+        // isto uma foto que o TENANT apagou manualmente ficava invisível pra
+        // esta checagem — o próximo sync não encontrava o hash, achava que a
+        // foto era nova, e a recriava. A exclusão do tenant "não pegava" até a
+        // próxima mudança de conteúdo do imóvel.
+        $existing = $mediaModel->withDeleted()
+                               ->where('property_id', $propertyId)
                                ->where('source_url_hash', $urlHash)
                                ->first();
 

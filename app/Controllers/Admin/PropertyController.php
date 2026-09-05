@@ -211,23 +211,13 @@ class PropertyController extends BaseController
         }
 
         // Imóvel espelhado de uma plataforma externa é read-only nos campos que
-        // o sync sobrescreve. A checagem é aqui, no servidor: o `disabled` do
-        // formulário é conveniência visual, não barreira — qualquer POST direto
-        // passaria por cima dele, e a edição seria perdida na próxima rodada de
-        // qualquer forma, o que é pior que recusar agora.
-        $managedFields = [];
-        if ((new \App\Services\IntegrationService())->isManagedProperty((int) $id)) {
-            foreach (\App\Services\IntegrationService::MANAGED_FIELDS as $field) {
-                if (array_key_exists($field, $data)) {
-                    $managedFields[] = $field;
-                    unset($data[$field]);
-                }
-            }
-        }
-
+        // o sync sobrescreve — a guarda em si vive dentro de
+        // PropertyService::trySaveProperty() (única, vale pra todo chamador:
+        // este controller, a API v1 e o próprio sync). O `disabled` do
+        // formulário é conveniência visual, não barreira.
         $result = $this->propertyService->trySaveProperty($data, $id, $isAdmin);
 
-        if ($managedFields !== [] && $result['success']) {
+        if (! empty($result['ignored_fields']) && $result['success']) {
             $result['message'] = 'Alterações salvas. Os campos sincronizados com a integração foram ignorados — '
                 . 'altere-os no sistema de origem.';
         }
@@ -268,11 +258,97 @@ class PropertyController extends BaseController
             }
         }
 
-        if ($this->propertyService->deleteProperty($id)) {
-            return $this->response->setJSON(['success' => true, 'message' => 'Imóvel desativado com sucesso.']);
+        // Imóvel espelhado de integração pausa em vez de apagar: o vínculo com
+        // a origem sobrevive, e sem isso o próximo sync não teria como saber
+        // que o tenant tentou removê-lo — ele simplesmente reapareceria.
+        $resultado = $this->propertyService->deleteOrPauseProperty((int) $id);
+
+        if ($resultado['success']) {
+            $mensagem = $resultado['paused']
+                ? 'Imóvel pausado — ele é espelhado de uma integração, então não pode ser removido por aqui. '
+                    . 'Ficará fora do site enquanto estiver pausado.'
+                : 'Imóvel desativado com sucesso.';
+
+            return $this->response->setJSON(['success' => true, 'message' => $mensagem]);
         }
 
         return $this->response->setJSON(['success' => false, 'message' => 'Erro ao desativar imóvel.']);
+    }
+
+    /**
+     * POST admin/properties/bulk-status — publica (ou pausa) vários imóveis.
+     *
+     * Existe porque uma importação de integração entra inteira como rascunho
+     * (ver IntegrationService::MANAGED_FIELDS e o initial_status do conector):
+     * sem isto, publicar 96 imóveis importados é abrir 96 formulários.
+     *
+     * Aceita `ids[]` (o que estiver marcado na lista) ou
+     * `scope=imported_drafts` (todos os rascunhos vindos de integração).
+     * Cada item passa por trySaveProperty(), então o limite do plano vale
+     * item a item — publicar em lote não é um atalho pra furá-lo.
+     */
+    public function bulkStatus()
+    {
+        $user      = auth()->user();
+        $isAdmin   = $user->inGroup('superadmin', 'admin');
+        $accountId = (int) ($user->account_id ?? 0);
+        $status    = strtoupper((string) $this->request->getPost('status'));
+
+        if (! in_array($status, ['ACTIVE', 'PAUSED'], true)) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Status inválido.']);
+        }
+
+        if ($this->request->getPost('scope') === 'imported_drafts') {
+            $ids = model(\App\Models\PropertyExternalRefModel::class)
+                ->draftPropertyIdsFor($accountId, (string) $this->request->getPost('provider_code') ?: 'simob');
+        } else {
+            $ids = array_map('intval', (array) $this->request->getPost('ids'));
+        }
+
+        $ids = array_values(array_filter(array_unique($ids)));
+
+        if ($ids === []) {
+            return $this->response->setJSON(['success' => false, 'message' => 'Nenhum imóvel selecionado.']);
+        }
+
+        $alterados = 0;
+        $recusados = [];
+
+        foreach ($ids as $id) {
+            $property = model(\App\Models\PropertyModel::class)->find($id);
+
+            // Escopo por conta é responsabilidade de quem consulta (ver
+            // CLAUDE.md): sem isto, um POST com ids de outra conta publicaria
+            // imóvel alheio.
+            if (! $property || (! $isAdmin && (int) $property->account_id !== $accountId)) {
+                continue;
+            }
+
+            if ($property->status === $status) {
+                continue;
+            }
+
+            $resultado = $this->propertyService->trySaveProperty(['status' => $status], $id, $isAdmin, true);
+
+            if ($resultado['success']) {
+                $alterados++;
+                continue;
+            }
+
+            $recusados[] = $property->titulo . ': ' . ($resultado['message'] ?? 'não foi possível salvar');
+        }
+
+        $verbo = $status === 'ACTIVE' ? 'publicado(s)' : 'pausado(s)';
+
+        return $this->response->setJSON([
+            'success'   => true,
+            'changed'   => $alterados,
+            'refused'   => count($recusados),
+            'message'   => $recusados === []
+                ? "{$alterados} imóvel(is) {$verbo}."
+                : "{$alterados} imóvel(is) {$verbo}. " . count($recusados) . ' não puderam ser alterados (limite do plano?).',
+            'details'   => array_slice($recusados, 0, 5),
+        ]);
     }
 
     public function restore($id)

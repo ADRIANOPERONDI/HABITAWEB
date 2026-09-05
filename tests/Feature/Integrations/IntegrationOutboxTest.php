@@ -150,12 +150,29 @@ final class IntegrationOutboxTest extends HabitawebTestCase
         $this->assertSame(0, model(IntegrationOutboxModel::class)->countAllResults());
     }
 
-    public function testIntegracaoDesativadaNaoEnfileira(): void
+    /**
+     * O gate é a CONEXÃO (status), não is_active — pausar só o sync do
+     * catálogo não pode parar de devolver lead pro CRM da imobiliária,
+     * são fluxos independentes. Uma credencial inválida (status != CONNECTED)
+     * é o único caso que legitimamente não tem pra onde mandar o lead.
+     */
+    public function testIntegracaoNaoConectadaNaoEnfileira(): void
+    {
+        [$tenant, $integration, $propertyId] = $this->cenario();
+        model(AccountIntegrationModel::class)->update($integration->id, [
+            'status' => AccountIntegrationModel::STATUS_ERROR,
+        ]);
+        $lead = $this->criarLead($tenant, $propertyId);
+
+        $this->assertNull((new IntegrationOutboxService())->enqueueLead($lead));
+    }
+
+    public function testIntegracaoPausadaAindaEnfileira(): void
     {
         [$tenant, $integration, $propertyId] = $this->cenario(ativa: false);
         $lead = $this->criarLead($tenant, $propertyId);
 
-        $this->assertNull((new IntegrationOutboxService())->enqueueLead($lead));
+        $this->assertNotNull((new IntegrationOutboxService())->enqueueLead($lead));
     }
 
     /** Duplo clique no formulário do portal não pode virar dois interesses. */
@@ -231,6 +248,30 @@ final class IntegrationOutboxTest extends HabitawebTestCase
         $this->assertSame(IntegrationOutboxModel::STATUS_SENT, $item->status);
         $this->assertSame('55', $item->external_ref);
         $this->assertNotNull($item->sent_at);
+    }
+
+    /**
+     * Sem nenhum id reconhecido na resposta, external_ref grava a resposta
+     * crua (até o limite da coluna) em vez de null — é a diferença entre
+     * "enviado, sem rastro nenhum do que a origem devolveu" e algo que dá
+     * pra diagnosticar sem abrir uma issue pedindo o payload.
+     */
+    public function testRespostaSemIdGuardaOJsonComoReferencia(): void
+    {
+        [$tenant, $integration, $propertyId] = $this->cenario();
+        $lead     = $this->criarLead($tenant, $propertyId);
+        $outboxId = (new IntegrationOutboxService())->enqueueLead($lead);
+
+        $service = $this->serviceComConector(new FakeConnector(
+            [],
+            null,
+            TestResult::ok('enviado', ['response' => ['mensagem' => 'recebido, sem CRM']])
+        ));
+        $service->processDue();
+
+        $item = model(IntegrationOutboxModel::class)->find($outboxId);
+        $this->assertSame(IntegrationOutboxModel::STATUS_SENT, $item->status);
+        $this->assertStringContainsString('recebido, sem CRM', $item->external_ref);
     }
 
     /**

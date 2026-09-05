@@ -33,9 +33,18 @@ class IntegrationService
      *
      * Fica de fora, e continua editável, tudo que a origem não fornece:
      * destaque, meta tags, campos de curadoria, responsável e cliente.
+     *
+     * `status` NÃO entra aqui de propósito. A origem não tem conceito de
+     * "rascunho" — quem decide isso é o tenant, revisando o que a
+     * sincronização trouxe. IntegrationSyncService aplica initial_status
+     * só na CRIAÇÃO do imóvel; a partir daí o status é do tenant, e uma
+     * troca manual (inclusive a publicação em massa) sobrevive a qualquer
+     * rodada seguinte. Sem essa exceção, todo imóvel importado nasceria
+     * rascunho e morreria rascunho, sem nenhum caminho no painel para
+     * publicá-lo.
      */
     public const MANAGED_FIELDS = [
-        'titulo', 'descricao', 'tipo_negocio', 'tipo_imovel', 'preco', 'status',
+        'titulo', 'descricao', 'tipo_negocio', 'tipo_imovel', 'preco',
         'rua', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep',
         'latitude', 'longitude',
         'quartos', 'suites', 'banheiros', 'vagas',
@@ -156,6 +165,13 @@ class IntegrationService
             throw new IntegrationException('Conector não encontrado.');
         }
 
+        // Pra detectar mudança de verdade, não só "o campo veio no POST": o
+        // formulário de configure.php reenvia config[base_url] com o valor
+        // ATUAL a cada submit (é um campo de texto comum, sempre preenchido),
+        // junto com as preferências de sync — sem comparar contra o valor já
+        // salvo, base_url "mudaria" em todo save, mesmo quando só
+        // max_images foi alterado.
+        $atual = $this->configModel->getConfig((int) $integration->id);
         $saved = [];
 
         foreach ($provider->getSchemaFields() as $field) {
@@ -174,16 +190,29 @@ class IntegrationService
                 continue;
             }
 
+            if (($atual[$key] ?? '') === $value) {
+                continue;
+            }
+
             if ($this->configModel->saveConfig((int) $integration->id, $key, $value, $sensitive)) {
                 $saved[] = $key;
             }
         }
 
-        // Mudou credencial, o estado anterior de "conectado" não vale mais.
-        $this->integrationModel->update($integration->id, [
-            'status'            => AccountIntegrationModel::STATUS_PENDING,
-            'last_test_message' => null,
-        ]);
+        // Mudou credencial de verdade (não só preferência de sync, que passa
+        // por saveSettings): o estado anterior de "conectado" não vale mais.
+        // Sem o `if`, salvar QUALQUER coisa na tela (ex.: só "Máximo de
+        // fotos") já derrubava pra PENDING, porque o campo de credencial
+        // sensível sempre chega em branco (o painel nunca devolve o segredo
+        // ao navegador) e o form de configure.php submete os dois blocos
+        // juntos — o tenant perdia "Sincronizar agora" sem ter mexido em
+        // token nenhum.
+        if ($saved !== []) {
+            $this->integrationModel->update($integration->id, [
+                'status'            => AccountIntegrationModel::STATUS_PENDING,
+                'last_test_message' => null,
+            ]);
+        }
 
         return $saved;
     }
@@ -224,10 +253,21 @@ class IntegrationService
         return $this->configModel->getMaskedConfig((int) $integration->id);
     }
 
-    /** Desconecta: apaga credenciais e desliga. Os imóveis já importados ficam. */
+    /**
+     * Desconecta: apaga credenciais e desliga. Os imóveis já importados
+     * ficam — mas o VÍNCULO com a origem é apagado junto, e não só as
+     * credenciais: PropertyExternalRefModel::isManaged() só olha se existe
+     * vínculo, então sem apagá-lo o imóvel ficaria travado pra edição no
+     * admin PARA SEMPRE, sem nenhuma integração ativa capaz de voltar a
+     * atualizá-lo. O imóvel em si (linha de `properties`) nunca é tocado.
+     */
     public function disconnect(AccountIntegration $integration): void
     {
         $this->configModel->clearConfig((int) $integration->id);
+        $this->refModel
+            ->where('account_id', (int) $integration->account_id)
+            ->where('provider_code', (string) $integration->provider_code)
+            ->delete();
         $this->integrationModel->update($integration->id, [
             'is_active'         => false,
             'status'            => AccountIntegrationModel::STATUS_PENDING,
@@ -293,16 +333,19 @@ class IntegrationService
     /**
      * Descobre os de/para da origem e semeia os que ainda não existem.
      *
-     * Nunca sobrescreve linha existente — a escolha do tenant vale mais que o
-     * palpite (ver IntegrationMappingModel::seedSuggestion).
+     * Nunca sobrescreve a ESCOLHA do tenant (target_value/target_field) —
+     * só o rótulo (external_label) acompanha renomeação na origem.
      *
-     * @return array{category:int, characteristic:int} quantos foram criados
+     * @return array{category: array{found:int,new:int,updated:int}, characteristic: array{found:int,new:int,updated:int}}
      */
     public function seedMappings(AccountIntegration $integration, ?IntegrationProviderInterface $connector = null): array
     {
         $connector ??= $this->makeConnector($integration);
         $discovered  = $connector->discoverMappings();
-        $created     = ['category' => 0, 'characteristic' => 0];
+        $resumo      = [
+            'category'       => ['found' => 0, 'new' => 0, 'updated' => 0],
+            'characteristic' => ['found' => 0, 'new' => 0, 'updated' => 0],
+        ];
 
         foreach ([IntegrationMappingModel::KIND_CATEGORY, IntegrationMappingModel::KIND_CHARACTERISTIC] as $kind) {
             foreach ($discovered[$kind] ?? [] as $item) {
@@ -312,19 +355,23 @@ class IntegrationService
                     ? ['target_value' => SimobVocabulary::guessPropertyType($label)]
                     : ['target_field' => SimobVocabulary::guessTargetField($label)];
 
-                $inserted = $this->mappingModel->seedSuggestion((int) $integration->id, $kind, array_merge([
+                $outcome = $this->mappingModel->seedSuggestion((int) $integration->id, $kind, array_merge([
                     'external_id'    => (string) $item['external_id'],
                     'external_label' => $label,
                     'external_type'  => $item['external_type'] ?? null,
                 ], $guess));
 
-                if ($inserted) {
-                    $created[$kind]++;
+                $resumo[$kind]['found']++;
+
+                if ($outcome === IntegrationMappingModel::SEED_NEW) {
+                    $resumo[$kind]['new']++;
+                } elseif ($outcome === IntegrationMappingModel::SEED_UPDATED) {
+                    $resumo[$kind]['updated']++;
                 }
             }
         }
 
-        return $created;
+        return $resumo;
     }
 
     /**
@@ -411,12 +458,13 @@ class IntegrationService
             return TestResult::fail('Teste a conexão antes de ativar a sincronização automática.');
         }
 
-        $this->integrationModel->update($integration->id, [
-            'is_active' => $active,
-            'status'    => $active
-                ? AccountIntegrationModel::STATUS_CONNECTED
-                : AccountIntegrationModel::STATUS_PAUSED,
-        ]);
+        // `status` é saúde da CONEXÃO (testConnection já cuida dele) — não
+        // "ligado/pausado". Escrever STATUS_PAUSED aqui fazia isConnected()
+        // virar false, e então tanto reativar quanto "Sincronizar agora"
+        // batiam em "Teste a conexão antes de ativar/sincronizar" logo
+        // depois de pausar — o único jeito de sair dali era testar a conexão
+        // de novo, para uma credencial que nunca deixou de ser válida.
+        $this->integrationModel->update($integration->id, ['is_active' => $active]);
 
         return TestResult::ok($active ? 'Sincronização automática ativada.' : 'Sincronização automática pausada.');
     }

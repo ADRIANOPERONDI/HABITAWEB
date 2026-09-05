@@ -95,10 +95,32 @@ class AccountIntegrationModel extends Model
 
     public function markTested(int $id, bool $ok, string $message): bool
     {
-        return (bool) $this->update($id, [
+        $data = [
             'status'            => $ok ? self::STATUS_CONNECTED : self::STATUS_ERROR,
             'last_test_at'      => date('Y-m-d H:i:s'),
             'last_test_message' => mb_substr($message, 0, 500),
-        ]);
+        ];
+
+        // Primeiro teste bem-sucedido liga o sync automático sozinho — sem
+        // isso, o estado normal depois de configurar e testar é "conectado,
+        // mas is_active=false", e nem o sync automático nem o envio de leads
+        // (IntegrationOutboxService) fazem nada até o tenant achar, sozinho,
+        // um botão separado de "ativar" que a tela nem destaca.
+        //
+        // O sinal de "é o primeiro teste" é last_test_at, não last_sync_at:
+        // uma integração pode ser testada várias vezes sem nunca chegar a
+        // sincronizar. Reativar toda vez que is_active estiver falso faria
+        // uma pausa DELIBERADA do tenant durar até o próximo clique em
+        // "Testar conexão" — que ele aperta justamente pra conferir se ainda
+        // está tudo certo, não pra reativar nada.
+        if ($ok) {
+            $atual = $this->find($id);
+
+            if ($atual !== null && ! $atual->is_active && $atual->last_test_at === null) {
+                $data['is_active'] = true;
+            }
+        }
+
+        return (bool) $this->update($id, $data);
     }
 }

@@ -166,7 +166,19 @@ class PropertyController extends BaseController
             $payload['images'] = $this->ingestImages((int) $id, $images);
         }
 
-        return $this->respondSuccess($payload, 'Imóvel atualizado com sucesso.');
+        // Imóvel espelhado de integração (ver PropertyService::trySaveProperty):
+        // os campos gerenciados foram removidos do payload em silêncio antes
+        // de salvar — sem isto no retorno, uma chave que POSTASSE
+        // {"preco": 500000} num imóvel importado do Simob receberia 200 sem
+        // nenhum sinal de que o preço não mudou.
+        $message = 'Imóvel atualizado com sucesso.';
+
+        if (! empty($result['ignored_fields'])) {
+            $payload['ignored_fields'] = $result['ignored_fields'];
+            $message .= ' Campos sincronizados com uma integração externa foram ignorados.';
+        }
+
+        return $this->respondSuccess($payload, $message);
     }
 
     /**
@@ -200,8 +212,17 @@ class PropertyController extends BaseController
             return $property;
         }
 
-        if ($this->propertyService->deleteProperty((int) $id)) {
-            return $this->respondSuccess(['property_id' => (int) $id], 'Imóvel desativado com sucesso.');
+        // Imóvel espelhado de integração pausa em vez de apagar: o vínculo
+        // com a origem sobrevive, e sem isso o próximo sync não saberia que
+        // a exclusão foi tentada — o item simplesmente reapareceria.
+        $resultado = $this->propertyService->deleteOrPauseProperty((int) $id);
+
+        if ($resultado['success']) {
+            $mensagem = $resultado['paused']
+                ? 'Imóvel pausado — é espelhado de uma integração e não pode ser removido por aqui.'
+                : 'Imóvel desativado com sucesso.';
+
+            return $this->respondSuccess(['property_id' => (int) $id, 'paused' => $resultado['paused']], $mensagem);
         }
 
         return $this->respondError('Erro ao desativar imóvel.', 500, [], self::ERR_INTERNAL);

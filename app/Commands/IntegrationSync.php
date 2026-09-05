@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Libraries\Geo\NominatimGeocoder;
 use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationSyncRunModel;
 use App\Services\IntegrationSyncService;
@@ -52,7 +53,10 @@ class IntegrationSync extends BaseCommand
 
         CLI::write(sprintf('%d integração(ões) na fila.', count($integrations)), 'green');
 
-        $service  = new IntegrationSyncService();
+        // NominatimGeocoder explícito: o default do service é NullGeocoder
+        // (seguro pra suíte de testes) — este comando é o único chamador de
+        // produção, e é aqui que a geocodificação de verdade precisa ligar.
+        $service  = new IntegrationSyncService(geocoder: new NominatimGeocoder());
         $comErro  = 0;
 
         foreach ($integrations as $integration) {

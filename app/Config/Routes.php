@@ -186,6 +186,9 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
 
     $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1');
     $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit');
+    // Antes do resource: 'properties/bulk-status' casaria com o
+    // 'properties/(:segment)' de update/show do resource (first-match-wins).
+    $routes->post('properties/bulk-status', 'PropertyController::bulkStatus');
     $routes->resource('properties', ['controller' => 'PropertyController']);
     $routes->post('properties/(:num)/restore', 'PropertyController::restore/$1');
     $routes->get('properties/(:num)/closure-leads', 'PropertyController::getLeadsForClosure/$1');

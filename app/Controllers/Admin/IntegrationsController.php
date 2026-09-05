@@ -58,6 +58,11 @@ class IntegrationsController extends BaseController
             'settings'    => $integration->settings(),
             'unconfirmed' => $this->service->countUnconfirmed($integration),
             'synced'      => $this->service->countSyncedProperties($this->accountId(), $code),
+            // Imóvel importado entra como rascunho (initial_status): sem ver
+            // quantos estão parados nessa fila, o tenant não descobre que
+            // precisa publicá-los — e nem que existe um botão pra isso.
+            'drafts'      => model(\App\Models\PropertyExternalRefModel::class)
+                ->countDraftsFor($this->accountId(), $code),
             'lastRun'     => $runModel->lastFor((int) $integration->id),
         ]);
     }
@@ -250,18 +255,27 @@ class IntegrationsController extends BaseController
         }
 
         try {
-            $created = $this->service->seedMappings($integration);
+            $resumo = $this->service->seedMappings($integration);
         } catch (IntegrationException $e) {
             return $this->response->setJSON(['success' => false, 'message' => $e->getMessage()]);
         }
 
+        // "0 novas" na origem sozinho lê como falha — testConnection() já
+        // semeia sozinho a cada teste bem-sucedido, então redescobrir logo
+        // depois legitimamente não acha nada novo. Mostrar quantas foram
+        // ENCONTRADAS (não só as novas) deixa claro que a busca funcionou.
+        $formata = static fn (array $r, string $rotulo): string => sprintf(
+            '%d %s encontrada(s) (%d nova(s), %d atualizada(s))',
+            $r['found'],
+            $rotulo,
+            $r['new'],
+            $r['updated']
+        );
+
         return $this->response->setJSON([
             'success' => true,
-            'message' => sprintf(
-                '%d categoria(s) e %d característica(s) nova(s) encontrada(s).',
-                $created['category'],
-                $created['characteristic']
-            ),
+            'message' => $formata($resumo['category'], 'categoria(s)') . '; '
+                . $formata($resumo['characteristic'], 'característica(s)'),
         ]);
     }
 

@@ -77,7 +77,12 @@ class IntegrationOutboxService
             (string) $ref->provider_code
         );
 
-        if ($integration === null || ! $integration->is_active) {
+        // Gate por CONEXÃO (status), não por is_active: pausar o sync
+        // automático do CATÁLOGO (o toggle da tela) não pode silenciosamente
+        // parar de devolver leads pro CRM da imobiliária — são dois fluxos
+        // independentes, e um tenant que pausou a importação de imóveis
+        // ainda quer que o lead volte pra ele vender.
+        if ($integration === null || ! $integration->isConnected()) {
             return null;
         }
 
@@ -206,7 +211,22 @@ class IntegrationOutboxService
         }
 
         if ($result->success) {
-            $this->outbox->markSent((int) $item->id, $this->extractRef($result->details));
+            $externalRef = $this->extractRef($result->details);
+
+            // Log só quando NÃO reconhecemos um id (não em todo envio — isto
+            // rodaria a cada minuto, sempre): é o único jeito de descobrir o
+            // formato real de resposta de um conector novo (ou de uma versão
+            // nova da API) sem abrir uma issue pedindo o payload cru — sem
+            // token, sem header, só o corpo já decodificado.
+            if ($externalRef === null) {
+                log_message('debug', sprintf(
+                    '[IntegrationOutbox] item %d enviado sem id reconhecido na resposta: %s',
+                    $item->id,
+                    json_encode($result->details, JSON_UNESCAPED_UNICODE)
+                ));
+            }
+
+            $this->outbox->markSent((int) $item->id, $externalRef);
 
             return 'sent';
         }
@@ -216,6 +236,13 @@ class IntegrationOutboxService
             : 'failed';
     }
 
+    /**
+     * external_ref é VARCHAR(120) — sem um id reconhecido, guarda os
+     * primeiros 120 caracteres da resposta em vez de gravar null. É pouco
+     * pra diagnosticar tudo, mas já é mais do que "enviado, sem rastro
+     * nenhum do que a origem devolveu" quando o webhook de log (acima) não
+     * está visível pra quem está olhando o painel, só o banco.
+     */
     private function extractRef(array $details): ?string
     {
         $response = $details['response'] ?? null;
@@ -223,10 +250,14 @@ class IntegrationOutboxService
         if (is_array($response)) {
             $id = $response['id'] ?? $response[0]['id'] ?? null;
 
-            return $id === null ? null : (string) $id;
+            if ($id !== null) {
+                return (string) $id;
+            }
+
+            return $response === [] ? null : mb_substr(json_encode($response, JSON_UNESCAPED_UNICODE), 0, 120);
         }
 
-        return is_scalar($response) ? (string) $response : null;
+        return is_scalar($response) ? mb_substr((string) $response, 0, 120) : null;
     }
 
     /** Estado do envio de um lead, para o selo na tela. */

@@ -16,10 +16,12 @@ use App\Models\IntegrationSyncRunModel;
 use App\Models\PropertyExternalRefModel;
 use App\Models\PropertyModel;
 use App\Services\IntegrationService;
+use App\Libraries\Geo\NullGeocoder;
 use App\Services\IntegrationSyncService;
 use CodeIgniter\Test\DatabaseTestTrait;
 use Tests\Support\Factories\TenantFactory;
 use Tests\Support\Integrations\FakeConnector;
+use Tests\Support\Integrations\FakeGeocoder;
 use Tests\Support\Integrations\FakeIntegrationService;
 use Tests\Support\HabitawebTestCase;
 
@@ -60,7 +62,17 @@ final class IntegrationSyncTest extends HabitawebTestCase
 
         $connector = new FakeConnector($catalogo, $erro);
 
-        $sync = new IntegrationSyncService(new FakeIntegrationService($connector));
+        // NullGeocoder de propósito: a maioria dos testes deste arquivo não
+        // tem nada a ver com coordenada, e sem isso o default de produção
+        // (NominatimGeocoder) bateria rede de verdade, com o throttle de
+        // ~1s por chamada, em toda criação/atualização de imóvel sintético
+        // daqui. Os testes que testam geocoding de verdade (ver seção
+        // "coordenadas" abaixo) montam o IntegrationSyncService na mão, com
+        // um FakeGeocoder.
+        $sync = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService($connector),
+            geocoder: new NullGeocoder(),
+        );
 
         return [$sync, $service->find((int) $tenant['account']->id, 'simob'), $tenant, $connector];
     }
@@ -208,6 +220,55 @@ final class IntegrationSyncTest extends HabitawebTestCase
         ]);
     }
 
+    /**
+     * status sai de MANAGED_FIELDS (IntegrationService) por decisão de
+     * produto: a origem não tem "rascunho", quem decide isso é o tenant. A
+     * criação ainda aplica initial_status (senão todo imóvel nasceria sem
+     * status nenhum); a partir daí, uma troca manual sobrevive a qualquer
+     * atualização de conteúdo vinda do catálogo.
+     */
+    public function testStatusInicialSoNaCriacaoEAlteracaoManualSobrevive(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, [
+            'finalidades'    => [1, 2],
+            'initial_status' => 'DRAFT',
+            'import_images'  => false,
+        ]);
+
+        $sync = new IntegrationSyncService(new FakeIntegrationService(
+            new FakeConnector([$this->property('100', ['status' => 'DRAFT'])])
+        ));
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->seeInDatabase('properties', [
+            'account_id' => $tenant['account']->id,
+            'status'     => 'DRAFT',
+        ]);
+
+        $propertyModel = model(PropertyModel::class);
+        $propertyId    = $propertyModel->where('account_id', $tenant['account']->id)->first()->id;
+        $propertyModel->update($propertyId, ['status' => 'ACTIVE']);
+
+        // Segunda rodada: conteúdo mudou (força update), status da origem
+        // continua vindo como DRAFT — não pode voltar a sobrescrever.
+        $sync2 = new IntegrationSyncService(new FakeIntegrationService(new FakeConnector([
+            $this->property('100', ['status' => 'DRAFT', 'preco' => 399000], [], '2026-08-05 09:00:00'),
+        ])));
+        $result = $sync2->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $result->updated);
+        $this->seeInDatabase('properties', [
+            'id'     => $propertyId,
+            'status' => 'ACTIVE',
+            'preco'  => 399000,
+        ]);
+    }
+
     // ----------------------------------------------------------- resiliência
 
     /**
@@ -231,6 +292,46 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $this->assertSame(2, model(PropertyModel::class)
             ->where('account_id', $tenant['account']->id)
             ->countAllResults());
+
+        // O item que falhou grava vínculo mesmo sem virar imóvel: property_id
+        // nulo, com o motivo em last_error — é o que evita rebuscar o
+        // detalhe pra sempre (ver o teste seguinte).
+        $ref = model(PropertyExternalRefModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->where('external_id', '101')
+            ->first();
+
+        $this->assertNotNull($ref);
+        $this->assertNull($ref->property_id);
+        $this->assertNotNull($ref->last_error);
+    }
+
+    /**
+     * O item que falhou validação numa rodada não pode custar uma busca de
+     * detalhe TODA rodada seguinte, enquanto a origem não mudar nada nele —
+     * o vínculo gravado com property_id nulo já basta pro atalho de
+     * "hash igual" reconhecer que nada mudou.
+     */
+    public function testItemComErroDeValidacaoNaoERebuscadoSeNaoMudou(): void
+    {
+        $itemInvalido = $this->property('101', ['cidade' => '', 'bairro' => '']);
+
+        [$sync, $integration] = $this->syncService([$itemInvalido]);
+        $sync->run($integration);
+
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+
+        // Mesmo externalUpdatedAt e mesmo conteúdo: se o vínculo não tivesse
+        // sido gravado na primeira rodada, isUnchanged() não teria como
+        // detectar isso, e o conector buscaria o detalhe de novo.
+        $connector2 = new FakeConnector([$itemInvalido]);
+        $sync2      = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService($connector2),
+            geocoder: new NullGeocoder(),
+        );
+        $sync2->run($integration);
+
+        $this->assertSame(0, $connector2->resolveCalls, 'item inalterado não deveria buscar detalhe de novo');
     }
 
     /**
@@ -268,6 +369,65 @@ final class IntegrationSyncTest extends HabitawebTestCase
             ->countAllResults());
     }
 
+    /**
+     * Categoria sem de/para confirmado conta como "ignorado" — não é erro
+     * (não devia virar PARTIAL na rodada) nem imóvel pausado (nunca existiu).
+     */
+    public function testItemIgnoradoPorMapeamentoContaComoIgnoradoNaoComoErro(): void
+    {
+        [$sync, $integration, $tenant] = $this->syncService([
+            ExternalProperty::ignored('102', 'categoria não mapeada: SEDE ESPORTIVA'),
+        ]);
+
+        $result = $sync->run($integration);
+
+        $this->assertSame(1, $result->ignored);
+        $this->assertSame(0, $result->errors);
+        $this->assertSame(0, $result->created);
+        $this->assertSame(IntegrationSyncRunModel::STATUS_SUCCESS, $result->status());
+        $this->assertSame(0, model(PropertyModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->countAllResults());
+    }
+
+    /**
+     * A chave do vínculo é o externalId da LISTAGEM (o que findRef() usou pra
+     * localizar o item no início de syncItem()) — nunca o do ExternalProperty
+     * resolvido, que o mapper monta preferindo o id do DETALHE. Gravar com uma
+     * chave e buscar com outra faria toda rodada seguinte não achar o vínculo,
+     * recriar o imóvel, e órfão o primeiro (ver SimobPropertyMapper::mapDetail).
+     */
+    public function testVinculoUsaOIdDaListagem(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, [
+            'finalidades'    => [1, 2],
+            'initial_status' => 'ACTIVE',
+            'import_images'  => false,
+        ]);
+
+        $connector = new FakeConnector(
+            catalogo: [$this->property('id-do-detalhe')],
+            listingIdOverride: [0 => 'id-da-listagem'],
+        );
+
+        $sync = new IntegrationSyncService(new FakeIntegrationService($connector));
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->seeInDatabase('property_external_refs', [
+            'account_id'  => $tenant['account']->id,
+            'external_id' => 'id-da-listagem',
+        ]);
+        $this->dontSeeInDatabase('property_external_refs', [
+            'account_id'  => $tenant['account']->id,
+            'external_id' => 'id-do-detalhe',
+        ]);
+    }
+
     // ---------------------------------------------------------- desaparecidos
 
     /**
@@ -300,6 +460,43 @@ final class IntegrationSyncTest extends HabitawebTestCase
         $property = model(PropertyModel::class)->find($sumido->property_id);
         $this->assertNotNull($property, 'não pode ter sido apagado');
         $this->assertSame('PAUSED', $property->status);
+    }
+
+    /**
+     * `--full` faz o sync varrer o catálogo inteiro mesmo quando NÃO é a
+     * primeira rodada (last_sync_at já preenchido) — e por isso PRECISA
+     * pausar quem sumiu, com a mesma confiança de uma primeira rodada. O bug
+     * antigo (`empty($integration->last_sync_at)` sozinho) fazia todo --full
+     * depois da primeira rodada nunca detectar sumido.
+     */
+    public function testSyncFullPausaQuemSumiuMesmoNaoSendoAPrimeiraRodada(): void
+    {
+        [$sync, $integration, $tenant] = $this->syncService([
+            $this->property('100'),
+            $this->property('101'),
+        ]);
+
+        $sync->run($integration);
+
+        // last_sync_at preenchido: esta NÃO é a primeira rodada.
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+        $this->assertNotNull($integration->last_sync_at);
+
+        $sync2 = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([
+                $this->property('100', [], [], '2026-08-09 10:00:00'),
+            ])),
+            geocoder: new NullGeocoder(),
+        );
+        $result = $sync2->run($integration, IntegrationSyncRunModel::TRIGGER_MANUAL, forceFull: true);
+
+        $this->assertSame(1, $result->paused);
+
+        $sumidoAindaExiste = model(PropertyModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->where('status', 'PAUSED')
+            ->countAllResults();
+        $this->assertSame(1, $sumidoAindaExiste);
     }
 
     /**
@@ -360,14 +557,120 @@ final class IntegrationSyncTest extends HabitawebTestCase
         };
 
         $sync = new IntegrationSyncService(
-            new FakeIntegrationService(new FakeConnector($catalogo)),
-            $propertyService
+            integrationService: new FakeIntegrationService(new FakeConnector($catalogo)),
+            propertyService: $propertyService,
+            geocoder: new NullGeocoder(),
         );
 
         $result = $sync->run($service->find((int) $tenant['account']->id, 'simob'));
 
         $this->assertSame(1, $result->images);
         $this->assertSame(['https://203.0.113.10/cdn/imovelImages/100/a.jpg'], $propertyService->urls);
+    }
+
+    // --------------------------------------------------------- coordenadas
+
+    /**
+     * A origem (Simob) não fornece coordenada de verdade — o mapper nunca
+     * preenche latitude/longitude sozinho. É o sync que geocodifica pelo
+     * endereço, depois do upsert, quando o imóvel ainda não tem coordenada.
+     */
+    public function testGeocodificaImovelNovoSemCoordenadas(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, ['finalidades' => [1, 2], 'initial_status' => 'ACTIVE', 'import_images' => false]);
+
+        $geocoder = new FakeGeocoder(['lat' => -27.5, 'lng' => -52.1]);
+
+        $sync = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([$this->property('100')])),
+            geocoder: $geocoder,
+        );
+
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $geocoder->calls);
+        $this->seeInDatabase('properties', [
+            'account_id' => $tenant['account']->id,
+            'latitude'   => -27.5,
+            'longitude'  => -52.1,
+        ]);
+    }
+
+    /** Imóvel que já tem coordenada não bate o geocoder de novo a cada atualização. */
+    public function testNaoGeocodificaDeNovoQuandoJaTemCoordenada(): void
+    {
+        $tenant      = (new TenantFactory())->create();
+        $service     = new IntegrationService();
+        $integration = $service->findOrCreate((int) $tenant['account']->id, 'simob');
+        $service->saveCredentials($integration, ['base_url' => 'https://203.0.113.10', 'token' => 'x']);
+        $service->saveSettings($integration, ['finalidades' => [1, 2], 'initial_status' => 'ACTIVE', 'import_images' => false]);
+
+        $geocoder = new FakeGeocoder();
+
+        $sync = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([$this->property('100')])),
+            geocoder: $geocoder,
+        );
+        $sync->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $geocoder->calls);
+
+        // Conteúdo muda (força update), a origem continua sem mandar coordenada.
+        $sync2 = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([
+                $this->property('100', ['preco' => 399000], [], '2026-08-05 09:00:00'),
+            ])),
+            geocoder: $geocoder,
+        );
+        $sync2->run($service->find((int) $tenant['account']->id, 'simob'));
+
+        $this->assertSame(1, $geocoder->calls, 'coordenada já salva não deveria geocodificar de novo');
+    }
+
+    /**
+     * O teto de itens da rodada só pode custar contra quem de fato exigiu
+     * uma busca de detalhe — um catálogo de milhares de itens quase todos
+     * inalterados não pode travar antes de alcançar o punhado que precisava
+     * de trabalho de verdade.
+     */
+    public function testLimiteDaRodadaNaoContaOsPulados(): void
+    {
+        [$sync, $integration, $tenant] = $this->syncService([
+            $this->property('100'),
+            $this->property('101'),
+            $this->property('102'),
+        ]);
+        $sync->run($integration);
+
+        $integration = model(AccountIntegrationModel::class)->find($integration->id);
+
+        // 100 e 101 vêm com o MESMO updatedAt de antes (pulam pelo atalho
+        // barato); só 102 mudou. Com teto 1, se pulados contassem, o sync
+        // pararia antes de alcançar o 102.
+        $sync2 = new IntegrationSyncService(
+            integrationService: new FakeIntegrationService(new FakeConnector([
+                $this->property('100'),
+                $this->property('101'),
+                $this->property('102', ['preco' => 500000], [], '2026-08-09 10:00:00'),
+            ])),
+            geocoder: new NullGeocoder(),
+        );
+        $sync2->setMaxItemsPerRun(1);
+
+        $result = $sync2->run($integration);
+
+        $this->assertSame(2, $result->skipped);
+        $this->assertSame(1, $result->updated);
+        $this->assertSame(0, $result->errors, 'não devia ter estourado o teto');
+
+        $this->seeInDatabase('properties', [
+            'account_id' => $tenant['account']->id,
+            'preco'      => 500000,
+        ]);
     }
 
     // ---------------------------------------------------------------- trava

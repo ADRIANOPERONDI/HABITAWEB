@@ -35,15 +35,42 @@ final class SimobPropertyMapperTest extends TestCase
         return new SimobPropertyMapper(self::BASE, $categories, $characteristics, $settings);
     }
 
+    /** Categoria genérica (id 1 -> CASA), pronta pra usar no payload sintético. */
+    private const CATEGORIA_GENERICA = ['id' => 1, 'descricao' => 'CASA'];
+
+    /**
+     * mapper() com a categoria genérica já confirmada — pra testes que não
+     * têm nada a ver com resolução de categoria. resolveTipoImovel() agora
+     * exige de/para confirmado (ver testCategoriaSemDeParaNaoViraCasa);
+     * sem isso, todo payload sintético sem 'categoria'/'idCategoria' viraria
+     * "ignorado" e nenhuma das outras asserções do teste faria sentido.
+     */
+    private function mapperGenerico(array $characteristics = [], array $settings = []): SimobPropertyMapper
+    {
+        return $this->mapper(
+            ['1' => $this->mapping(['external_id' => '1', 'target_value' => 'CASA'])],
+            $characteristics,
+            $settings
+        );
+    }
+
     // ------------------------------------------------------------- fixtures
 
     public function testMapeiaODetalheRealDaDocumentacao(): void
     {
         $detail = $this->fixture('detalhe_imovel')['result'][0];
 
-        $p = $this->mapper()->mapDetail($detail);
+        // A categoria da fixture (26 = LOTE URBANO) precisa de um de/para
+        // confirmado: sem mapping em tempo de sync, categoria não decide
+        // sozinha o tipo_imovel (ver testCategoriaSemDeParaNaoViraCasa).
+        $mapper = $this->mapper([
+            '26' => $this->mapping(['external_id' => '26', 'target_value' => 'LOTE']),
+        ]);
+
+        $p = $mapper->mapDetail($detail);
 
         $this->assertNotNull($p);
+        $this->assertNull($p->ignoreReason);
         $this->assertSame('3376', $p->externalId);
         $this->assertSame('3364', $p->externalCode);
 
@@ -57,7 +84,6 @@ final class SimobPropertyMapperTest extends TestCase
         $this->assertSame('RUA A', $p->fields['rua']);
         $this->assertSame('89900000', $p->fields['cep']);
 
-        // "LOTE URBANO" sem de/para cadastrado cai no palpite por nome.
         $this->assertSame('LOTE', $p->fields['tipo_imovel']);
 
         // O código na frente do nome não interessa a quem navega no portal.
@@ -72,7 +98,11 @@ final class SimobPropertyMapperTest extends TestCase
     {
         $detail = $this->fixture('detalhe_imovel')['result'][0];
 
-        $p = $this->mapper()->mapDetail($detail);
+        $mapper = $this->mapper([
+            '26' => $this->mapping(['external_id' => '26', 'target_value' => 'LOTE']),
+        ]);
+
+        $p = $mapper->mapDetail($detail);
 
         $this->assertStringContainsString('LOTEAMENTO: Santa Marta', $p->fields['descricao']);
         $this->assertStringContainsString('PROXIMIDADE: Cerâmica Wunsch', $p->fields['descricao']);
@@ -86,10 +116,11 @@ final class SimobPropertyMapperTest extends TestCase
      */
     public function testAreaDaEdificacaoVaiParaAreaConstruida(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'          => '42',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'São Miguel do Oeste',
+            'categoria'   => self::CATEGORIA_GENERICA,
             'caracteristicas' => [
                 ['id' => 28885, 'descricao' => 'ÁREA DA EDIFICAÇÃO EM M²', 'valor' => '174', 'tipo' => 4],
             ],
@@ -102,7 +133,11 @@ final class SimobPropertyMapperTest extends TestCase
     {
         $detail = $this->fixture('detalhe_imovel')['result'][0];
 
-        $p = $this->mapper()->mapDetail($detail);
+        $mapper = $this->mapper([
+            '26' => $this->mapping(['external_id' => '26', 'target_value' => 'LOTE']),
+        ]);
+
+        $p = $mapper->mapDetail($detail);
 
         $this->assertCount(1, $p->images);
         $this->assertSame(
@@ -116,8 +151,12 @@ final class SimobPropertyMapperTest extends TestCase
     {
         $item = $this->fixture('filtro_imoveis')['result'][0];
 
+        $mapper = $this->mapper([
+            '17' => $this->mapping(['external_id' => '17', 'target_value' => 'APARTAMENTO']),
+        ]);
+
         // Sem configVenda/configLocacao, o tipo vem da finalidade da listagem.
-        $p = $this->mapper()->mapDetail($item, $item);
+        $p = $mapper->mapDetail($item, $item);
 
         $this->assertNotNull($p);
         $this->assertSame('ALUGUEL', $p->fields['tipo_negocio'], 'finalidade 1 = locação');
@@ -135,7 +174,9 @@ final class SimobPropertyMapperTest extends TestCase
     {
         $item = $this->fixture('destaques')['result'][0];
 
-        $mapper = $this->mapper([], [
+        $mapper = $this->mapper([
+            '17' => $this->mapping(['external_id' => '17', 'target_value' => 'APARTAMENTO']),
+        ], [
             '41' => $this->mapping(['external_id' => '41', 'target_field' => 'quartos']),
         ]);
 
@@ -159,12 +200,13 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testImovelNasDuasConfiguracoesViraVendaAluguel(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'            => '10',
             'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '450000.00'],
             'configLocacao' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '2500.00'],
             'cidade'        => 'Chapecó',
             'bairro'        => 'Centro',
+            'categoria'     => self::CATEGORIA_GENERICA,
         ]);
 
         $this->assertSame('VENDA_ALUGUEL', $p->fields['tipo_negocio']);
@@ -179,11 +221,12 @@ final class SimobPropertyMapperTest extends TestCase
      */
     public function testConfiguracaoInativaNaoConta(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'            => '11',
             'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => true, 'valor' => '450000.00'],
             'configLocacao' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '2500.00'],
             'cidade'        => 'Chapecó',
+            'categoria'     => self::CATEGORIA_GENERICA,
         ]);
 
         $this->assertSame('ALUGUEL', $p->fields['tipo_negocio']);
@@ -192,10 +235,11 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testNaoLiberadoParaPortalNaoConta(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'          => '12',
             'configVenda' => ['disponibilizarPortal' => false, 'inativo' => false, 'valor' => '450000.00'],
             'cidade'      => 'Chapecó',
+            'categoria'   => self::CATEGORIA_GENERICA,
         ]);
 
         $this->assertNull($p, 'sem nenhuma finalidade válida, o imóvel não entra');
@@ -203,11 +247,12 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testImovelComPrevisaoDeSaidaEntraPausado(): void
     {
-        $p = $this->mapper([], [], ['initial_status' => 'ACTIVE'])->mapDetail([
+        $p = $this->mapperGenerico([], ['initial_status' => 'ACTIVE'])->mapDetail([
             'id'            => '13',
             'configLocacao' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1200.00'],
             'dataPrevSaida' => '2026-09-30',
             'cidade'        => 'Chapecó',
+            'categoria'     => self::CATEGORIA_GENERICA,
         ]);
 
         $this->assertSame('PAUSED', $p->fields['status']);
@@ -215,10 +260,11 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testStatusInicialDoTenantERespeitado(): void
     {
-        $p = $this->mapper([], [], ['initial_status' => 'ACTIVE'])->mapDetail([
+        $p = $this->mapperGenerico([], ['initial_status' => 'ACTIVE'])->mapDetail([
             'id'          => '14',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1.00'],
             'cidade'      => 'Chapecó',
+            'categoria'   => self::CATEGORIA_GENERICA,
         ]);
 
         $this->assertSame('ACTIVE', $p->fields['status']);
@@ -226,7 +272,7 @@ final class SimobPropertyMapperTest extends TestCase
 
     // ----------------------------------------------------- de/para do tenant
 
-    public function testDeParaDeCategoriaTemPrecedenciaSobreOPalpite(): void
+    public function testDeParaDeCategoriaResolveOTipoDoImovel(): void
     {
         $mapper = $this->mapper([
             '26' => $this->mapping(['external_id' => '26', 'target_value' => 'TERRENO']),
@@ -235,7 +281,69 @@ final class SimobPropertyMapperTest extends TestCase
         $detail = $this->fixture('detalhe_imovel')['result'][0];
         $p      = $mapper->mapDetail($detail);
 
-        $this->assertSame('TERRENO', $p->fields['tipo_imovel'], 'palpite diria LOTE');
+        $this->assertSame('TERRENO', $p->fields['tipo_imovel']);
+    }
+
+    /**
+     * Categoria sem NENHUMA linha em integration_mappings (nunca vista,
+     * nunca descoberta): o item é ignorado, não adivinhado por nome. O
+     * palpite (SimobVocabulary::guessPropertyType) só existe como SUGESTÃO
+     * dentro de IntegrationService::seedMappings(), pra o tenant confirmar
+     * na tela — decidir o tipo do imóvel sozinho, em tempo de sync, é
+     * exatamente o que fazia "SEDE ESPORTIVA" virar CASA em silêncio.
+     */
+    public function testCategoriaSemDeParaNaoViraCasa(): void
+    {
+        $p = $this->mapper()->mapDetail([
+            'id'          => '70',
+            'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
+            'cidade'      => 'Chapecó',
+            'categoria'   => ['id' => 999, 'descricao' => 'SEDE ESPORTIVA'],
+        ]);
+
+        $this->assertNotNull($p);
+        $this->assertSame([], $p->fields);
+        $this->assertSame('categoria não mapeada: SEDE ESPORTIVA', $p->ignoreReason);
+    }
+
+    /**
+     * "— Não importar —" na tela de mapeamentos grava a linha com
+     * target_value vazio — é a escolha explícita do tenant, e tem que valer
+     * tanto quanto uma categoria nunca vista.
+     */
+    public function testCategoriaMarcadaComoNaoImportarEIgnorada(): void
+    {
+        $mapper = $this->mapper([
+            '26' => $this->mapping(['external_id' => '26', 'target_value' => null]),
+        ]);
+
+        $p = $mapper->mapDetail($this->fixture('detalhe_imovel')['result'][0]);
+
+        $this->assertNotNull($p);
+        $this->assertNotNull($p->ignoreReason);
+    }
+
+    /**
+     * configVenda/configLocacao PRESENTES mas recusados (inativo, ou fora do
+     * portal) não podem cair pro valor/finalidade da listagem — isso
+     * ressuscitaria uma finalidade que a própria imobiliária já desativou no
+     * Simob. Só a AUSÊNCIA total das duas configs cai pro palpite da listagem
+     * (a doc do Simob avisa que "Dados Imóvel" nem sempre está online).
+     */
+    public function testPortalDesabilitadoNaoCaiNoValorDaListagem(): void
+    {
+        $p = $this->mapperGenerico()->mapDetail(
+            [
+                'id'          => '71',
+                'configVenda' => ['disponibilizarPortal' => false, 'inativo' => false, 'valor' => '1'],
+                'cidade'      => 'Chapecó',
+                'categoria'   => self::CATEGORIA_GENERICA,
+            ],
+            // Listagem diz que era pra estar à venda por R$ 999999 — não pode vazar.
+            ['finalidade' => 2, 'valor' => '999999.00']
+        );
+
+        $this->assertNull($p, 'config presente mas recusada não cai pro palpite da listagem');
     }
 
     /**
@@ -244,7 +352,9 @@ final class SimobPropertyMapperTest extends TestCase
      */
     public function testCaracteristicaMapeadaParaNadaNaoVoltaPeloPalpite(): void
     {
-        $mapper = $this->mapper([], [
+        $mapper = $this->mapper([
+            '1' => $this->mapping(['external_id' => '1', 'target_value' => 'CASA']),
+        ], [
             '41' => $this->mapping(['external_id' => '41', 'target_field' => null]),
         ]);
 
@@ -252,6 +362,7 @@ final class SimobPropertyMapperTest extends TestCase
             'id'          => '20',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
+            'categoria'   => self::CATEGORIA_GENERICA,
             'caracteristicas' => [
                 ['id' => 41, 'descricao' => 'DORMITÓRIO(S)', 'valor' => '3', 'tipo' => 3],
             ],
@@ -268,10 +379,11 @@ final class SimobPropertyMapperTest extends TestCase
      */
     public function testCaracteristicaDesconhecidaUsaOPalpite(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'          => '21',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
+            'categoria'   => self::CATEGORIA_GENERICA,
             'caracteristicas' => [
                 ['id' => 999, 'descricao' => 'Vaga de garagem', 'valor' => '2', 'tipo' => 3],
             ],
@@ -287,7 +399,9 @@ final class SimobPropertyMapperTest extends TestCase
      */
     public function testConverteOValorConformeAColunaDestino(string $campo, mixed $valor, int $tipo, mixed $esperado): void
     {
-        $mapper = $this->mapper([], [
+        $mapper = $this->mapper([
+            '9' => $this->mapping(['external_id' => '9', 'target_value' => 'CASA']),
+        ], [
             '1' => $this->mapping(['external_id' => '1', 'target_field' => $campo]),
         ]);
 
@@ -295,6 +409,7 @@ final class SimobPropertyMapperTest extends TestCase
             'id'          => '30',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
+            'categoria'   => ['id' => 9, 'descricao' => 'CASA'],
             'caracteristicas' => [['id' => 1, 'descricao' => 'X', 'valor' => $valor, 'tipo' => $tipo]],
         ]);
 
@@ -325,7 +440,9 @@ final class SimobPropertyMapperTest extends TestCase
      */
     public function testValorNegativoEmAreaEDescartado(): void
     {
-        $mapper = $this->mapper([], [
+        $mapper = $this->mapper([
+            '9' => $this->mapping(['external_id' => '9', 'target_value' => 'CASA']),
+        ], [
             '1' => $this->mapping(['external_id' => '1', 'target_field' => 'area_total']),
         ]);
 
@@ -333,6 +450,7 @@ final class SimobPropertyMapperTest extends TestCase
             'id'          => '31',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
+            'categoria'   => ['id' => 9, 'descricao' => 'CASA'],
             'caracteristicas' => [['id' => 1, 'descricao' => 'Área', 'valor' => '-50', 'tipo' => 4]],
         ]);
 
@@ -349,10 +467,11 @@ final class SimobPropertyMapperTest extends TestCase
             $imagens[] = ['baseNomeImagem' => "img{$i}", 'extensao' => 'jpg', 'posicao' => $i];
         }
 
-        $p = $this->mapper([], [], ['max_images' => 3])->mapDetail([
+        $p = $this->mapperGenerico([], ['max_images' => 3])->mapDetail([
             'id'            => '40',
             'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'        => 'Chapecó',
+            'categoria'     => self::CATEGORIA_GENERICA,
             'baseUrlImagem' => 'arquivos_imobiliaria/imobiliaria_1/imovel_40',
             'imagens'       => $imagens,
         ]);
@@ -365,10 +484,11 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testImagemSemNomeOuExtensaoEIgnorada(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'            => '41',
             'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'        => 'Chapecó',
+            'categoria'     => self::CATEGORIA_GENERICA,
             'baseUrlImagem' => 'arquivos_imobiliaria/imobiliaria_1/imovel_41',
             'imagens'       => [
                 ['baseNomeImagem' => '', 'extensao' => 'jpg'],
@@ -389,8 +509,9 @@ final class SimobPropertyMapperTest extends TestCase
     {
         $detail = $this->fixture('detalhe_imovel')['result'][0];
 
-        $a = $this->mapper()->mapDetail($detail);
-        $b = $this->mapper()->mapDetail($detail);
+        $categoria = ['26' => $this->mapping(['external_id' => '26', 'target_value' => 'LOTE'])];
+        $a = $this->mapper($categoria)->mapDetail($detail);
+        $b = $this->mapper($categoria)->mapDetail($detail);
 
         $this->assertSame($a->images[0]->url, $b->images[0]->url);
         $this->assertSame($a->contentHash(), $b->contentHash());
@@ -400,27 +521,73 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testUfInvalidaEDescartadaEmVezDeQuebrarAValidacao(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'          => '50',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
+            'categoria'   => self::CATEGORIA_GENERICA,
             'uf'          => 'Santa Catarina',
         ]);
 
         $this->assertArrayNotHasKey('estado', $p->fields, 'validatePropertyData exige exatamente 2 caracteres');
     }
 
-    public function testLatitudeELongitudeDoEnderecoDetalhado(): void
+    /**
+     * 'endereco' é o NOME DA RUA (string) no payload real — nunca uma
+     * estrutura com 'localizacao' aninhada. Esse formato nunca existiu contra
+     * a API de verdade; nenhuma coordenada pode vir daqui.
+     */
+    public function testEnderecoComoStringNaoProduzCoordenada(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $p = $this->mapperGenerico()->mapDetail([
             'id'          => '51',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
-            'endereco'    => ['localizacao' => ['latitude' => '-27.1022939', 'longitude' => '-52.6129464']],
+            'categoria'   => self::CATEGORIA_GENERICA,
+            'endereco'    => 'RUA A',
         ]);
 
-        $this->assertSame(-27.1022939, $p->fields['latitude']);
-        $this->assertSame(-52.6129464, $p->fields['longitude']);
+        $this->assertArrayNotHasKey('latitude', $p->fields);
+        $this->assertArrayNotHasKey('longitude', $p->fields);
+    }
+
+    /**
+     * @dataProvider linksDoGoogleMaps
+     */
+    public function testCoordenadasDoLinkGoogleMaps(string $link, ?float $lat, ?float $lng): void
+    {
+        $p = $this->mapperGenerico()->mapDetail([
+            'id'            => '52',
+            'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
+            'cidade'        => 'Chapecó',
+            'categoria'     => self::CATEGORIA_GENERICA,
+            'linkGoogleMaps' => $link,
+        ]);
+
+        $this->assertSame($lat, $p->fields['latitude'] ?? null);
+        $this->assertSame($lng, $p->fields['longitude'] ?? null);
+    }
+
+    public static function linksDoGoogleMaps(): array
+    {
+        return [
+            'query string ?q='   => ['https://maps.google.com/?q=-27.1022939,-52.6129464', -27.1022939, -52.6129464],
+            'formato /@lat,lng'  => ['https://www.google.com/maps/@-27.1022939,-52.6129464,17z', -27.1022939, -52.6129464],
+            'par !3d/!4d do link de compartilhar' => [
+                'https://www.google.com/maps/place/X/@-27.1,-52.6,17z/data=!3d-27.1022939!4d-52.6129464',
+                -27.1022939,
+                -52.6129464,
+            ],
+            // O link REAL que a Giusti manda: busca por endereço em texto,
+            // sem nenhuma coordenada — é exatamente por isso que o parser
+            // sozinho não resolve o problema (ver NominatimGeocoder).
+            'link de endereço em texto, sem coordenada' => [
+                'https://www.google.com.br/maps/place/RUA HELIO WASSUN 160 CENTRO SÃO MIGUEL DO OESTE, 89900000',
+                null,
+                null,
+            ],
+            'sem link nenhum' => ['', null, null],
+        ];
     }
 
     public function testItemSemIdEDescartado(): void
@@ -431,7 +598,11 @@ final class SimobPropertyMapperTest extends TestCase
 
     public function testTituloCaiParaTipoBairroCidadeQuandoNaoHaNome(): void
     {
-        $p = $this->mapper()->mapDetail([
+        $mapper = $this->mapper([
+            '1' => $this->mapping(['external_id' => '1', 'target_value' => 'APARTAMENTO']),
+        ]);
+
+        $p = $mapper->mapDetail([
             'id'          => '60',
             'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
             'cidade'      => 'Chapecó',
