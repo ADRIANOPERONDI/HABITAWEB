@@ -71,6 +71,9 @@ final class SimobVocabulary
         'area do imovel'      => 'area_total',
         'area construida'     => 'area_construida',
         'area edificada'      => 'area_construida',
+        // "ÁREA DA EDIFICAÇÃO EM M²" é o rótulo real usado por pelo menos uma
+        // imobiliária (Giusti) — nenhum fragmento acima batia com ele.
+        'area da edificacao'  => 'area_construida',
         'area total edif'     => 'area_construida',
         'area privativa'      => 'area_privativa',
         'area util'           => 'area_privativa',

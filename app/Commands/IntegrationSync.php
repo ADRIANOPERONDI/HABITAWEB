@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Libraries\Geo\NominatimGeocoder;
 use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationSyncRunModel;
 use App\Services\IntegrationSyncService;
@@ -52,7 +53,10 @@ class IntegrationSync extends BaseCommand
 
         CLI::write(sprintf('%d integração(ões) na fila.', count($integrations)), 'green');
 
-        $service  = new IntegrationSyncService();
+        // NominatimGeocoder explícito: o default do service é NullGeocoder
+        // (seguro pra suíte de testes) — este comando é o único chamador de
+        // produção, e é aqui que a geocodificação de verdade precisa ligar.
+        $service  = new IntegrationSyncService(geocoder: new NominatimGeocoder());
         $comErro  = 0;
 
         foreach ($integrations as $integration) {
@@ -61,7 +65,16 @@ class IntegrationSync extends BaseCommand
             try {
                 CLI::write("→ {$rotulo}...");
 
-                $result = $service->run($integration, IntegrationSyncRunModel::TRIGGER_CRON, $full);
+                // "Sincronizar agora" do painel só marca a prioridade
+                // (AccountIntegrationModel::dueForSync()); quem roda de fato é
+                // esta mesma passada do cron, um pouco mais cedo. O trigger
+                // registrado reflete o pedido original, pra manter o
+                // histórico em /admin/integracoes/{code}/execucoes legível.
+                $trigger = $integration->sync_priority_requested_at !== null
+                    ? IntegrationSyncRunModel::TRIGGER_MANUAL
+                    : IntegrationSyncRunModel::TRIGGER_CRON;
+
+                $result = $service->run($integration, $trigger, $full);
 
                 CLI::write('  ' . $result->humanSummary(), $result->errors > 0 ? 'yellow' : 'green');
 

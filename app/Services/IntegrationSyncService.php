@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Entities\AccountIntegration;
+use App\Libraries\Geo\GeocoderInterface;
+use App\Libraries\Geo\NullGeocoder;
 use App\Libraries\Integrations\Dto\CatalogItem;
 use App\Libraries\Integrations\Dto\ExternalProperty;
 use App\Libraries\Integrations\Dto\SyncCursor;
@@ -11,6 +13,7 @@ use App\Libraries\Integrations\Exceptions\AuthException;
 use App\Libraries\Integrations\Exceptions\IntegrationException;
 use App\Libraries\Integrations\Exceptions\RateLimitException;
 use App\Libraries\Integrations\IntegrationProviderInterface;
+use App\Libraries\Integrations\Simob\SimobProvider;
 use App\Models\AccountIntegrationModel;
 use App\Models\IntegrationSyncRunModel;
 use App\Models\PropertyExternalRefModel;
@@ -34,11 +37,34 @@ use App\Models\PropertyModel;
  */
 class IntegrationSyncService
 {
-    /** Uma rodada nunca passa disto, para o cron não ficar preso num tenant. */
-    private const MAX_ITEMS_PER_RUN = 2000;
+    /**
+     * Uma rodada nunca passa disto, para o cron não ficar preso num tenant.
+     * Testável via construtor — o valor de produção é o default.
+     */
+    private int $maxItemsPerRun = 2000;
 
-    /** Trava para não haver duas rodadas simultâneas da mesma integração. */
-    private const LOCK_TTL = 1800;
+    /**
+     * Trava para não haver duas rodadas simultâneas da mesma integração.
+     * 900s (15 min), não 1800: com a trava agora atômica na coluna do banco
+     * (AccountIntegrationModel::acquireLock) e reconciliada no início de
+     * cada rodada (closeStaleRunning), não precisa da folga generosa que a
+     * versão em cache tinha pra compensar não ter jeito de destravar cedo.
+     */
+    private const LOCK_TTL = 900;
+
+    /** Consecutivos: a partir daqui, um erro de transporte vira desligamento (ver run()). */
+    private const MAX_CONSECUTIVE_TRANSPORT_ERRORS = 5;
+
+    /**
+     * Geocodificação é I/O externo lento (a Nominatim exige ~1 req/s) — um
+     * catálogo de milhares de imóveis sem coordenada não pode multiplicar o
+     * tempo da rodada por mil. O que passar do teto fica sem lat/lng nesta
+     * rodada e tenta de novo na próxima (o item só entra aqui quando ainda
+     * não tem coordenada, então nunca fica de fora para sempre).
+     */
+    private const MAX_GEOCODE_PER_RUN = 100;
+
+    private int $geocodedThisRun = 0;
 
     public function __construct(
         private ?IntegrationService $integrationService = null,
@@ -47,6 +73,7 @@ class IntegrationSyncService
         private ?AccountIntegrationModel $integrationModel = null,
         private ?IntegrationSyncRunModel $runModel = null,
         private ?PropertyModel $propertyModel = null,
+        private ?GeocoderInterface $geocoder = null,
     ) {
         $this->integrationService ??= new IntegrationService();
         $this->propertyService    ??= new PropertyService();
@@ -54,6 +81,18 @@ class IntegrationSyncService
         $this->integrationModel   ??= model(AccountIntegrationModel::class);
         $this->runModel           ??= model(IntegrationSyncRunModel::class);
         $this->propertyModel      ??= model(PropertyModel::class);
+        // NullGeocoder por padrão de propósito — não NominatimGeocoder: um
+        // geocoder real faz I/O de rede de verdade (com throttle de ~1s por
+        // consulta), e este é o construtor que TODA a suíte de testes usa
+        // quando não injeta nada explicitamente. O único chamador de
+        // produção (spark integration:sync) passa NominatimGeocoder na mão.
+        $this->geocoder           ??= new NullGeocoder();
+    }
+
+    /** Só para teste: exercitar o corte do teto de itens sem simular 2000 imóveis de verdade. */
+    public function setMaxItemsPerRun(int $max): void
+    {
+        $this->maxItemsPerRun = $max;
     }
 
     /**
@@ -63,19 +102,46 @@ class IntegrationSyncService
      */
     public function run(AccountIntegration $integration, string $trigger = IntegrationSyncRunModel::TRIGGER_CRON, bool $forceFull = false): SyncResult
     {
-        $result   = new SyncResult();
-        $lockKey  = 'integration_sync_lock_' . $integration->id;
+        $result    = new SyncResult();
         $startedAt = date('Y-m-d H:i:s');
+        $this->geocodedThisRun = 0;
 
-        if (cache($lockKey) !== null) {
+        // Reconcilia ANTES de tentar adquirir: uma rodada anterior morta por
+        // Fatal Error (que não passa pelo shutdown handler abaixo se o
+        // processo que o registrou já não existe mais) não pode bloquear
+        // esta pra sempre.
+        $this->runModel->closeStaleRunning(self::LOCK_TTL);
+
+        if (! $this->integrationModel->acquireLock((int) $integration->id, self::LOCK_TTL)) {
             $result->addError('Já existe uma sincronização em andamento para esta integração.');
 
             return $result;
         }
 
-        cache()->save($lockKey, time(), self::LOCK_TTL);
+        $runId          = $this->runModel->start((int) $integration->id, $trigger);
+        $integrationId  = (int) $integration->id;
+        $runModel       = $this->runModel;
+        $integrationModel = $this->integrationModel;
+        $finalizada     = false;
 
-        $runId = $this->runModel->start((int) $integration->id, $trigger);
+        // Um Fatal Error de PHP (max_execution_time, por exemplo) NÃO é
+        // \Throwable — não passa por nenhum catch nem pelo finally logo
+        // abaixo. Sem isto, tanto a trava quanto a linha RUNNING ficavam
+        // presas até a trava expirar sozinha (closeStaleRunning cobre a
+        // rodada seguinte, mas esta mesma ficaria "Rodando" na tela até lá).
+        register_shutdown_function(static function () use (&$finalizada, $runModel, $integrationModel, $runId, $integrationId) {
+            if ($finalizada) {
+                return;
+            }
+
+            $erro     = error_get_last();
+            $mensagem = $erro !== null
+                ? sprintf('Interrompida por erro fatal: %s', $erro['message'])
+                : 'Interrompida — processo encerrado sem finalizar.';
+
+            $runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, [], $mensagem);
+            $integrationModel->releaseLock($integrationId);
+        });
 
         try {
             $connector = $this->integrationService->makeConnector($integration);
@@ -84,18 +150,42 @@ class IntegrationSyncService
                 throw new IntegrationException('Este conector não importa imóveis.');
             }
 
-            $this->consume($integration, $connector, $result, $runId, $forceFull);
-            $this->pauseVanished($integration, $result, $runId);
+            // Rodada completa: semeia sugestão pra categoria/característica
+            // NUNCA vista antes de processar o catálogo. Sem isto, um item
+            // de categoria nova ficaria "ignorado" até alguém abrir a tela de
+            // mapeamentos e clicar em "Redescobrir" manualmente — o --full já
+            // busca o catálogo inteiro da origem, então descobrir o de/para
+            // junto é a mesma viagem, não uma chamada extra.
+            if ($forceFull && $connector instanceof SimobProvider) {
+                $this->integrationService->seedMappings($integration, $connector);
+                $connector->loadMappings((int) $integration->id);
+            }
+
+            $catalogoCompleto = $this->consume($integration, $connector, $result, $runId, $forceFull);
+            $this->pauseVanished($integration, $result, $runId, $forceFull && $catalogoCompleto);
 
             $this->runModel->finish($runId, $result->status(), $result->toCounters(), $result->errorSummary());
 
-            // O corte incremental da PRÓXIMA rodada é o instante em que ESTA
-            // começou, e não o de agora: o que a origem alterou durante a
-            // execução precisa entrar da próxima vez.
-            $this->integrationModel->update($integration->id, [
-                'last_sync_at' => $startedAt,
-                'status'       => AccountIntegrationModel::STATUS_CONNECTED,
-            ]);
+            $atualizacoes = [
+                'status'                     => AccountIntegrationModel::STATUS_CONNECTED,
+                // Pedido de "sincronizar agora" foi atendido nesta rodada.
+                'sync_priority_requested_at' => null,
+            ];
+
+            // Só avança o corte incremental quando o catálogo foi percorrido
+            // até o fim. Se o teto de itens da rodada interrompeu no meio,
+            // avançar last_sync_at faria a PRÓXIMA rodada (incremental,
+            // corte a partir de agora) nunca mais alcançar o que ficou pra
+            // trás na listagem — a mensagem de erro promete "continua de
+            // onde parou", e só é verdade se o cursor não se mover daqui.
+            if ($catalogoCompleto) {
+                // O corte incremental da PRÓXIMA rodada é o instante em que ESTA
+                // começou, e não o de agora: o que a origem alterou durante a
+                // execução precisa entrar da próxima vez.
+                $atualizacoes['last_sync_at'] = $startedAt;
+            }
+
+            $this->integrationModel->update($integration->id, $atualizacoes);
         } catch (AuthException $e) {
             // Credencial recusada: desliga o sync. Insistir de 30 em 30 minutos
             // com token inválido só empilha erro e pode virar bloqueio do lado
@@ -103,9 +193,10 @@ class IntegrationSyncService
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, $result->toCounters(), $e->getMessage());
             $this->integrationModel->update($integration->id, [
-                'is_active'         => false,
-                'status'            => AccountIntegrationModel::STATUS_ERROR,
-                'last_test_message' => $e->getMessage(),
+                'is_active'                  => false,
+                'status'                     => AccountIntegrationModel::STATUS_ERROR,
+                'last_test_message'          => $e->getMessage(),
+                'sync_priority_requested_at' => null,
             ]);
         } catch (RateLimitException $e) {
             // Credencial boa, só não é hora: não desliga nada, e o cursor fica
@@ -113,15 +204,30 @@ class IntegrationSyncService
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_PARTIAL, $result->toCounters(), $e->getMessage());
         } catch (\Throwable $e) {
+            // Erro de transporte (Simob fora do ar por um instante, timeout,
+            // 5xx) não pode desligar uma credencial que continua válida —
+            // só quando ele SE REPETE é que vira algo estrutural que
+            // justifica isso. Um `status = ERROR` a cada soluço tira a
+            // integração do dueForSync() (que exclui ERROR de propósito) e
+            // exige o tenant testar a conexão de novo pra uma credencial que
+            // nunca deixou de funcionar.
             log_message('error', '[IntegrationSync] Falha na integração ' . $integration->id . ': ' . $e->getMessage());
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, $result->toCounters(), $e->getMessage());
-            $this->integrationModel->update($integration->id, [
-                'status'            => AccountIntegrationModel::STATUS_ERROR,
-                'last_test_message' => $e->getMessage(),
-            ]);
+
+            $atualizacoesDeErro = [
+                'last_test_message'          => $e->getMessage(),
+                'sync_priority_requested_at' => null,
+            ];
+
+            if ($this->runModel->consecutiveErrors($integrationId, self::MAX_CONSECUTIVE_TRANSPORT_ERRORS) >= self::MAX_CONSECUTIVE_TRANSPORT_ERRORS) {
+                $atualizacoesDeErro['status'] = AccountIntegrationModel::STATUS_ERROR;
+            }
+
+            $this->integrationModel->update($integration->id, $atualizacoesDeErro);
         } finally {
-            cache()->delete($lockKey);
+            $finalizada = true;
+            $this->integrationModel->releaseLock($integrationId);
         }
 
         return $result;
@@ -129,28 +235,41 @@ class IntegrationSyncService
 
     // ------------------------------------------------------------- catálogo
 
+    /**
+     * @return bool true quando o catálogo foi percorrido até o fim (nenhum
+     *              corte pelo teto de itens) — só nesse caso é seguro avançar
+     *              o cursor incremental e pausar quem sumiu (ver run()).
+     */
     private function consume(
         AccountIntegration $integration,
         IntegrationProviderInterface $connector,
         SyncResult $result,
         int $runId,
         bool $forceFull,
-    ): void {
+    ): bool {
         $accountId = (int) $integration->account_id;
         $provider  = (string) $integration->provider_code;
         $cursor    = SyncCursor::fromIntegration($integration, $forceFull);
         $settings  = $integration->settings();
 
+        // Conta só o que custou uma busca de detalhe — não o total_fetched
+        // (que inclui os "nada mudou" resolvidos na listagem, e é a métrica
+        // que o resumo da rodada mostra pro tenant). Um catálogo de milhares
+        // de itens, quase todos inalterados, não pode estourar o teto antes
+        // de alcançar o punhado que de fato precisava de trabalho.
+        $processados = 0;
+
         foreach ($connector->fetchCatalog($cursor, $settings) as $item) {
-            if ($result->totalFetched >= self::MAX_ITEMS_PER_RUN) {
+            if ($processados >= $this->maxItemsPerRun) {
                 $result->addError('Limite de itens por rodada atingido; a próxima sincronização continua de onde parou.');
-                break;
+
+                return false;
             }
 
             $result->totalFetched++;
 
             try {
-                $this->syncItem($integration, $item, $result, $runId, $settings);
+                $custouDetalhe = $this->syncItem($integration, $item, $result, $runId, $settings);
             } catch (AuthException | RateLimitException $e) {
                 // Estas param a rodada inteira: não adianta seguir para o
                 // próximo item se a credencial caiu ou o servidor pediu calma.
@@ -165,17 +284,30 @@ class IntegrationSyncService
                     $item->externalId,
                     $e->getMessage()
                 ));
+                $custouDetalhe = true;
+            }
+
+            if ($custouDetalhe) {
+                $processados++;
             }
         }
+
+        return true;
     }
 
+    /**
+     * @return bool true quando o item custou uma busca de detalhe (conta
+     *              contra o teto de itens da rodada em consume()); false no atalho
+     *              barato de "nada mudou", que não devia consumir o teto de
+     *              uma rodada só porque o catálogo inteiro foi listado.
+     */
     private function syncItem(
         AccountIntegration $integration,
         CatalogItem $item,
         SyncResult $result,
         int $runId,
         array $settings,
-    ): void {
+    ): bool {
         $accountId = (int) $integration->account_id;
         $provider  = (string) $integration->provider_code;
 
@@ -190,7 +322,7 @@ class IntegrationSyncService
             ]);
             $result->skipped++;
 
-            return;
+            return false;
         }
 
         $external = $item->resolve();
@@ -199,7 +331,7 @@ class IntegrationSyncService
             // O conector não conseguiu montar um imóvel publicável (sem preço,
             // sem finalidade ativa). Se já existe aqui, pausa em vez de deixar
             // um anúncio inválido no ar.
-            if ($ref !== null) {
+            if ($ref !== null && $ref->property_id !== null) {
                 $this->pauseProperty((int) $ref->property_id);
                 $this->refModel->update($ref->id, [
                     'last_synced_at'   => date('Y-m-d H:i:s'),
@@ -208,7 +340,22 @@ class IntegrationSyncService
                 $result->paused++;
             }
 
-            return;
+            return true;
+        }
+
+        if ($external->ignoreReason !== null) {
+            // Item deliberadamente não importado (ex.: categoria ainda sem
+            // de/para confirmado em /admin/integracoes/{code}/mapeamentos).
+            // Não é erro nem "sumiu da origem" — se já existia um imóvel
+            // publicado, o mapeamento que o sustentava mudou de baixo dele, e
+            // ele pausa; se nunca existiu, só conta como ignorado.
+            if ($ref !== null && $ref->property_id !== null) {
+                $this->pauseProperty((int) $ref->property_id);
+            }
+
+            $result->ignored++;
+
+            return true;
         }
 
         // Segunda barreira: o updatedAt pode ter mudado sem o conteúdo mudar
@@ -223,32 +370,67 @@ class IntegrationSyncService
             ]);
             $result->skipped++;
 
-            return;
+            return true;
         }
 
         $isNew = $ref === null;
 
         if ($isNew && $result->planLimitReached) {
             // Já estourou o plano nesta rodada: não adianta tentar de novo.
-            return;
+            return true;
         }
 
-        $propertyId = $this->upsertProperty($integration, $external, $ref?->property_id, $result);
+        try {
+            $propertyId = $this->upsertProperty($integration, $external, $ref?->property_id, $result);
+        } catch (\Throwable $e) {
+            // Falha de validação (bairro/cidade ausentes, etc.): grava o
+            // vínculo MESMO ASSIM, com property_id nulo e o motivo em
+            // last_error. Sem isto, o item nunca ganha payload_hash nem
+            // external_updated_at, e a próxima rodada não tem como saber que
+            // ele já foi tentado — rebusca o detalhe, falha de novo, pra
+            // sempre. Com o vínculo gravado, uma origem que não mudou nada
+            // cai no atalho de "hash igual" (acima) e para de custar uma
+            // busca de detalhe por rodada.
+            $this->refModel->upsertRef([
+                'property_id'         => $ref?->property_id,
+                'account_id'          => $accountId,
+                'provider_code'       => $provider,
+                'external_id'         => $item->externalId,
+                'external_code'       => $external->externalCode,
+                'external_updated_at' => $external->externalUpdatedAt,
+                'payload_hash'        => $hash,
+                'last_synced_at'      => date('Y-m-d H:i:s'),
+                'last_sync_run_id'    => $runId,
+                'last_error'          => mb_substr($e->getMessage(), 0, 500),
+            ]);
+
+            throw $e;
+        }
 
         if ($propertyId === null) {
-            return;
+            return true;
         }
 
         $this->refModel->upsertRef([
             'property_id'         => $propertyId,
             'account_id'          => $accountId,
             'provider_code'       => $provider,
-            'external_id'         => $external->externalId,
+            // A chave do vínculo é a mesma usada no findRef() lá em cima
+            // ($item->externalId, vindo da LISTAGEM) — não $external->externalId
+            // (o mapper prefere o id do DETALHE, e só cai pro da listagem
+            // quando o detalhe não trouxe 'id'). Os dois costumam coincidir,
+            // mas gravar com uma chave e buscar com outra faria a próxima
+            // rodada não encontrar o vínculo, criar um imóvel duplicado, e
+            // órfão o primeiro.
+            'external_id'         => $item->externalId,
             'external_code'       => $external->externalCode,
             'external_updated_at' => $external->externalUpdatedAt,
             'payload_hash'        => $hash,
             'last_synced_at'      => date('Y-m-d H:i:s'),
             'last_sync_run_id'    => $runId,
+            // Limpa um last_error de uma tentativa anterior que falhou: este
+            // upsert só chega aqui depois de upsertProperty() ter funcionado.
+            'last_error'          => null,
         ]);
 
         $isNew ? $result->created++ : $result->updated++;
@@ -256,6 +438,8 @@ class IntegrationSyncService
         if (! empty($settings['import_images'])) {
             $result->images += $this->syncImages($propertyId, $external, $result);
         }
+
+        return true;
     }
 
     /**
@@ -299,6 +483,19 @@ class IntegrationSyncService
         $data['source']             = 'integration:' . $integration->provider_code;
         $data['external_synced_at'] = date('Y-m-d H:i:s');
 
+        // O mapper sempre devolve um `status` (initial_status da configuração,
+        // default DRAFT) porque ele não sabe se está mapeando uma criação ou
+        // uma atualização. Numa atualização, esse valor sobrescreveria
+        // silenciosamente qualquer publicação manual do tenant a cada rodada
+        // — `status` foi tirado de MANAGED_FIELDS (IntegrationService) por
+        // isso mesmo, e aqui é onde a exceção se aplica de fato: só entra na
+        // criação.
+        if ($existingId !== null) {
+            unset($data['status']);
+        }
+
+        $this->fillMissingCoordinates($data, $existingId, $result);
+
         // trySaveProperty NÃO valida os campos — o model só valida account_id.
         // Quem chama é responsável por validar antes, como faz o
         // PropertyImportService. Sem isto, um imóvel sem cidade ou sem preço
@@ -313,7 +510,7 @@ class IntegrationSyncService
             )));
         }
 
-        $saved = $this->propertyService->trySaveProperty($data, $existingId, false, $existingId !== null);
+        $saved = $this->propertyService->trySaveProperty($data, $existingId, false, $existingId !== null, fromSync: true);
 
         if (! empty($saved['success'])) {
             return (int) ($saved['data']->id ?? $existingId);
@@ -348,6 +545,57 @@ class IntegrationSyncService
     }
 
     /**
+     * Geocodifica quando o item ainda não tem coordenada — nem no payload
+     * desta rodada, nem já salva de uma rodada anterior. Sem essa segunda
+     * checagem, toda ATUALIZAÇÃO de um imóvel que já tem lat/lng geocodificada
+     * bateria a Nominatim de novo, porque o mapper não devolve coordenada
+     * nenhuma quando a origem não fornece (e a origem, no caso da Giusti,
+     * nunca fornece).
+     */
+    private function fillMissingCoordinates(array &$data, ?int $existingId, SyncResult $result): void
+    {
+        if (isset($data['latitude'], $data['longitude'])) {
+            return;
+        }
+
+        if ($existingId !== null) {
+            $atual = $this->propertyModel->find($existingId);
+
+            if ($atual !== null && $atual->latitude !== null && $atual->longitude !== null) {
+                return;
+            }
+        }
+
+        if ($this->geocodedThisRun >= self::MAX_GEOCODE_PER_RUN) {
+            return;
+        }
+
+        $cidade = trim((string) ($data['cidade'] ?? ''));
+
+        if ($cidade === '') {
+            return;
+        }
+
+        $this->geocodedThisRun++;
+
+        $coordenadas = $this->geocoder->geocode([
+            'rua'    => $data['rua'] ?? null,
+            'numero' => $data['numero'] ?? null,
+            'bairro' => $data['bairro'] ?? null,
+            'cidade' => $data['cidade'] ?? null,
+            'estado' => $data['estado'] ?? null,
+        ]);
+
+        if ($coordenadas === null) {
+            return;
+        }
+
+        $data['latitude']  = $coordenadas['lat'];
+        $data['longitude'] = $coordenadas['lng'];
+        $result->geocoded++;
+    }
+
+    /**
      * Baixa as imagens que ainda não existem.
      *
      * addMediaFromUrl deduplica por sha256(url) — como a URL do CDN do Simob é
@@ -363,9 +611,24 @@ class IntegrationSyncService
 
                 if (! empty($res['success']) && empty($res['skipped'])) {
                     $baixadas++;
+
+                    continue;
+                }
+
+                // Falha silenciosa até aqui: o resumo da rodada não tinha
+                // nenhum contador pra isso, e "0 fotos" na tela de execuções
+                // não diz se foi porque a origem não mandou imagem nenhuma
+                // ou porque todas falharam ao baixar.
+                if (empty($res['success'])) {
+                    if (($res['code'] ?? null) === 'PHOTO_LIMIT_REACHED') {
+                        $result->photoLimitHits++;
+                    } else {
+                        $result->imageErrors++;
+                    }
                 }
             } catch (\Throwable $e) {
                 // Foto que não baixa não invalida o imóvel.
+                $result->imageErrors++;
                 log_message('warning', "[IntegrationSync] imagem do imóvel {$propertyId} falhou: " . $e->getMessage());
             }
         }
@@ -385,11 +648,24 @@ class IntegrationSyncService
      * é só o que mudou, então "não apareceu" não significa "sumiu" — pausar
      * aqui derrubaria o catálogo inteiro do tenant.
      */
-    private function pauseVanished(AccountIntegration $integration, SyncResult $result, int $runId): void
+    /**
+     * "Sumiu do catálogo" só pode ser concluído quando a rodada varreu o
+     * catálogo INTEIRO — incremental por natureza só vê quem mudou, e pausar
+     * com base nisso pausaria todo o resto do catálogo por engano.
+     *
+     * O antigo `empty($integration->last_sync_at)` capturava só a PRIMEIRA
+     * rodada de todas; qualquer `--full` depois da primeira nunca detectava
+     * sumido. E o corte por `$result->errors > 0` — pensado pra não confiar
+     * numa varredura "incompleta" — deixou de fazer sentido depois que item
+     * com erro de validação passou a gravar vínculo mesmo assim (ver
+     * upsertProperty): ele já é contado como "visto" pela rodada, erro isolado
+     * de item não impede mais a conclusão da rodada completa.
+     */
+    private function pauseVanished(AccountIntegration $integration, SyncResult $result, int $runId, bool $forceFull): void
     {
-        $foiCompleta = empty($integration->last_sync_at);
+        $foiCompleta = $forceFull || empty($integration->last_sync_at);
 
-        if (! $foiCompleta || $result->errors > 0) {
+        if (! $foiCompleta) {
             return;
         }
 

@@ -144,6 +144,28 @@ final class IntegrationHttpClientTest extends TestCase
     }
 
     /**
+     * O token de integração vai em texto puro no corpo de cada chamada — por
+     * http ele trafega em claro pra qualquer um no caminho da rede. UrlGuard
+     * continua aceitando http de propósito (ele também protege webhook e URL
+     * de imagem, onde exigir https quebraria integrações legítimas); a
+     * exigência de https é só desta classe, e só fora do ambiente de
+     * desenvolvimento.
+     */
+    public function testBaseUrlHttpERecusadaEmProducao(): void
+    {
+        $client = new FakeHttpClient('http://simob-exemplo.com.br', [[200, '{}']]);
+
+        $this->expectException(IntegrationException::class);
+        $this->expectExceptionMessage('https');
+
+        try {
+            $client->get('/v2/teste');
+        } finally {
+            $this->assertSame(0, $client->attempts, 'não pode nem ter tentado sair');
+        }
+    }
+
+    /**
      * Apontar a integração para o site institucional em vez do sistema é o
      * erro de digitação mais provável do tenant. A mensagem precisa dizer isso,
      * e não estourar um json_decode em algum lugar distante.
@@ -167,14 +189,23 @@ final class IntegrationHttpClientTest extends TestCase
         $this->assertSame([], $client->get('/v2/teste'));
     }
 
-    public function testMultipartMandaOsCamposComoPartes(): void
+    /**
+     * CURLRequest repassa `multipart` direto pra CURLOPT_POSTFIELDS sem
+     * nenhum shim estilo Guzzle (ver CURLRequest::applyBody) — um array
+     * [['name'=>.., 'contents'=>..]] vira campos `0[name]`/`0[contents]` no
+     * cURL nativo, nunca um campo chamado `data`. Contra a API real do Simob
+     * isso produz "Informe o campo 'data' no formulario!" em endpoints que
+     * validam o campo (alguns, como /imovel/caracteristicas, aceitam de
+     * qualquer forma, o que mascarou o bug até chegar no de listagem).
+     */
+    public function testMultipartMandaOsCamposComoArrayAssociativoPlano(): void
     {
         $client = new FakeHttpClient('https://203.0.113.10', [[200, '{"success":true}']]);
 
         $client->postMultipart('/v2/integracaoApi/imovel/filtro', ['data' => '{"finalidade":1}']);
 
         $this->assertSame(
-            [['name' => 'data', 'contents' => '{"finalidade":1}']],
+            ['data' => '{"finalidade":1}'],
             $client->lastOptions['multipart']
         );
     }

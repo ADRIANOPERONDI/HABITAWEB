@@ -17,7 +17,10 @@
 <div class="row mb-4">
     <div class="col-12">
         <p class="text-muted mb-0">
-            Conecte o sistema que a sua imobiliária já usa e traga o catálogo automaticamente para o Habitaweb.
+            Conecte o sistema que a sua imobiliária já usa: os imóveis entram automaticamente no Habitaweb, e os
+            leads capturados no portal voltam para o CRM de origem. Imóveis importados são espelhos — só o status
+            (pausar/publicar) e as fotos podem ser editados por aqui; os demais dados vêm da própria origem a cada
+            sincronização.
         </p>
     </div>
 </div>
@@ -29,11 +32,15 @@
             $integration = $row['integration'];
             $status      = $integration->status ?? 'NOT_CONFIGURED';
 
+            // status é saúde da CONEXÃO; pausa é só is_active, independente
+            // (ver IntegrationService::toggleActive) — "Pausado" nunca é um
+            // status isolado, só a combinação dos dois.
             [$badgeClass, $badgeLabel] = match (true) {
                 $integration === null                                            => ['secondary', 'Não configurado'],
-                $status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED => ['success', $integration->is_active ? 'Conectado' : 'Conectado (pausado)'],
+                $status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED && ! $integration->is_active
+                                                                                  => ['warning', 'Conectado (pausado)'],
+                $status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED => ['success', 'Conectado'],
                 $status === \App\Models\AccountIntegrationModel::STATUS_ERROR     => ['danger', 'Erro'],
-                $status === \App\Models\AccountIntegrationModel::STATUS_PAUSED    => ['warning', 'Pausado'],
                 default                                                          => ['secondary', 'Aguardando teste'],
             };
         ?>

@@ -196,6 +196,9 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     // mas nada no servidor impedia um POST direto).
     $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1', ['filter' => 'group:superadmin']);
     $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit', ['filter' => 'group:superadmin']);
+    // Antes do resource: 'properties/bulk-status' casaria com o
+    // 'properties/(:segment)' de update/show do resource (first-match-wins).
+    $routes->post('properties/bulk-status', 'PropertyController::bulkStatus');
     $routes->resource('properties', ['controller' => 'PropertyController']);
     $routes->post('properties/(:num)/restore', 'PropertyController::restore/$1');
     $routes->get('properties/(:num)/closure-leads', 'PropertyController::getLeadsForClosure/$1');
@@ -266,12 +269,14 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('integracoes', 'IntegrationsController::index');
     $routes->post('integracoes/(:segment)/testar', 'IntegrationsController::test/$1');
     $routes->post('integracoes/(:segment)/sincronizar', 'IntegrationsController::syncNow/$1');
+    $routes->get('integracoes/(:segment)/status', 'IntegrationsController::status/$1');
     $routes->post('integracoes/(:segment)/toggle', 'IntegrationsController::toggle/$1');
     $routes->post('integracoes/(:segment)/redescobrir', 'IntegrationsController::rediscover/$1');
     $routes->post('integracoes/(:segment)/desconectar', 'IntegrationsController::disconnect/$1');
     $routes->get('integracoes/(:segment)/mapeamentos', 'IntegrationsController::mappings/$1');
     $routes->post('integracoes/(:segment)/mapeamentos', 'IntegrationsController::saveMappings/$1');
     $routes->get('integracoes/(:segment)/execucoes', 'IntegrationsController::runs/$1');
+    $routes->post('integracoes/(:segment)/execucoes/(:num)/abortar', 'IntegrationsController::abortRun/$1/$2');
     $routes->get('integracoes/(:segment)', 'IntegrationsController::configure/$1');
     $routes->post('integracoes/(:segment)', 'IntegrationsController::save/$1');
 

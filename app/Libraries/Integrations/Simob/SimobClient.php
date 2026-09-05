@@ -112,7 +112,23 @@ class SimobClient
             ]),
         ]);
 
+        // O Simob devolve success:false tanto pra erro real (token, payload)
+        // quanto pra "filtro sem resultado" — e uma imobiliária que só vende
+        // (ou só aluga) bate nisso em toda página da finalidade oposta.
+        // unwrapList() trataria isso como erro e abortaria o sync inteiro,
+        // mesmo com a OUTRA finalidade tendo catálogo real pra importar.
+        if ($this->isEmptyFilterResult($body)) {
+            return [];
+        }
+
         return $this->unwrapList($body);
+    }
+
+    /** Simob usa a mesma flag de erro para "nenhum imóvel para este filtro". */
+    private function isEmptyFilterResult(array $body): bool
+    {
+        return ($body['success'] ?? null) === false
+            && str_contains((string) ($body['message'] ?? ''), 'Nenhum imóvel encontrado');
     }
 
     /** Total de imóveis da finalidade, para saber quantas páginas existem. */
@@ -180,20 +196,31 @@ class SimobClient
     }
 
     /**
-     * URL pública de uma imagem, via CDN do Simob.
+     * URL pública de uma imagem.
      *
-     * Prefere-se o CDN ao caminho legado (`baseUrlImagem` + sufixos de
-     * dimensão tipo _miniatura_480x360): a doc marca o legado como DEPRECIADO
-     * e o CDN adapta a resolução sozinho. A URL precisa ser estável entre
-     * rodadas — PropertyService::addMediaFromUrl deduplica por sha256(url), e
-     * uma URL volátil faria o sync rebaixar todas as fotos toda vez.
+     * A doc do Postman descreve um endpoint `/cdn/imovelImages/{id}/...` como
+     * substituto do campo `baseUrlImagem`, que ela marca como depreciado —
+     * mas contra uma instalação real (imobiliária Giusti, base_url própria,
+     * não subdomínio *.simob.com.br) o `/cdn/` devolve 404 e o caminho de
+     * `baseUrlImagem` devolve a imagem de verdade (confirmado com curl direto
+     * nos dois). Não dá pra saber se o CDN existe noutras instalações, mas
+     * `baseUrlImagem` é o campo que a própria API devolve pra esse fim, então
+     * é a fonte confiável — não uma string montada por fora. A URL segue
+     * estável entre rodadas — PropertyService::addMediaFromUrl deduplica por
+     * sha256(url), e uma URL volátil faria o sync rebaixar todas as fotos
+     * toda vez.
      */
-    public static function imageUrl(string $baseUrl, string|int $idImovel, string $baseNomeImagem, string $extensao): string
+    public static function imageUrl(string $baseUrl, string $baseUrlImagem, string $baseNomeImagem, string $extensao): string
     {
+        $segmentos = array_map(
+            'rawurlencode',
+            array_filter(explode('/', trim($baseUrlImagem, '/')), static fn (string $s): bool => $s !== '')
+        );
+
         return sprintf(
-            '%s/cdn/imovelImages/%s/%s.%s',
+            '%s/%s/%s.%s',
             rtrim($baseUrl, '/'),
-            rawurlencode((string) $idImovel),
+            implode('/', $segmentos),
             rawurlencode($baseNomeImagem),
             ltrim($extensao, '.')
         );
