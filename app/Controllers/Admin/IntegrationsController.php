@@ -197,6 +197,20 @@ class IntegrationsController extends BaseController
             ]);
         }
 
+        // AccountIntegrationModel::dueForSync() (quem o cron usa pra achar
+        // o que processar) exige is_active=true — sem essa checagem aqui,
+        // o clique "funcionava" (marcava sync_priority_requested_at, a tela
+        // mostrava "Agendado, aguardando o cron...") mas o cron IGNORAVA
+        // pra sempre uma integração pausada, sem nenhum aviso do motivo. O
+        // tenant ficava vendo "agendado" indefinidamente por uma conta que
+        // nunca ia sincronizar.
+        if (! $integration->is_active) {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Ative a sincronização automática antes de sincronizar agora.',
+            ]);
+        }
+
         // Trava só contra clique repetido — o trabalho pesado não roda mais
         // aqui, mas nada impede o tenant de martelar o botão.
         $cacheKey = "integration_manual_sync_{$integration->id}";
