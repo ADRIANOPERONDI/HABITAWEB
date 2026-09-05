@@ -112,17 +112,27 @@ class LeadModel extends Model
     }
 
     /**
-     * Busca leads dos últimos 7 dias para o gráfico.
+     * Leads por dia num intervalo, já agrupados no banco (Fase 4) — GROUP BY
+     * em vez do loop antigo em PHP comparando data de cada lead uma a uma.
+     *
+     * @return array<string, int> 'Y-m-d' => contagem
      */
-    public function getLeadsLast7Days(int $accountId, array $filters = [], ?int $brokerId = null): array
+    public function countsByDayWithFilters(int $accountId, string $de, string $ate, array $filters = [], ?int $brokerId = null): array
     {
-        $query = $this->select('created_at text_created_at') // Hack to avoid Time object issues in simple logic if needed
-            ->select('created_at')
+        $query = $this->select("DATE(created_at) as dia, COUNT(*) as total")
             ->where('account_id_anunciante', $accountId)
-            ->where('created_at >=', date('Y-m-d', strtotime('-7 days')));
-            
+            ->where('created_at >=', $de . ' 00:00:00')
+            ->where('created_at <=', $ate . ' 23:59:59');
+
         $this->applyPropertyFilters($query, $filters, $brokerId);
-        
-        return $query->findAll();
+
+        $rows = $query->groupBy('DATE(created_at)')->findAll();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(string) $row->dia] = (int) $row->total;
+        }
+
+        return $out;
     }
 }
