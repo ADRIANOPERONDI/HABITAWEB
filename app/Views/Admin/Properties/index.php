@@ -149,15 +149,14 @@
                                 <i class="fa-solid fa-eye"></i>
                             </a>
 
-                            <!-- Destacar (Plano) -->
-                            <?php 
-                            // Show ONLY if NOT highlighted AND allowed
+                            <!-- Destacar (selo editorial — só superadmin, ver P5: is_destaque não é mais algo que o tenant compra ou controla) -->
+                            <?php
                             $isHighlighted = $property->is_destaque;
                             $canHighlight = $destaqueStats['allowed'] ?? false;
-                            
-                            if (!$isHighlighted && $canHighlight): 
+
+                            if (!$isHighlighted && $canHighlight && auth()->user()->inGroup('superadmin')):
                             ?>
-                            <button type="button" class="btn-action-float text-secondary" 
+                            <button type="button" class="btn-action-float text-secondary"
                                     title="Destacar com Plano"
                                     onclick="toggleDestaque(<?= $property->id ?>)">
                                 <i class="fa-regular fa-star"></i>

@@ -89,7 +89,11 @@ final class PlanSeederTest extends HabitawebTestCase
 
         $this->assertFalse($ouro->has(PlanFeature::PAGINA_PREMIUM));
         $this->assertTrue($diamante->has(PlanFeature::PAGINA_PREMIUM));
-        $this->assertTrue($diamante->has(PlanFeature::INTELIGENCIA_MERCADO));
+        // P4: a tela de Inteligência de Mercado ainda não existe (fase 2) —
+        // conceder a feature sem nenhuma tela pra mostrar venderia o que não
+        // se entrega. COMPARATIVO_MERCADO, que já tem uso previsto, continua.
+        $this->assertFalse($diamante->has(PlanFeature::INTELIGENCIA_MERCADO));
+        $this->assertTrue($diamante->has(PlanFeature::COMPARATIVO_MERCADO));
     }
 
     public function testPlanoAnualCobraDezMensalidades(): void
@@ -205,5 +209,42 @@ final class PlanSeederTest extends HabitawebTestCase
 
         // O PRATA_LEGADO pré-existente não foi mexido pelo seeder.
         $this->assertSame(1234.0, (float) $this->plan('PRATA_LEGADO')->preco_mensal);
+    }
+
+    /**
+     * Planos fora do catálogo comercial atual (legados de antes desta
+     * reestruturação, criados fora deste seeder) precisam sair de `ativo`
+     * pra parar de aparecer no checkout e na troca de plano — sem apagar a
+     * linha nem tocar em assinatura nenhuma que ainda esteja neles.
+     */
+    public function testPlanosForaDoCatalogoSaoDesativados(): void
+    {
+        $model = model(PlanModel::class);
+
+        foreach (['START', 'PRO', 'IMOBILIARIA', 'TEST_FREE'] as $chave) {
+            $model->insert([
+                'chave'        => $chave,
+                'nome'         => 'Plano ' . $chave,
+                'preco_mensal' => 0.00,
+                'ativo'        => true,
+            ]);
+        }
+
+        $tenant = (new TenantFactory())->create();
+        model(SubscriptionModel::class)
+            ->where('account_id', $tenant['account']->id)
+            ->set(['plan_id' => $this->plan('PRO')->id])
+            ->update();
+
+        $this->semear();
+
+        foreach (['START', 'PRO', 'IMOBILIARIA', 'TEST_FREE'] as $chave) {
+            $this->assertFalse((bool) $this->plan($chave)->ativo, "{$chave} deveria estar desativado");
+        }
+
+        // A assinatura que apontava pro PRO continua íntegra — desativar o
+        // plano não mexe em quem já está nele.
+        $sub = model(SubscriptionModel::class)->where('account_id', $tenant['account']->id)->first();
+        $this->assertSame($this->plan('PRO')->id, $sub->plan_id);
     }
 }

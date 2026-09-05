@@ -392,9 +392,15 @@ class LeadChargeService
      * (se houver) e marca tudo INVOICED. Expira a sobra de crédito no mesmo
      * instante — ela não pode vazar para pagar o mês seguinte.
      *
-     * Chamado pelo comando `leads:fechar-ciclo`, um account_id por vez. Aceita
-     * `PaymentService`/`LeadCreditService` injetados para que os testes
-     * consigam apontar para um gateway fake sem tocar rede.
+     * Chamado pelo comando `leads:fechar-ciclo`, um par (account_id, período)
+     * por vez. Aceita `PaymentService`/`LeadCreditService` injetados para que
+     * os testes consigam apontar para um gateway fake sem tocar rede.
+     *
+     * Consumo de crédito e cobrança no gateway andam numa transação: se a
+     * chamada ao gateway falhar (rede, credencial), o débito do crédito é
+     * desfeito — sem isto, rodar de novo consumiria o que sobrou (ou nada) e
+     * a conta perderia o crédito daquele mês sem nunca ter sido cobrada de
+     * verdade por ele.
      *
      * @return array{status: string, total: float, credit_applied: float, charged: float, payment_transaction_id: ?int, charge_ids: int[]}
      */
@@ -416,9 +422,19 @@ class LeadChargeService
         $chargeIds = array_map(static fn ($c) => (int) $c->id, $charges);
         $total     = round(array_sum(array_map(static fn ($c) => (float) $c->commission_value, $charges)), 2);
 
-        $creditService ??= new LeadCreditService();
-        $creditApplied = $creditService->consume($accountId, $periodo, $total, 'lead_charges_cycle');
+        $creditService  ??= new LeadCreditService();
+        $paymentService ??= new PaymentService();
 
+        // Idempotência: se este período já gerou fatura (comando rodado de
+        // novo, por engano ou por retomada de uma falha anterior), reaproveita
+        // em vez de cobrar uma segunda vez no gateway.
+        $transactionModel = model(\App\Models\PaymentTransactionModel::class);
+        $faturaExistente   = $transactionModel->findLeadInvoice($accountId, $periodo);
+
+        $db = \Config\Database::connect();
+        $db->transStart();
+
+        $creditApplied = $creditService->consume($accountId, $periodo, $total, 'lead_charges_cycle');
         $this->distribuirCreditoPorCobranca($charges, $creditApplied);
 
         $restante = round($total - $creditApplied, 2);
@@ -426,6 +442,7 @@ class LeadChargeService
         if ($restante <= 0) {
             $this->markInvoiced($chargeIds, null);
             $creditService->expireRemaining($accountId, $periodo);
+            $db->transComplete();
 
             return [
                 'status' => 'invoiced_free', 'total' => $total, 'credit_applied' => $creditApplied,
@@ -433,23 +450,42 @@ class LeadChargeService
             ];
         }
 
-        $paymentService ??= new PaymentService();
+        if ($faturaExistente !== null) {
+            $this->markInvoiced($chargeIds, (int) $faturaExistente['id']);
+            $creditService->expireRemaining($accountId, $periodo);
+            $db->transComplete();
+
+            return [
+                'status' => 'invoiced_charged', 'total' => $total, 'credit_applied' => $creditApplied,
+                'charged' => $restante, 'payment_transaction_id' => (int) $faturaExistente['id'], 'charge_ids' => $chargeIds,
+            ];
+        }
+
         $gateway = $paymentService->getActiveGateway();
 
         if ($gateway === null) {
-            // Nada é marcado: fica APPROVED, tentável de novo na próxima
-            // execução do comando. Melhor um dia de atraso do que faturar sem
-            // cobrança nenhuma no gateway.
+            // Desfaz o débito de crédito: fica tudo APPROVED, tentável de
+            // novo na próxima execução. Melhor um dia de atraso do que
+            // faturar sem cobrança nenhuma no gateway.
+            $db->transRollback();
+
             return [
-                'status' => 'gateway_indisponivel', 'total' => $total, 'credit_applied' => $creditApplied,
+                'status' => 'gateway_indisponivel', 'total' => $total, 'credit_applied' => 0.0,
                 'charged' => $restante, 'payment_transaction_id' => null, 'charge_ids' => $chargeIds,
             ];
         }
 
-        $transactionId = $this->cobrarNoGateway($accountId, $periodo, $restante, $gateway);
+        try {
+            $transactionId = $this->cobrarNoGateway($accountId, $periodo, $restante, $gateway);
+        } catch (\Throwable $e) {
+            $db->transRollback();
+
+            throw $e;
+        }
 
         $this->markInvoiced($chargeIds, $transactionId);
         $creditService->expireRemaining($accountId, $periodo);
+        $db->transComplete();
 
         return [
             'status' => 'invoiced_charged', 'total' => $total, 'credit_applied' => $creditApplied,
@@ -502,6 +538,17 @@ class LeadChargeService
                 'phone'              => preg_replace('/\D/', '', (string) ($account->whatsapp ?? $account->telefone ?? '')),
                 'external_reference' => (string) $accountId,
             ]);
+
+            // Sem gravar aqui, toda cobrança de lead futura desta conta
+            // criaria um customer novo no gateway — a assinatura em rampa
+            // gratuita (Fase 6) chega até aqui sem nenhum, já que nunca
+            // pagou mensalidade nenhuma.
+            if ($subscription !== null) {
+                model(\App\Models\SubscriptionModel::class)->update(
+                    (int) $subscription->id,
+                    ['asaas_customer_id' => $customerId]
+                );
+            }
         }
 
         $description = "Cobrança de leads recebidos — competência {$periodo}";

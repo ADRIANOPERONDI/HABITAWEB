@@ -220,36 +220,12 @@ class WebhookService
             }
         }
 
-        // 5. Activate Account
-        if ($accountId) {
-            $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
-        }
-
-        // 6. Ativa turbinada, se esta transação for de fato uma compra de turbo.
-        //
-        // Antes daqui só se conferia se o metadata TINHA promo_key + property_id
-        // — qualquer transação cujo metadata trouxesse esses campos por
-        // coincidência ativaria turbo. Agora exige type === 'TURBO' explícito.
-        if (($transaction['type'] ?? null) === 'TURBO' && isset($transaction['metadata'])) {
-            $meta = is_string($transaction['metadata']) ? json_decode($transaction['metadata'], true) : (array) $transaction['metadata'];
-            $promoKey = $meta['promo_key'] ?? $meta['package_key'] ?? null;
-
-            if ($promoKey && isset($meta['property_id'])) {
-                service('turboService')->activatePaid(
-                    (int) $meta['property_id'],
-                    (string) $promoKey,
-                    (int) $transaction['id']
-                );
-            }
-        }
-
-        // 7. Fecha o ciclo de cobrança de lead, se esta transação for uma
-        // fatura de leads (Fase 3). Mesma disciplina do bloco de TURBO acima:
-        // gate explícito em type === 'LEAD_INVOICE', não em coincidência de
-        // metadata.
-        if (($transaction['type'] ?? null) === 'LEAD_INVOICE') {
-            (new \App\Services\LeadChargeService())->markPaidByTransaction((int) $transaction['id']);
-        }
+        // 5-7. Ativa a conta e aplica o efeito do tipo desta transação
+        // (turbinada comprada, ou fatura de leads fechada) — mesmo caminho
+        // usado por PaymentService::syncPendingPayments(), pra uma cobrança
+        // recuperada pelo sync (webhook que falhou em ser entregue) ter
+        // exatamente o mesmo efeito de quem chegou pelo webhook.
+        (new PaymentService())->settleTransaction($transaction);
 
         return true;
     }

@@ -82,7 +82,7 @@ class SubscriptionController extends BaseController
         ];
 
         // Todos os planos para "Upgrade" (Simulação)
-        $allPlans = $planModel->where('ativo', true)->orderBy('preco_mensal', 'ASC')->findAll();
+        $allPlans = $planModel->comercializaveis();
 
         // Fetch Pending Transaction Details (Pix/Boleto info)
         $lastTransaction = null;
@@ -163,8 +163,12 @@ class SubscriptionController extends BaseController
         }
 
         $oldPlan = $planModel->find($activeSub->plan_id);
-        $isUpgrade = $newPlan->preco_mensal > $oldPlan->preco_mensal;
-        $isDowngrade = $newPlan->preco_mensal < $oldPlan->preco_mensal;
+        // exposure_weight, não preco_mensal: durante a rampa (Fase 6) todo
+        // plano pode custar o mesmo (inclusive R$0 no mesmo mês), e o preço
+        // bruto deixa de distinguir tier. exposure_weight é a ordem
+        // explícita entre planos, e não muda com a rampa.
+        $isUpgrade = $newPlan->exposure_weight > $oldPlan->exposure_weight;
+        $isDowngrade = $newPlan->exposure_weight < $oldPlan->exposure_weight;
 
         $paymentService = new \App\Services\PaymentService();
         $rampService = new \App\Services\LaunchRampService($paymentService);
@@ -203,12 +207,14 @@ class SubscriptionController extends BaseController
             return redirect()->back()->with('error', 'Selecione uma forma de pagamento válida.');
         }
 
-        // 1. Carregar Plano Alvo
+        // 1. Carregar Plano Alvo — precisa estar ativo E no catálogo
+        // comercial (preco_mensal > 0). Sem isto, um POST direto alcançava
+        // um plano legado/desativado ou de teste só por saber o id dele.
         $planModel = model('App\Models\PlanModel');
         $targetPlan = $planModel->find($planId);
 
-        if (!$targetPlan) {
-            return redirect()->back()->with('error', 'Plano não encontrado.');
+        if (!$targetPlan || !$targetPlan->ativo || (float) $targetPlan->preco_mensal <= 0) {
+            return redirect()->back()->with('error', 'Plano não encontrado ou indisponível.');
         }
 
         // 2. Verificar Limites (Regra de Downgrade)
@@ -233,61 +239,57 @@ class SubscriptionController extends BaseController
         // TurboService, na concessão, não na troca.
 
 
-        // 3. Se for GRATUITO — plano estaticamente gratuito (preco_mensal <= 0)
-        // OU o valor EFETIVO desta assinatura, com o desconto de rampa
-        // (Fase 6) aplicado, for zero — troca direto, sem gateway.
-        // Conta sem rampa (ramp_started_at nulo, o caso de toda conta hoje)
-        // sempre cai no comportamento de antes: só preco_mensal <= 0 importa.
         $subscriptionModel = model('App\Models\SubscriptionModel');
         $activeSub = $subscriptionModel->where('account_id', $accountId)
                                       ->where('status', 'ACTIVE')
                                       ->first();
 
+        // 3. Bloqueio de Downgrade — ANTES do desvio gratuito abaixo.
+        // Compara exposure_weight (ordem de tier explícita), não
+        // preco_mensal: durante a rampa (Fase 6) todo plano pode custar o
+        // MESMO valor no mesmo mês (inclusive R$0), e o preço bruto para de
+        // distinguir tier. Ficar depois do desvio gratuito deixaria uma
+        // conta em mês 0% trocar de Diamante pra Prata sem passar pela
+        // trava — os dois "custam" R$0 naquele mês.
+        if ($activeSub) {
+            $currentPlan = $planModel->find($activeSub->plan_id);
+
+            if ($currentPlan && $targetPlan->exposure_weight < $currentPlan->exposure_weight) {
+                return redirect()->back()->with('error', "Downgrade bloqueado. Para mudar para um plano inferior, você deve primeiro cancelar sua assinatura atual e aguardar o término do período ou contratar o novo plano após o cancelamento.");
+            }
+        }
+
+        // 4. Se for GRATUITO — plano estaticamente gratuito (preco_mensal <= 0)
+        // OU o valor EFETIVO desta assinatura, com o desconto de rampa
+        // (Fase 6) aplicado, for zero — troca direto, sem gateway.
+        // Conta sem rampa (ramp_started_at nulo, o caso de toda conta hoje)
+        // sempre cai no comportamento de antes: só preco_mensal <= 0 importa.
         $paymentService = new \App\Services\PaymentService();
         $rampService = new \App\Services\LaunchRampService($paymentService);
         $billingCycle = (string) ($activeSub->billing_cycle ?? 'MONTHLY');
         $effectiveAmount = $rampService->amountFor($targetPlan, $billingCycle, $activeSub);
 
         if ($effectiveAmount <= 0) {
-            if ($activeSub) {
-                if ($activeSub->plan_id == $targetPlan->id) {
-                    return redirect()->back()->with('message', 'Você já está neste plano.');
-                }
-                $activeSub->status = 'CANCELADA_POR_TROCA';
-                $subscriptionModel->save($activeSub);
+            if ($activeSub && (int) $activeSub->plan_id === (int) $targetPlan->id) {
+                return redirect()->back()->with('message', 'Você já está neste plano.');
             }
 
-            $subscriptionModel->insert([
-                'account_id' => $accountId,
-                'plan_id'    => $targetPlan->id,
-                'status'     => 'ACTIVE',
-                'data_inicio'=> date('Y-m-d'),
-                'valor'      => 0.00,
-                'payment_method' => 'FREE',
-                // Continua o relógio da rampa da assinatura anterior (se
-                // havia uma) em vez de resetar para hoje — trocar de plano
-                // não deveria dar mais 6 meses grátis de novo.
-                'ramp_started_at'    => $activeSub->ramp_started_at ?? null,
-                'ramp_percent_atual' => $activeSub->ramp_started_at ? $rampService->percentFor($activeSub) : null,
-            ]);
+            // Continua o relógio da rampa da assinatura anterior (se havia
+            // uma) em vez de resetar para hoje — trocar de plano não deveria
+            // dar mais 6 meses grátis de novo.
+            $paymentService->createFreeLocalSubscription(
+                $accountId,
+                $targetPlan,
+                $billingCycle,
+                $activeSub->ramp_started_at ?? null
+            );
 
             return redirect()->to('admin/subscription')->with('message', "Plano alterado para {$targetPlan->nome} com sucesso!");
         }
 
-        // 4. Se for PAGO e já tem assinatura ativa, faz o Upgrade/Downgrade via Service
+        // 5. Se for PAGO e já tem assinatura ativa, faz o Upgrade/Downgrade via Service
+        // (o bloqueio de downgrade já foi conferido no passo 3, antes do desvio gratuito)
         if ($activeSub) {
-            $currentPlan = $planModel->find($activeSub->plan_id);
-
-            // Bloqueio de Downgrade: compara exposure_weight (ordem de tier
-            // explícita), não preco_mensal — durante a rampa todo plano tem
-            // o MESMO percentual de desconto, então o preço efetivo de dois
-            // planos escala junto e a ordem por preço bruto continua válida
-            // hoje, mas comparar por tier é mais robusto a uma rampa futura
-            // com percentuais diferentes por plano.
-            if ($targetPlan->exposure_weight < $currentPlan->exposure_weight) {
-                return redirect()->back()->with('error', "Downgrade bloqueado. Para mudar para um plano inferior, você deve primeiro cancelar sua assinatura atual e aguardar o término do período ou contratar o novo plano após o cancelamento.");
-            }
-
             try {
                 $result = $paymentService->changeSubscriptionPlan($accountId, (int)$planId, $billingType);
 
@@ -301,7 +303,7 @@ class SubscriptionController extends BaseController
             }
         }
 
-        // 5. Se não tem assinatura ativa, manda pro Checkout normal
+        // 6. Se não tem assinatura ativa, manda pro Checkout normal
         return redirect()->to("checkout/plan/{$planId}");
     }
 

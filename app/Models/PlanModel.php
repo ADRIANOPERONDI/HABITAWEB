@@ -61,6 +61,24 @@ class PlanModel extends Model
         ]
     ];
 
+    /**
+     * Planos que aparecem no checkout, na troca de plano e no seletor do
+     * superadmin — `ativo` sozinho não bastava: `E2E_PLAYWRIGHT` (fixture do
+     * Playwright) e planos como `TEST_FREE` também ficam `ativo=true`, mas
+     * não são planos comerciais de verdade (preço 0 ou uso restrito a
+     * teste). `preco_mensal > 0` é o critério que sobra depois de excluir os
+     * dois: nenhum plano comercial de produção tem mensalidade zero.
+     *
+     * @return \App\Entities\Plan[]
+     */
+    public function comercializaveis(): array
+    {
+        return $this->where('ativo', true)
+            ->where('preco_mensal >', 0)
+            ->orderBy('preco_mensal', 'ASC')
+            ->findAll();
+    }
+
     // Callbacks
     protected $allowCallbacks = true;
     protected $beforeInsert   = [];

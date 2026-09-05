@@ -58,6 +58,11 @@ final class PlanFeature
             self::INTELIGENCIA_MERCADO => [
                 'label'     => 'Inteligência de mercado',
                 'descricao' => 'Bairros, faixas de preço e tipos mais procurados na praça.',
+                // Tela ainda não existe (fase 2) — fica fora dos cards de
+                // checkout/upsell (ver visiveis()) até ter o que mostrar.
+                // A constante e a entrada no catálogo continuam aqui pro dia
+                // em que a tela existir.
+                'oculto'    => true,
             ],
             self::COMPARATIVO_MERCADO => [
                 'label'     => 'Comparativo com o mercado',
@@ -70,6 +75,24 @@ final class PlanFeature
     public static function all(): array
     {
         return array_keys(self::catalog());
+    }
+
+    /**
+     * Features prontas pra aparecer em card/vitrine — sem as marcadas
+     * `oculto` no catalog() (ainda sem tela nenhuma). Views voltadas ao
+     * tenant (checkout, upsell do dashboard) usam isto em vez de
+     * catalog()/all() direto; o formulário de planos do superadmin continua
+     * usando o catálogo inteiro, porque a equipe precisa configurar a
+     * feature antes de a tela existir.
+     *
+     * @return string[]
+     */
+    public static function visiveis(): array
+    {
+        return array_keys(array_filter(
+            self::catalog(),
+            static fn (array $feature): bool => empty($feature['oculto'])
+        ));
     }
 
     public static function exists(string $feature): bool

@@ -398,6 +398,8 @@
                                 </div>
                                 
                                 <div class="row g-3">
+                                    <?php // Selo editorial da Habitaweb (P5) — não é algo que o tenant compra ou controla, só superadmin vê o controle. ?>
+                                    <?php if (auth()->user()->inGroup('superadmin')): ?>
                                     <div class="col-lg-4">
                                         <div class="card border-0 shadow-sm h-100 hover-lift">
                                             <div class="card-body p-4">
@@ -414,6 +416,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <?php endif; ?>
 
                                     <div class="col-lg-4">
                                         <div class="card border-0 shadow-sm h-100 hover-lift">

@@ -97,15 +97,34 @@ final class ApplyLaunchRampCommandTest extends HabitawebTestCase
         $this->runCommand();
 
         $sub = model(SubscriptionModel::class)->find($tenant['subscription']->id);
-        // Não atualiza sozinho -- fica marcado como pendente para o operador,
-        // e por isso o percentual gravado NÃO muda (seria reportado de novo
-        // no próximo run até alguém completar a virada manualmente).
-        $this->assertSame(0, (int) $sub->ramp_percent_atual);
+        // Não atualiza SOZINHO no gateway -- fica marcado como pendente para
+        // o operador (ver AccountSubscriptionController::startGateway). Mas
+        // ramp_percent_atual É gravado mesmo assim: sem isso, a próxima
+        // execução encontraria o mesmo "gravado !== atual" e reabriria a
+        // mesma transição (auditando de novo) todo dia até alguém completar
+        // a virada manualmente.
+        $this->assertSame(50, (int) $sub->ramp_percent_atual);
         $this->assertSame([], FakePaymentGateway::$subscriptionUpdates, 'nao deveria falar com o gateway sem metodo de pagamento confirmado');
 
-        $log = model(AuditLogModel::class)->where('account_id', $tenant['account']->id)->first();
-        $this->assertNotNull($log);
-        $this->assertSame('ramp.pronta_para_cobranca_inicial', $log->action);
+        $this->assertSame(
+            1,
+            model(AuditLogModel::class)
+                ->where('account_id', $tenant['account']->id)
+                ->where('action', 'ramp.pronta_para_cobranca_inicial')
+                ->countAllResults()
+        );
+
+        // Rodar de novo no mesmo dia não pode reabrir a mesma transição —
+        // é exatamente o que gravar ramp_percent_atual acima evita.
+        $this->runCommand();
+        $this->assertSame(
+            1,
+            model(AuditLogModel::class)
+                ->where('account_id', $tenant['account']->id)
+                ->where('action', 'ramp.pronta_para_cobranca_inicial')
+                ->countAllResults(),
+            'gravar ramp_percent_atual no caso manual evita re-auditar a mesma transicao todo dia'
+        );
     }
 
     public function testTransicaoComAssinaturaJaExistenteNoGatewayAtualizaSozinha(): void

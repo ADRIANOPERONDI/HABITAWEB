@@ -221,7 +221,41 @@ $(document).ready(function() {
                         </div>
                     </div>
                 `;
-                
+
+                // Rampa de lançamento (Fase 6) — a virada 0%→X% não é
+                // automática (ver ApplyLaunchRamp): o operador precisa ver
+                // que a conta já saiu do período gratuito e ainda não tem
+                // cobrança real no gateway, e ter como ligar essa cobrança
+                // sem esperar o próximo checkout do tenant.
+                if (sub.ramp_started_at) {
+                    const adesao = new Date(sub.ramp_started_at + 'T12:00:00').toLocaleDateString('pt-BR');
+                    const valorHoje = data.valor_hoje !== null && data.valor_hoje !== undefined
+                        ? 'R$ ' + parseFloat(data.valor_hoje).toFixed(2).replace('.', ',')
+                        : 'N/A';
+
+                    html += `
+                        <div class="alert ${data.pendingRampCharge ? 'alert-warning' : 'alert-info'} border-0 rounded-4 shadow-sm p-4 mb-4">
+                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-gauge-high me-2"></i> Rampa de lançamento</h6>
+                            <p class="mb-0 small text-dark">
+                                Adesão em ${adesao} · percentual hoje: <strong>${data.percent_hoje}%</strong> · valor hoje: <strong>${valorHoje}</strong>
+                            </p>
+                            ${data.pendingRampCharge ? `
+                                <div class="d-flex align-items-center gap-2 flex-wrap mt-3">
+                                    <span class="small text-dark">Já saiu do período gratuito e ainda não tem cobrança no gateway.</span>
+                                    <select id="ramp-billing-type" class="form-select form-select-sm w-auto">
+                                        <option value="PIX">PIX</option>
+                                        <option value="BOLETO">Boleto</option>
+                                        <option value="CREDIT_CARD">Cartão</option>
+                                    </select>
+                                    <button onclick="startGatewayCharge()" class="btn btn-sm btn-success rounded-pill px-3">
+                                        <i class="fa-solid fa-bolt me-1"></i> Iniciar cobrança no gateway
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+
                 $('#upgrade-card').removeClass('d-none');
                 
                 // Load Plans in selector
@@ -327,6 +361,26 @@ $(document).ready(function() {
             if (result.isConfirmed) {
                 $.post(`<?= site_url('admin/accounts') ?>/${accountId}/subscription/cancel`, function(res) {
                     Swal.fire('Cancelada!', res.success, 'success');
+                    loadSubscription();
+                }).fail(err => Swal.fire('Erro', err.responseJSON.error, 'error'));
+            }
+        });
+    }
+
+    window.startGatewayCharge = function() {
+        const billingType = $('#ramp-billing-type').val();
+
+        Swal.fire({
+            title: 'Iniciar cobrança no gateway?',
+            text: "Cria a assinatura real no gateway pela primeira vez para esta conta, no valor da faixa da rampa hoje.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sim, iniciar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.post(`<?= site_url('admin/accounts') ?>/${accountId}/subscription/start-gateway`, { billing_type: billingType }, function(res) {
+                    Swal.fire('Sucesso!', res.success, 'success');
                     loadSubscription();
                 }).fail(err => Swal.fire('Erro', err.responseJSON.error, 'error'));
             }

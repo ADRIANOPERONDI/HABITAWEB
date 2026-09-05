@@ -920,10 +920,13 @@ Persistência mínima em qualquer opção (já na seção 2.1): `appendonly yes`
 A reestruturação comercial (planos Prata/Ouro/Diamante com mensalidade em
 rampa e cobrança por lead) já está toda no código — `PlanSeeder` já renomeou
 os planos de preço antigo para `<CHAVE>_LEGADO` (`ativo=false`) e criou
-`PRATA`/`OURO`/`DIAMANTE` com os preços novos. **Rodar o seeder não é a
-virada** — ele só prepara o catálogo. A virada de verdade é o dia em que as
-contas existentes migram e a cobrança liga, e isso é feito à mão, com as
-ferramentas abaixo, não por deploy.
+`PRATA`/`OURO`/`DIAMANTE` com os preços novos. Ele também desativa, pela
+chave, qualquer plano fora do catálogo atual que exista no banco por fora do
+seeder (formulário antigo do admin, por exemplo) — `php spark db:seed
+PlanSeeder` sozinho já cobre essa limpeza, sem precisar de UPDATE manual.
+**Rodar o seeder não é a virada** — ele só prepara o catálogo. A virada de
+verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
+é feito à mão, com as ferramentas abaixo, não por deploy.
 
 ### 13.1 Sequência
 
@@ -937,6 +940,15 @@ ferramentas abaixo, não por deploy.
    específica, não vale para sempre), preencha também `valid_to` — sem ele
    uma conta que assinar daqui a dois anos ainda ganharia os 6 meses grátis
    do lançamento.
+
+   Mesmo deploy: rode `php spark db:seed LeadChargeRuleSeeder` (já entra em
+   `MainSeeder`, então um `db:seed MainSeeder` completo também cobre). Sem
+   ele, `lead_charge_rules` fica vazia e nenhum lead recebido gera cobrança —
+   a receita do semestre de lançamento simplesmente não liga. É idempotente
+   (upsert por tipo de negócio) e respeita `LEAD_CHARGE_VALID_FROM` no
+   `.env` — a mesma lógica de "código no ar não é a mesma coisa que cobrar":
+   defina essa variável para a data real da virada, não para hoje, se o
+   deploy sair antes da data combinada.
 2. **Comunicação, 30 dias antes.** Fora do código (não há infraestrutura de
    e-mail transacional para isso neste repositório): avisar cada conta em
    plano legado do preço novo, da rampa (se aplicável) e da data.

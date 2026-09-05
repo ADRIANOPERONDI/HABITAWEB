@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Entities\Plan;
+use App\Entities\Subscription;
 use App\Models\LeadCreditLedgerModel;
 
 /**
@@ -47,19 +49,38 @@ class LeadCreditService
         $db = \Config\Database::connect();
 
         $elegiveis = $db->query(
-            "SELECT DISTINCT ON (s.account_id) s.account_id, p.credito_leads_mensal
+            "SELECT DISTINCT ON (s.account_id) s.account_id, s.billing_cycle, s.ramp_started_at,
+                    p.credito_leads_mensal, p.preco_mensal, p.preco_trimestral, p.preco_semestral, p.preco_anual
              FROM subscriptions s
              JOIN plans p ON p.id = s.plan_id
              WHERE s.status IN ('ACTIVE', 'TRIAL')
              ORDER BY s.account_id, s.id DESC"
         )->getResultArray();
 
-        $concedidas = 0;
+        $rampService = new LaunchRampService();
+        $concedidas  = 0;
 
         foreach ($elegiveis as $row) {
             $credito = (float) ($row['credito_leads_mensal'] ?? 0);
 
             if ($credito <= 0) {
+                continue;
+            }
+
+            // Mensalidade R$0 na rampa (meses 1-6, D2) é a única receita do
+            // semestre de lançamento — conceder o crédito de lead JUNTO
+            // subsidiaria a mesma conta duas vezes no mesmo mês. O crédito
+            // só entra a partir do mês em que a mensalidade volta a cobrar.
+            $plan = new Plan([
+                'preco_mensal'     => $row['preco_mensal'],
+                'preco_trimestral' => $row['preco_trimestral'],
+                'preco_semestral'  => $row['preco_semestral'],
+                'preco_anual'      => $row['preco_anual'],
+            ]);
+            $subscription = new Subscription(['ramp_started_at' => $row['ramp_started_at']]);
+            $billingCycle = (string) ($row['billing_cycle'] ?? 'MONTHLY');
+
+            if ($rampService->amountFor($plan, $billingCycle, $subscription) <= 0) {
                 continue;
             }
 

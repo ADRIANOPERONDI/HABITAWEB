@@ -118,6 +118,9 @@ class ChargesController extends BaseController
             return redirect()->back()->with('error', 'Tipo de negócio inválido.');
         }
 
+        // FIXED não usa piso/teto: o valor já É o único número da regra —
+        // gravar min/max junto só criaria uma segunda forma de mudar o
+        // resultado de calculate() que a tela nem mostra pra esse modelo.
         $data = [
             // Vazio = regra padrão da plataforma.
             'account_id'    => ($post['account_id'] ?? '') === '' ? null : (int) $post['account_id'],
@@ -125,9 +128,15 @@ class ChargesController extends BaseController
             'tipo_negocio'  => $tipoNegocio === '' ? null : $tipoNegocio,
             'model'         => $model,
             'value'         => max(0, (float) str_replace(',', '.', (string) ($post['value'] ?? 0))),
-            'min_value'     => ($post['min_value'] ?? '') === '' ? null : (float) str_replace(',', '.', (string) $post['min_value']),
-            'max_value'     => ($post['max_value'] ?? '') === '' ? null : (float) str_replace(',', '.', (string) $post['max_value']),
+            'min_value'     => $model === LeadChargeRuleModel::MODEL_PERCENT && ($post['min_value'] ?? '') !== ''
+                ? (float) str_replace(',', '.', (string) $post['min_value'])
+                : null,
+            'max_value'     => $model === LeadChargeRuleModel::MODEL_PERCENT && ($post['max_value'] ?? '') !== ''
+                ? (float) str_replace(',', '.', (string) $post['max_value'])
+                : null,
             'is_active'     => ! empty($post['is_active']),
+            'valid_from'    => ($post['valid_from'] ?? '') === '' ? null : (string) $post['valid_from'],
+            'valid_to'      => ($post['valid_to'] ?? '') === '' ? null : (string) $post['valid_to'],
             'notes'         => $post['notes'] ?? null,
         ];
 

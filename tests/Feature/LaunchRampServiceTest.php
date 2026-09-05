@@ -125,4 +125,34 @@ final class LaunchRampServiceTest extends HabitawebTestCase
 
         $this->assertNull($service->nextTransition($sub, '2026-01-01'), 'ja passou do mes 13, faixa aberta nao tem proxima transicao');
     }
+
+    /**
+     * D1/P6: todo cadastro novo pelo checkout entra na rampa, mas só no
+     * ciclo mensal — aplicar o desconto de rampa a um plano anual criaria
+     * pró-rata sobre um valor de 12 meses pago de uma vez, ou "anual a R$ 0".
+     */
+    public function testDataDeAdesaoParaNovoCadastroSoNoMensal(): void
+    {
+        $service = new LaunchRampService();
+
+        $this->assertSame(date('Y-m-d'), $service->enrollmentDateForNewSignup('MONTHLY'));
+        $this->assertNull($service->enrollmentDateForNewSignup('QUARTERLY'));
+        $this->assertNull($service->enrollmentDateForNewSignup('SEMIANNUALLY'));
+        $this->assertNull($service->enrollmentDateForNewSignup('YEARLY'));
+    }
+
+    /**
+     * Sem faixa configurada pro mês 1, marcar `ramp_started_at = hoje`
+     * gravaria uma data sem nenhum efeito prático (percentFor() cairia no
+     * fallback de 100% de qualquer jeito) — melhor nem entrar na rampa.
+     */
+    public function testDataDeAdesaoENulaSemFaixaConfiguradaParaOMesUm(): void
+    {
+        $db = \Config\Database::connect();
+        $db->table('plan_launch_ramps')->truncate();
+
+        $service = new LaunchRampService();
+
+        $this->assertNull($service->enrollmentDateForNewSignup('MONTHLY'));
+    }
 }

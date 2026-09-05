@@ -186,10 +186,16 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('/', 'DashboardController::index');
     // Custom Property Routes (Must come before resource)
     $routes->get('properties/(:num)/turbo', 'PromotionController::turbo/$1');
+    $routes->post('properties/(:num)/turbo/cota', 'PromotionController::useQuota/$1');
     $routes->post('properties/(:num)/media', 'PropertyMediaController::upload/$1');
 
-    $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1');
-    $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit');
+    // is_destaque é selo editorial da Habitaweb (P5), não algo que o tenant
+    // compra ou controla — desde a Fase 1 quem quer exposição paga usa
+    // turbinada. Ficam staff-only pra fechar a rota que ainda dava pro
+    // tenant alcançar o toggle direto por fora da tela (a UI já não mostra,
+    // mas nada no servidor impedia um POST direto).
+    $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1', ['filter' => 'group:superadmin']);
+    $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit', ['filter' => 'group:superadmin']);
     // Antes do resource: 'properties/bulk-status' casaria com o
     // 'properties/(:segment)' de update/show do resource (first-match-wins).
     $routes->post('properties/bulk-status', 'PropertyController::bulkStatus');
@@ -236,7 +242,6 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('subscription/upgrade/(:num)', 'SubscriptionController::upgrade/$1');
     $routes->post('subscription/payment-method/(:num)', 'SubscriptionController::changePaymentMethod/$1');
     $routes->get('subscription/preview-upgrade/(:num)', 'SubscriptionController::previewUpgrade/$1');
-    $routes->get('subscription/invoice/(:num)', 'SubscriptionController::downloadInvoice/$1');
     $routes->post('subscription/cancel/(:num)', 'SubscriptionController::cancel/$1');
     $routes->get('settings', 'SettingsController::index', ['filter' => 'group:superadmin']);
     $routes->post('settings', 'SettingsController::update', ['filter' => 'group:superadmin']);
@@ -318,6 +323,7 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('accounts/(:num)/subscription/upgrade', 'AccountSubscriptionController::upgrade/$1', ['filter' => 'group:superadmin,admin']);
     $routes->post('accounts/(:num)/subscription/suspend', 'AccountSubscriptionController::suspend/$1', ['filter' => 'group:superadmin,admin']);
     $routes->post('accounts/(:num)/subscription/cancel', 'AccountSubscriptionController::cancel/$1', ['filter' => 'group:superadmin,admin']);
+    $routes->post('accounts/(:num)/subscription/start-gateway', 'AccountSubscriptionController::startGateway/$1', ['filter' => 'group:superadmin,admin']);
     
     $routes->get('users', 'UsersController::index', ['filter' => 'group:superadmin,admin']);
     $routes->get('users/(:num)/edit', 'UsersController::edit/$1', ['filter' => 'group:superadmin,admin']);

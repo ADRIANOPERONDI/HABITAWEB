@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Entities\Subscription;
 use App\Models\AccountModel;
 use App\Models\SubscriptionModel;
 use App\Models\PaymentGatewayModel;
@@ -181,7 +182,7 @@ class PaymentService
     /**
      * Initialize a Subscription (Plan)
      */
-    public function initializeSubscription(int $accountId, int $planId, string $billingType, array $creditCard = [], ?string $couponCode = null, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3)
+    public function initializeSubscription(int $accountId, int $planId, string $billingType, array $creditCard = [], ?string $couponCode = null, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $rampStartedAt = null)
     {
         if (!$this->activeGateway) {
             throw new \Exception("Serviço de pagamento indisponível.");
@@ -194,24 +195,22 @@ class PaymentService
         if (!$plan) {
             throw new \Exception("Plano inválido.");
         }
-        
-        // Determine Base Amount and Duration based on Chosen Cycle
-        $baseAmount = (float)$plan->preco_mensal;
-        $monthsToAdd = 1;
-        switch($billingCycle) {
-            case 'QUARTERLY': 
-                $baseAmount = (float)$plan->preco_trimestral; 
-                $monthsToAdd = 3;
-                break;
-            case 'SEMIANNUALLY': 
-                $baseAmount = (float)$plan->preco_semestral; 
-                $monthsToAdd = 6;
-                break;
-            case 'YEARLY': 
-                $baseAmount = (float)$plan->preco_anual; 
-                $monthsToAdd = 12;
-                break;
-        }
+
+        // Duração do ciclo — independe de rampa.
+        $monthsToAdd = match ($billingCycle) {
+            'QUARTERLY'    => 3,
+            'SEMIANNUALLY' => 6,
+            'YEARLY'       => 12,
+            default        => 1,
+        };
+
+        // Valor efetivo do ciclo. LaunchRampService é o único ponto que
+        // decide quanto se cobra AGORA (aplica o desconto de rampa, Fase 6,
+        // quando $rampStartedAt não é nulo); getPlanAmountForBillingCycle
+        // continua resolvendo só o preço "de tabela" do ciclo.
+        $rampService     = new LaunchRampService($this);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+        $baseAmount       = $rampService->amountFor($plan, $billingCycle, $rampSubscription);
 
         // 1. Validate Coupon (Passing account_id for targeted coupons)
         $couponData = $this->validateCoupon($couponCode, $baseAmount, $accountId);
@@ -320,7 +319,9 @@ class PaymentService
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
             'billing_cycle' => $billingCycle,
-            'next_billing_date' => $subscriptionData['next_billing_date'] ?? null
+            'next_billing_date' => $subscriptionData['next_billing_date'] ?? null,
+            'ramp_started_at'    => $rampStartedAt,
+            'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
         ];
 
         // LOGICA DE INTEGRIDADE ABSOLUTA: Upsert baseado no asaas_subscription_id
@@ -553,6 +554,54 @@ class PaymentService
             'YEARLY' => 12,
             default => 1,
         };
+    }
+
+    /**
+     * Assinatura ACTIVE sem nenhuma chamada ao gateway — usada tanto pela
+     * troca de plano que cai a R$0 (SubscriptionController::upgrade) quanto
+     * pelo cadastro novo que entra no mês 0% da rampa (checkout, Fase 6/D1).
+     *
+     * Asaas não aceita assinatura de valor zero, e forçar R$0,01 mentiria na
+     * fatura do cliente — o caminho aqui é simplesmente não criar nada no
+     * gateway. `data_fim` fica sempre NULL: expirar essa assinatura
+     * derrubaria o painel do tenant no mês seguinte mesmo com a mensalidade
+     * continuando R$0 (ver SubscriptionCheck).
+     *
+     * `$rampStartedAt` é decisão de quem chama: `upgrade()` continua o
+     * relógio da assinatura anterior (troca de plano não dá 6 meses novos de
+     * graça); o checkout usa `LaunchRampService::enrollmentDateForNewSignup()`.
+     *
+     * @return array{success: bool, local_id: int}
+     */
+    public function createFreeLocalSubscription(int $accountId, $plan, string $billingCycle, ?string $rampStartedAt): array
+    {
+        $rampService      = new LaunchRampService($this);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+
+        $activeSub = $this->subscriptionModel
+            ->where('account_id', $accountId)
+            ->where('status', 'ACTIVE')
+            ->first();
+
+        if ($activeSub) {
+            $activeSub->status = 'CANCELADA_POR_TROCA';
+            $this->subscriptionModel->save($activeSub);
+        }
+
+        $localSubId = $this->subscriptionModel->insert([
+            'account_id'         => $accountId,
+            'plan_id'            => $plan->id,
+            'status'             => 'ACTIVE',
+            'data_inicio'        => date('Y-m-d'),
+            'data_fim'           => null,
+            'valor'              => 0.00,
+            'payment_method'     => 'FREE',
+            'billing_cycle'      => $billingCycle,
+            'ramp_started_at'    => $rampStartedAt,
+            'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
+        ], true);
+
+        return ['success' => true, 'local_id' => $localSubId];
     }
 
     /**
@@ -826,6 +875,84 @@ class PaymentService
         }
 
         return $ok;
+    }
+
+    /**
+     * Cria a assinatura no gateway pra uma assinatura LOCAL que já existe em
+     * modo FREE (rampa, Fase 6) e está na virada 0%→X% — a primeira cobrança
+     * real da conta. Ação do OPERADOR (AccountSubscriptionController::startGateway),
+     * não automática: ver `ApplyLaunchRamp`, que só registra a transição e
+     * espera esta chamada.
+     *
+     * Diferente de `initializeSubscription()` (checkout de cadastro novo),
+     * aqui a assinatura já existe e não há cupom nem cartão tokenizado — o
+     * operador só está ligando a cobrança que a rampa já previu.
+     *
+     * @return array{success: bool, subscription_id: string, amount: float}
+     */
+    public function startGatewaySubscriptionForRamp(int $subscriptionId, string $billingType): array
+    {
+        if (!$this->activeGateway) {
+            throw new \Exception("Serviço de pagamento indisponível.");
+        }
+
+        if (!in_array($billingType, ['PIX', 'BOLETO', 'CREDIT_CARD'], true)) {
+            throw new \Exception("Forma de pagamento inválida.");
+        }
+
+        $subscription = $this->subscriptionModel->find($subscriptionId);
+
+        if (!$subscription) {
+            throw new \Exception("Assinatura não encontrada.");
+        }
+
+        if (!empty($subscription->asaas_subscription_id)) {
+            throw new \Exception("Esta assinatura já tem cobrança no gateway.");
+        }
+
+        $plan = model('App\Models\PlanModel')->find($subscription->plan_id);
+
+        if (!$plan) {
+            throw new \Exception("Plano inválido.");
+        }
+
+        $accountId  = (int) $subscription->account_id;
+        $customerId = $this->getOrCreateCustomer($accountId);
+
+        $billingCycle = (string) ($subscription->billing_cycle ?? 'MONTHLY');
+        $rampService  = new LaunchRampService($this);
+        $amount       = $rampService->amountFor($plan, $billingCycle, $subscription);
+        $monthsToAdd  = $this->getBillingCycleMonths($billingCycle);
+
+        $data = [
+            'billing_type'        => $billingType,
+            'amount'              => $amount,
+            'description'         => "Assinatura Plano {$plan->nome}",
+            'external_reference'  => 'plan_' . $plan->id . '_acc_' . $accountId,
+            'cycle'               => $billingCycle,
+            'next_due_date'       => date('Y-m-d', strtotime('+3 days')),
+        ];
+
+        try {
+            $subscriptionData = $this->activeGateway->createSubscription($customerId, (string) $plan->id, $data);
+        } catch (\Exception $e) {
+            throw new \Exception("Erro no gateway: " . $e->getMessage());
+        }
+
+        $subId = $subscriptionData['subscription_id'];
+
+        $this->subscriptionModel->update($subscriptionId, [
+            'status'                => 'ACTIVE',
+            'asaas_subscription_id' => $subId,
+            'asaas_customer_id'     => $customerId,
+            'valor'                 => $amount,
+            'payment_method'        => $billingType,
+            'ramp_percent_atual'    => $rampService->percentFor($subscription),
+            'next_billing_date'     => $subscriptionData['next_billing_date']
+                ?? date('Y-m-d', strtotime("+{$monthsToAdd} months")),
+        ]);
+
+        return ['success' => true, 'subscription_id' => $subId, 'amount' => $amount];
     }
 
     /**
@@ -1162,7 +1289,7 @@ class PaymentService
     /**
      * Start a Tokenization Payment (Manual Recurrence Flow)
      */
-    public function initiateTokenizationPayment(int $accountId, int $planId, string $billingType, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $couponCode = null)
+    public function initiateTokenizationPayment(int $accountId, int $planId, string $billingType, string $billingCycle = 'MONTHLY', int $gracePeriodDays = 3, ?string $couponCode = null, ?string $rampStartedAt = null)
     {
         if (!$this->activeGateway) {
             throw new \Exception("Serviço de pagamento indisponível.");
@@ -1176,23 +1303,20 @@ class PaymentService
             throw new \Exception("Plano inválido.");
         }
 
-        // Determine Base Amount and Duration based on Chosen Cycle
-        $baseAmount = (float)$plan->preco_mensal;
-        $monthsToAdd = 1;
-        switch($billingCycle) {
-            case 'QUARTERLY': 
-                $baseAmount = (float)$plan->preco_trimestral; 
-                $monthsToAdd = 3;
-                break;
-            case 'SEMIANNUALLY': 
-                $baseAmount = (float)$plan->preco_semestral; 
-                $monthsToAdd = 6;
-                break;
-            case 'YEARLY': 
-                $baseAmount = (float)$plan->preco_anual; 
-                $monthsToAdd = 12;
-                break;
-        }
+        // Duração do ciclo — independe de rampa.
+        $monthsToAdd = match ($billingCycle) {
+            'QUARTERLY'    => 3,
+            'SEMIANNUALLY' => 6,
+            'YEARLY'       => 12,
+            default        => 1,
+        };
+
+        // Valor efetivo do ciclo, com o desconto de rampa (Fase 6) aplicado
+        // quando $rampStartedAt não é nulo — mesmo critério de
+        // initializeSubscription().
+        $rampService      = new LaunchRampService($this);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+        $baseAmount        = $rampService->amountFor($plan, $billingCycle, $rampSubscription);
 
         // 1. Validate Coupon
         $couponData = $this->validateCoupon($couponCode, $baseAmount, $accountId);
@@ -1243,7 +1367,9 @@ class PaymentService
             'asaas_customer_id' => $customerId,
             'payment_method' => $billingType,
             'billing_cycle' => $billingCycle,
-            'next_billing_date' => date('Y-m-d', strtotime("+$monthsToAdd months"))
+            'next_billing_date' => date('Y-m-d', strtotime("+$monthsToAdd months")),
+            'ramp_started_at'    => $rampStartedAt,
+            'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
         ];
 
         $this->subscriptionModel->insert($subscription);
@@ -1471,6 +1597,48 @@ class PaymentService
     }
 
     /**
+     * Efeitos que uma transação PAGA precisa disparar, além do próprio
+     * status — ativar a conta e, dependendo do tipo, ativar a turbinada
+     * comprada ou fechar a fatura de leads. Único ponto compartilhado entre
+     * `WebhookService::handlePaymentConfirmed()` e a reconciliação manual
+     * (`syncPendingPayments()`, abaixo): antes só o webhook aplicava estes
+     * efeitos — uma cobrança de TURBO ou LEAD_INVOICE recuperada pelo sync
+     * (por exemplo, porque o webhook falhou em ser entregue) marcava a
+     * transação como paga na tela, mas nunca ativava a turbinada nem fechava
+     * a cobrança do tenant.
+     *
+     * `$tx` é o array da transação já GRAVADA localmente (precisa de pelo
+     * menos `id`, `account_id`, `type`, `metadata`). Idempotente:
+     * `LeadChargeService::markPaidByTransaction` e `TurboService::activatePaid`
+     * já lidam com "chamado de novo" sem duplicar efeito.
+     */
+    public function settleTransaction(array $tx): void
+    {
+        $accountId = $tx['account_id'] ?? null;
+
+        if ($accountId) {
+            $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
+        }
+
+        if (($tx['type'] ?? null) === 'TURBO' && isset($tx['metadata'])) {
+            $meta     = is_string($tx['metadata']) ? json_decode($tx['metadata'], true) : (array) $tx['metadata'];
+            $promoKey = $meta['promo_key'] ?? $meta['package_key'] ?? null;
+
+            if ($promoKey && isset($meta['property_id'])) {
+                service('turboService')->activatePaid(
+                    (int) $meta['property_id'],
+                    (string) $promoKey,
+                    (int) $tx['id']
+                );
+            }
+        }
+
+        if (($tx['type'] ?? null) === 'LEAD_INVOICE') {
+            (new LeadChargeService())->markPaidByTransaction((int) $tx['id']);
+        }
+    }
+
+    /**
      * Sincroniza pagamentos pendentes do gateway para o banco local
      */
     public function syncPendingPayments(int $accountId): void
@@ -1516,6 +1684,8 @@ class PaymentService
                         $type = 'UPGRADE_PRORATA';
                     }
 
+                    $novaPaga = $gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED';
+
                     $this->transactionModel->insert([
                         'account_id'      => $accountId,
                         'subscription_id' => $subscription ? $subscription->id : null,
@@ -1524,7 +1694,7 @@ class PaymentService
                         'gateway_customer_id'    => $customerId,
                         'amount'          => $p['amount'],
                         'due_date'        => $p['dueDate'] ?? null,
-                        'status'          => ($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') ? 'SUCCESS' : 'PENDING',
+                        'status'          => $novaPaga ? 'SUCCESS' : 'PENDING',
                         'type'            => $type,
                         'payment_method'  => $p['billing_type'],
                         'invoice_url'     => $p['invoice_url'],
@@ -1532,9 +1702,22 @@ class PaymentService
                         'metadata'        => json_encode($p)
                     ]);
 
-                    // Se já estiver pago, ativa a assinatura imediatamente
-                    if (($gatewayStatus === 'RECEIVED' || $gatewayStatus === 'CONFIRMED') && $subscription && $subscription->asaas_subscription_id) {
-                        $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
+                    // Se já estiver pago, ativa a assinatura (se for o caso)
+                    // e aplica o efeito do tipo — mesmo caminho de
+                    // WebhookService::handlePaymentConfirmed(), pra uma
+                    // cobrança descoberta só aqui (nunca chegou webhook) não
+                    // ficar com o status pago mas sem nenhum efeito.
+                    if ($novaPaga) {
+                        if ($subscription && $subscription->asaas_subscription_id) {
+                            $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
+                        }
+
+                        $this->settleTransaction([
+                            'id'         => $this->transactionModel->getInsertID(),
+                            'account_id' => $accountId,
+                            'type'       => $type,
+                            'metadata'   => json_encode($p),
+                        ]);
                     }
                 } else {
                     // Recupera também AWAITING_PAYMENT/OVERDUE. Antes, uma cobrança
@@ -1547,7 +1730,8 @@ class PaymentService
                     ) {
                         log_message('notice', "[PaymentService] Sync: Transação {$gatewayPaymentId} detectada como PAGA no gateway. Atualizando local...");
                         $this->transactionModel->update($localTransaction['id'], ['status' => 'SUCCESS']);
-                        
+                        $this->settleTransaction(array_merge($localTransaction, ['status' => 'SUCCESS']));
+
                         if ($subscription && $subscription->asaas_subscription_id) {
                             $this->activateSubscriptionByAsaasId($subscription->asaas_subscription_id, $gatewayPaymentId);
                         }
