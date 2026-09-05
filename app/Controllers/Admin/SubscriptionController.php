@@ -219,23 +219,18 @@ class SubscriptionController extends BaseController
             return redirect()->back()->with('error', "Não é possível mudar para este plano. Você tem {$activeProperties} imóveis ativos, mas o plano {$targetPlan->nome} permite apenas {$targetPlan->limite_imoveis_ativos}.");
         }
 
-        // 2.1 Verificar Destaques Ativos
-        // 2.1 Verificar Destaques Ativos (Do Plano)
-        if ($targetPlan->destaques_mensais !== null) {
-            // [FIX] Paid Highlights (Turbo) are separate from Plan Highlights (is_destaque).
-            // Only count properties that are using the plan's highlight slots.
-            $propertyModel = model('App\Models\PropertyModel');
-            $activeHighlights = $propertyModel
-                ->where('account_id', $accountId)
-                ->where('is_destaque', true)
-                ->where('status', 'ACTIVE') // Only count active properties
-                ->countAllResults();
+        // Não há mais trava de destaque na troca de plano.
+        //
+        // A que existia aqui contava imóveis com `is_destaque` contra
+        // `destaques_mensais`, cruzando dois conceitos que nunca foram o mesmo:
+        // `is_destaque` é selo editorial da Habitaweb e `destaques_mensais`
+        // nunca governou concessão nenhuma (quem governa é limite_turbo_mensal).
+        // A turbinada, por sua vez, é comprada por prazo e já paga — bloquear a
+        // troca de plano por causa dela puniria o cliente por ter comprado.
+        // Quem passa a controlar quantas turbinadas o plano concede por mês é o
+        // TurboService, na concessão, não na troca.
 
-            if ($activeHighlights > $targetPlan->destaques_mensais) {
-                 return redirect()->back()->with('error', "Não é possível mudar para este plano. Você tem {$activeHighlights} destaques ativos, mas o plano {$targetPlan->nome} permite apenas {$targetPlan->destaques_mensais}. Aguarde o término dos destaques ou cancele-os.");
-            }
-        }
-        
+
         // 3. Se for GRATUITO (R$ 0,00), troca direto!
         if ($targetPlan->preco_mensal <= 0) {
             $subscriptionModel = model('App\Models\SubscriptionModel');

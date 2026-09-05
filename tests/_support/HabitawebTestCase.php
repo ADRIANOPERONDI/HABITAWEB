@@ -61,6 +61,17 @@ abstract class HabitawebTestCase extends CIUnitTestCase
         $this->resetServices();
         $this->mockSession();
 
+        // BaseConnection::$transStatus é uma flag da CONEXÃO, não da transação —
+        // e nada além de transComplete() (fora de modo estrito) ou
+        // resetTransStatus() a limpa. transRollback() sozinho NÃO reseta.
+        // Qualquer teste anterior que force um erro de propósito no banco (ex.:
+        // provar uma constraint UNIQUE) deixa transStatus() = false GRUDADO na
+        // conexão compartilhada para todo o resto do processo do PHPUnit — todo
+        // teste seguinte que faça transStart()/transComplete() (PaymentService,
+        // PromotionService, TurboService) veria transStatus()=false mesmo com
+        // as PRÓPRIAS queries 100% bem-sucedidas. Resetado aqui, no início de
+        // cada teste, para que o passado de um teste nunca envenene o próximo.
+        $this->db->resetTransStatus();
         $this->db->transStart();
     }
 

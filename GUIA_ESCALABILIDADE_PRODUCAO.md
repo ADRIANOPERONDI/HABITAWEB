@@ -276,6 +276,24 @@ para o tenant em `/admin/integracoes/<conector>/execucoes`. Se a credencial
 de um tenant for recusada, aquela integração é desligada sozinha e marcada
 com o erro — as demais continuam rodando normalmente.
 
+**Turbinadas vencidas** — o `promo:cleanup` existia desde a criação de
+`promotions` e nunca esteve em crontab nenhum. Adicione à mesma instância worker:
+
+```cron
+0 * * * * cd /var/www/habitaweb && php spark promo:cleanup
+```
+
+De hora em hora, não diário: a turbinada é vendida por prazo (7 dias) e o cliente
+paga por hora de exposição — um cron diário devolveria até 24h a mais de vitrine
+para quem não pagou por ela.
+
+O comando desativa as promoções vencidas e zera
+`properties.highlight_level`/`highlight_expires_at`. **Ele não é mais a barreira
+de exposição**: desde a correção do ciclo de vida do turbo, toda consulta pública
+calcula o nível efetivo com `App\Libraries\Search\HighlightSql`, que trata
+destaque vencido como nível 0. Se este cron parar, ninguém recebe exposição
+indevida — apenas as colunas denormalizadas ficam desatualizadas até ele voltar.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL

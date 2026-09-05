@@ -35,7 +35,7 @@
                             <td>R$ <?= number_format($plan->preco_mensal, 2, ',', '.') ?></td>
                             <td><?= $plan->limite_imoveis_ativos === null ? 'Ilimitado' : $plan->limite_imoveis_ativos ?></td>
                             <td><?= $plan->limite_fotos_por_imovel ?></td>
-                            <td><?= $plan->destaques_mensais ?></td>
+                            <td><?= $plan->turbosIncluidos() === null ? 'Ilimitado' : $plan->turbosIncluidos() ?></td>
                             <td>
                                 <?php if($plan->ativo): ?>
                                     <span class="badge bg-success">Ativo</span>

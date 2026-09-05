@@ -27,9 +27,23 @@
                         </div>
                     <?php endif; ?>
 
-                    <div class="mb-3">
-                        <label class="form-label">Nome do Plano</label>
-                        <input type="text" name="nome" class="form-control" value="<?= old('nome', $plan->nome ?? '') ?>" required>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-7">
+                            <label class="form-label">Nome do Plano</label>
+                            <input type="text" name="nome" class="form-control" value="<?= old('nome', $plan->nome ?? '') ?>" required>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Chave</label>
+                            <input type="text" name="chave" class="form-control text-uppercase"
+                                   value="<?= old('chave', $plan->chave ?? '') ?>"
+                                   <?= isset($plan) ? 'readonly' : '' ?>
+                                   placeholder="Gerada a partir do nome">
+                            <div class="form-text">
+                                <?= isset($plan)
+                                    ? 'Não editável: seeders e testes resolvem o plano por esta chave.'
+                                    : 'Deixe vazio para gerar a partir do nome.' ?>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="row g-3 mb-3">
@@ -62,18 +76,68 @@
                         <div class="form-text">Deixe vazio para ilimitado ou defina um número exato.</div>
                     </div>
 
+                    <div class="row g-3 mb-3">
                         <div class="col-md-4">
                             <label class="form-label">Fotos por Imóvel</label>
                             <input type="number" name="limite_fotos_por_imovel" class="form-control" value="<?= old('limite_fotos_por_imovel', $plan->limite_fotos_por_imovel ?? '10') ?>" required>
                         </div>
-                         <div class="col-md-4">
-                            <label class="form-label">Destaques Mensais</label>
-                            <input type="number" name="destaques_mensais" class="form-control" value="<?= old('destaques_mensais', $plan->destaques_mensais ?? '0') ?>" required>
+                        <div class="col-md-4">
+                            <label class="form-label">Selos de Destaque</label>
+                            <input type="number" name="limite_turbo_mensal" class="form-control" value="<?= old('limite_turbo_mensal', $plan->limite_turbo_mensal ?? '0') ?>" placeholder="Vazio = ilimitado">
+                            <div class="form-text">É este campo que o sistema aplica.</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Carência (Dias)</label>
                             <input type="number" name="carencia_dias" class="form-control" value="<?= old('carencia_dias', $plan->carencia_dias ?? '3') ?>" required>
                             <div class="form-text">P/ a 1ª Fatura.</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Turbinadas extras no anual</label>
+                            <input type="number" name="turbo_bonus_anual" class="form-control" min="0"
+                                   value="<?= old('turbo_bonus_anual', $plan->turbo_bonus_anual ?? '0') ?>">
+                            <div class="form-text">Somadas à cota mensal de quem assina no ciclo anual.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Crédito de leads (R$/mês)</label>
+                            <input type="text" name="credito_leads_mensal" class="form-control double3"
+                                   value="<?= number_format((float) old('credito_leads_mensal', $plan->credito_leads_mensal ?? 0), 2, ',', '.') ?>">
+                            <div class="form-text">Abatido da fatura de leads do mês.</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Peso de exposição</label>
+                            <input type="number" name="exposure_weight" class="form-control" min="0"
+                                   value="<?= old('exposure_weight', $plan->exposure_weight ?? '0') ?>">
+                            <div class="form-text">Ordena os patrocinados entre si. 0 = fora do espaço pago.</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea name="descricao" class="form-control" rows="2"><?= old('descricao', $plan->descricao ?? '') ?></textarea>
+                    </div>
+
+                    <hr>
+
+                    <div class="mb-3">
+                        <label class="form-label d-block">Recursos do plano</label>
+                        <div class="row g-2">
+                            <?php foreach (\App\Entities\PlanFeature::catalog() as $key => $meta): ?>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="features[<?= esc($key) ?>]" value="1"
+                                               id="feat_<?= esc(str_replace('.', '_', $key)) ?>"
+                                               <?= (isset($plan) && $plan->has($key)) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="feat_<?= esc(str_replace('.', '_', $key)) ?>">
+                                            <strong><?= esc($meta['label']) ?></strong>
+                                            <span class="d-block form-text"><?= esc($meta['descricao']) ?></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
                         </div>
                     </div>
 

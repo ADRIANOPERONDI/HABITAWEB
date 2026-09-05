@@ -39,11 +39,11 @@
                 <?php endif; ?>
                 <div class="card-body text-center p-4">
                     <h3 class="card-title fw-bold mb-3"><?= esc($plan->nome) ?></h3>
-                    <h2 class="display-5 fw-bold mb-3">R$ <?= number_format($plan->preco_mensal ?? $plan->preco, 2, ',', '.') ?> <small class="text-muted fs-6">/mês</small></h2>
-                    <ul class="list-unstyled mb-4 text-start mx-auto" style="max-width: 200px;">
-                        <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> <?= esc($plan->limite_imoveis) ?> Imóveis</li>
-                        <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> <?= esc($plan->limite_fotos) ?> Fotos/Imóvel</li>
-                        <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> <?= esc($plan->limite_destaques) ?> Destaques</li>
+                    <h2 class="display-5 fw-bold mb-3">R$ <?= number_format((float) $plan->preco_mensal, 2, ',', '.') ?> <small class="text-muted fs-6">/mês</small></h2>
+                    <ul class="list-unstyled mb-4 text-start mx-auto" style="max-width: 220px;">
+                        <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> <?= $plan->limite_imoveis_ativos === null ? 'Imóveis ilimitados' : esc($plan->limite_imoveis_ativos) . ' Imóveis' ?></li>
+                        <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> <?= $plan->limite_fotos_por_imovel === null ? 'Fotos ilimitadas' : esc($plan->limite_fotos_por_imovel) . ' Fotos/Imóvel' ?></li>
+                        <li class="mb-2"><i class="fa-solid fa-circle-check text-success me-2"></i> <?= $plan->limite_turbo_mensal === null ? 'Destaques ilimitados' : esc($plan->limite_turbo_mensal) . ' Destaques' ?></li>
                     </ul>
                     <a href="<?= site_url('checkout/plan/' . $plan->id) ?>" class="btn btn-primary btn-lg w-100 rounded-pill">Selecionar Plano</a>
                 </div>

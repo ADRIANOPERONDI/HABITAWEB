@@ -217,14 +217,21 @@ class LeadService
         ];
     }
 
+    /**
+     * Incremento no banco, não em PHP.
+     *
+     * A versão anterior fazia find() -> +1 -> save(): dois leads simultâneos no
+     * mesmo imóvel liam o mesmo valor e gravavam o mesmo resultado, perdendo uma
+     * contagem (lost update). Como leads_count alimenta o painel do anunciante e
+     * vai alimentar a cobrança por lead, contar a menos é subfaturar.
+     *
+     * Mesmo padrão de PropertyService::incrementVisit.
+     */
     protected function incrementPropertyLeadCount(int $propertyId)
     {
-        // Maneira atômica ou simples de incrementar
-        $property = $this->propertyModel->find($propertyId);
-        if ($property) {
-            $property->leads_count = ($property->leads_count ?? 0) + 1;
-            $this->propertyModel->save($property);
-        }
+        $this->propertyModel->where('id', $propertyId)
+                            ->set('leads_count', 'leads_count + 1', false)
+                            ->update();
     }
 
     public function listLeads(array $filters = [], int $perPage = 20): array

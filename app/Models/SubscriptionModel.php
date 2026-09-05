@@ -40,13 +40,54 @@ class SubscriptionModel extends Model
     // Callbacks
     protected $allowCallbacks = true;
     protected $beforeInsert   = [];
-    protected $afterInsert    = [];
+    protected $afterInsert    = ['invalidatePlanGate'];
     protected $beforeUpdate   = [];
-    protected $afterUpdate    = [];
+    protected $afterUpdate    = ['invalidatePlanGate'];
     protected $beforeFind     = [];
     protected $afterFind      = [];
     protected $beforeDelete   = [];
-    protected $afterDelete    = [];
+    protected $afterDelete    = ['invalidatePlanGate'];
+
+    /**
+     * Derruba o cache de plano da conta afetada.
+     *
+     * Troca de plano, cancelamento e ativação precisam refletir na hora: sem
+     * isto o tenant pagaria o upgrade e continuaria sem o recurso por até 5
+     * minutos, que é o tipo de coisa que vira chamado de suporte.
+     *
+     * O account_id nem sempre vem no payload do callback (um update por id não
+     * o traz), então quando falta ele é buscado pelo id da própria assinatura.
+     */
+    protected function invalidatePlanGate(array $data): array
+    {
+        $accountIds = [];
+
+        foreach ((array) ($data['data']['account_id'] ?? []) as $value) {
+            $accountIds[] = (int) $value;
+        }
+
+        if (isset($data['data']['account_id']) && ! is_array($data['data']['account_id'])) {
+            $accountIds[] = (int) $data['data']['account_id'];
+        }
+
+        if ($accountIds === [] && ! empty($data['id'])) {
+            $rows = $this->db->table($this->table)
+                ->select('account_id')
+                ->whereIn('id', (array) $data['id'])
+                ->get()
+                ->getResultArray();
+
+            foreach ($rows as $row) {
+                $accountIds[] = (int) $row['account_id'];
+            }
+        }
+
+        foreach (array_unique(array_filter($accountIds)) as $accountId) {
+            \App\Services\PlanGate::forget($accountId);
+        }
+
+        return $data;
+    }
 
     /**
      * Buscar subscription ativa de uma conta

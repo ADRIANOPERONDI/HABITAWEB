@@ -555,16 +555,61 @@ class PaymentService
         };
     }
 
+    /**
+     * Valor total do ciclo — não o valor mensal equivalente.
+     *
+     * O `??` que havia aqui não protegia nada: as colunas preco_trimestral,
+     * preco_semestral e preco_anual têm DEFAULT 0.00, e `0.00 ?? x` devolve
+     * 0.00, nunca o fallback. Como o PlanSeeder só preenche preco_mensal e
+     * preco_anual, os três planos de produção têm trimestral e semestral
+     * zerados — e o checkout aceita `billing_cycle` só pelo in_list, sem
+     * conferir se o plano tem preço para o ciclo. Um POST direto com
+     * QUARTERLY criava assinatura de 3 meses por R$ 0,00.
+     *
+     * Agora preço ausente ou zerado cai no múltiplo do mensal, que é o valor
+     * honesto do período. Quem quiser dar desconto no ciclo longo preenche a
+     * coluna.
+     */
     protected function getPlanAmountForBillingCycle($plan, string $billingCycle): float
     {
         $monthly = (float) ($plan->preco_mensal ?? 0);
 
-        return match ($this->normalizeBillingCycle($billingCycle)) {
-            'QUARTERLY' => (float) ($plan->preco_trimestral ?? ($monthly * 3)),
-            'SEMIANNUALLY' => (float) ($plan->preco_semestral ?? ($monthly * 6)),
-            'YEARLY' => (float) ($plan->preco_anual ?? ($monthly * 12)),
-            default => $monthly,
+        [$cycleColumn, $months] = match ($this->normalizeBillingCycle($billingCycle)) {
+            'QUARTERLY'    => ['preco_trimestral', 3],
+            'SEMIANNUALLY' => ['preco_semestral', 6],
+            'YEARLY'       => ['preco_anual', 12],
+            default        => [null, 1],
         };
+
+        if ($cycleColumn === null) {
+            return $monthly;
+        }
+
+        $cyclePrice = (float) ($plan->{$cycleColumn} ?? 0);
+
+        return $cyclePrice > 0 ? $cyclePrice : $monthly * $months;
+    }
+
+    /**
+     * O plano tem preço próprio cadastrado para este ciclo?
+     *
+     * Usado pelo checkout para não oferecer (nem aceitar) um ciclo que o plano
+     * não vende. MONTHLY sempre vale, desde que o plano tenha preço mensal.
+     */
+    public function planSupportsBillingCycle($plan, string $billingCycle): bool
+    {
+        $cycleColumn = match ($this->normalizeBillingCycle($billingCycle)) {
+            'QUARTERLY'    => 'preco_trimestral',
+            'SEMIANNUALLY' => 'preco_semestral',
+            'YEARLY'       => 'preco_anual',
+            default        => null,
+        };
+
+        if ($cycleColumn === null) {
+            return (float) ($plan->preco_mensal ?? 0) > 0;
+        }
+
+        return (float) ($plan->{$cycleColumn} ?? 0) > 0;
     }
 
     protected function resolveNextDueDateForPaidCycle($subscription, array $paymentPayload, int $monthsToAdd): string

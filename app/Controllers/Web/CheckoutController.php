@@ -86,7 +86,23 @@ class CheckoutController extends BaseController
 
         $planModel = model('App\Models\PlanModel');
         $plan = $planModel->find($planId);
-        $gracePeriodDays = $plan ? (int)$plan->carencia_dias : 3;
+
+        if (! $plan || ! $plan->ativo) {
+            return redirect()->back()->withInput()->with('error', 'Plano indisponível.');
+        }
+
+        // O in_list acima só valida que o ciclo existe, não que ESTE plano o
+        // vende. As colunas de preço por ciclo têm DEFAULT 0.00 e o PlanSeeder
+        // preenche apenas mensal e anual — sem esta checagem, um POST com
+        // billing_cycle=QUARTERLY assinava 3 meses por R$ 0,00.
+        if (! (new \App\Services\PaymentService())->planSupportsBillingCycle($plan, $billingCycle)) {
+            return redirect()->back()->withInput()->with(
+                'error',
+                'Este plano não está disponível na periodicidade escolhida.'
+            );
+        }
+
+        $gracePeriodDays = (int) $plan->carencia_dias;
 
         try {
             log_message('debug', '[Checkout] Processando pagamento para conta ' . $user->account_id);
