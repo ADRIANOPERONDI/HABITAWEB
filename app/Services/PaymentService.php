@@ -570,7 +570,7 @@ class PaymentService
      * honesto do período. Quem quiser dar desconto no ciclo longo preenche a
      * coluna.
      */
-    protected function getPlanAmountForBillingCycle($plan, string $billingCycle): float
+    public function getPlanAmountForBillingCycle($plan, string $billingCycle): float
     {
         $monthly = (float) ($plan->preco_mensal ?? 0);
 
@@ -797,6 +797,38 @@ class PaymentService
     }
 
     /**
+     * Atualiza só o VALOR de uma assinatura já existente no gateway, sem
+     * trocar de plano — a transição de faixa da rampa (Fase 6) usa isto para
+     * a virada 50%→100%: a assinatura já existe (foi criada na virada
+     * 0%→50%), só o preço muda para o próximo ciclo.
+     */
+    public function updateSubscriptionAmount(int $localSubscriptionId, float $newAmount, ?int $rampPercent = null): bool
+    {
+        if (!$this->activeGateway) {
+            throw new \Exception("Serviço de pagamento indisponível.");
+        }
+
+        $subscription = $this->subscriptionModel->find($localSubscriptionId);
+        if (!$subscription || empty($subscription->asaas_subscription_id)) {
+            throw new \Exception("Assinatura sem vínculo com o gateway.");
+        }
+
+        $ok = $this->activeGateway->updateSubscription($subscription->asaas_subscription_id, [
+            'amount' => $newAmount,
+            'updatePendingPayments' => true,
+        ]);
+
+        if ($ok) {
+            $this->subscriptionModel->update($localSubscriptionId, [
+                'valor' => $newAmount,
+                'ramp_percent_atual' => $rampPercent,
+            ]);
+        }
+
+        return $ok;
+    }
+
+    /**
      * Trocar plano de uma assinatura (Upgrade/Downgrade) com lógica de pró-rata
      */
     public function changeSubscriptionPlan(int $accountId, int $newPlanId, string $billingType)
@@ -820,10 +852,19 @@ class PaymentService
         $isUpgrade = $newPlan->preco_mensal > $oldPlan->preco_mensal;
         $createdPaymentData = null;
 
+        // Conta sem rampa (ramp_started_at nulo, o caso de toda conta hoje)
+        // recebe percentual 100 — os valores abaixo ficam idênticos ao preço
+        // de tabela, comportamento inalterado.
+        $rampService = new LaunchRampService($this);
+        $billingCycle = $this->normalizeBillingCycle((string) ($subscription->billing_cycle ?? 'MONTHLY'));
+        $oldEffective = $rampService->amountFor($oldPlan, $billingCycle, $subscription);
+        $newEffective = $rampService->amountFor($newPlan, $billingCycle, $subscription);
+        $rampPercent  = $rampService->percentFor($subscription);
+
         try {
             if ($isUpgrade && $subscription->asaas_subscription_id) {
                 // 1. Lógica de Upgrade com Pró-rata
-                $proRata = $this->calculateUpgradeProRata($subscription, (float)$oldPlan->preco_mensal, (float)$newPlan->preco_mensal);
+                $proRata = $this->calculateUpgradeProRata($subscription, $oldEffective, $newEffective);
                 
                 if ($proRata['value'] > 0) {
                     log_message('debug', "[PaymentService] Gerando cobrança de pró-rata: R$ " . $proRata['value']);
@@ -844,6 +885,7 @@ class PaymentService
                         'old_price'    => $oldPlan->preco_mensal,
                         'new_plan_id'  => $newPlan->id,
                         'new_price'    => $newPlan->preco_mensal,
+                        'ramp_percent' => $rampPercent,
                     ]);
 
                     // 2. Registrar transação no banco
@@ -867,10 +909,8 @@ class PaymentService
 
             // 2. Atualizar valor da assinatura no Gateway para os próximos ciclos
             if ($subscription->asaas_subscription_id) {
-                $billingCycle = $this->normalizeBillingCycle((string) ($subscription->billing_cycle ?? 'MONTHLY'));
-                $newAmount = $this->getPlanAmountForBillingCycle($newPlan, $billingCycle);
                 $updateData = [
-                    'amount' => $newAmount,
+                    'amount' => $newEffective,
                     'description' => "Assinatura Plano " . $newPlan->nome,
                     'billing_type' => $billingType,
                     'updatePendingPayments' => true,
@@ -882,7 +922,9 @@ class PaymentService
             $this->subscriptionModel->update($subscription->id, [
                 'plan_id' => $newPlanId,
                 'status' => 'ACTIVE', // Garantir ativa
-                'payment_method' => $billingType
+                'payment_method' => $billingType,
+                'ramp_percent_atual' => $subscription->ramp_started_at ? $rampPercent : null,
+                'valor' => $newEffective,
             ]);
 
             log_message('notice', "[PaymentService] Plano da conta {$accountId} alterado para {$newPlan->nome}. Upgrade: " . ($isUpgrade ? 'Sim' : 'Não'));

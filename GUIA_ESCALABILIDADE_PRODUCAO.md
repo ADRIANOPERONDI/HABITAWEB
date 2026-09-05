@@ -354,6 +354,33 @@ O retorno do pagamento fecha o ciclo pelo webhook do gateway
 (`payment_transactions.type = 'LEAD_INVOICE'` → `markPaidByTransaction`),
 mesmo caminho que já existe para turbinada paga.
 
+**Rampa de lançamento por coorte (Fase 6)** — diária, mesma instância worker:
+
+```cron
+0 6 * * * cd /var/www/habitaweb && php spark assinaturas:aplicar-rampa >> writable/logs/rampa.log 2>&1
+```
+
+Compara o percentual de hoje (`LaunchRampService::percentFor`, contado a
+partir de `subscriptions.ramp_started_at` — o relógio de CADA conta, não o
+calendário) com o último gravado (`ramp_percent_atual`) em toda assinatura
+ACTIVE que participa da rampa. Duas transições, tratadas de forma diferente:
+
+- **Correção de valor numa assinatura que já existe no gateway** (ex.:
+  50%→100%): automática, via `PaymentService::updateSubscriptionAmount()`.
+- **Primeira cobrança real da conta** (0%→qualquer coisa, sem
+  `asaas_subscription_id` ainda): **não é automatizada**. Fica registrada em
+  `audit_logs` (`ramp.pronta_para_cobranca_inicial`) e reportada no output do
+  comando como ação manual — criar uma assinatura recorrente real sem o
+  cliente ter escolhido forma de pagamento, e sem o aviso de 30 dias que a
+  proposta comercial prevê (infraestrutura de e-mail que não existe ainda),
+  é risco demais para automatizar sem supervisão. Quem completa a virada é
+  o time comercial, via `admin/subscription` (o mesmo fluxo do tenant,
+  já ciente da rampa).
+
+`--dry-run` não grava nada: lista as transições dos próximos 30 dias — o
+relatório que o cliente usa para prever caixa. Rode-o manualmente antes de
+confiar no cron pela primeira vez, igual ao `leads:fechar-ciclo`.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL

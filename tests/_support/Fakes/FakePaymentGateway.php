@@ -17,6 +17,7 @@ use App\PaymentGateways\GatewayInterface;
 class FakePaymentGateway implements GatewayInterface
 {
     public static array $paymentsCreated = [];
+    public static array $subscriptionUpdates = [];
 
     public function configure(array $config): void
     {
@@ -78,6 +79,11 @@ class FakePaymentGateway implements GatewayInterface
 
     public function updateSubscription(string $subscriptionId, array $data): bool
     {
+        self::$subscriptionUpdates[] = [
+            'subscription_id' => $subscriptionId,
+            'data'            => $data,
+        ];
+
         return true;
     }
 
