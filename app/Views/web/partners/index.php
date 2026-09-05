@@ -36,7 +36,7 @@
             <div class="row g-4">
                 <?php foreach($partners as $partner): ?>
                 <div class="col-md-6 col-lg-3">
-                    <a href="<?= base_url('parceiro/'.$partner->id) ?>" class="text-decoration-none">
+                    <a href="<?= partner_url($partner) ?>" class="text-decoration-none">
                         <div class="card h-100 border-0 shadow-premium hover-lift transition-all">
                             <div class="card-body text-center p-4 d-flex flex-column">
                                 <div class="mb-4 mx-auto position-relative">

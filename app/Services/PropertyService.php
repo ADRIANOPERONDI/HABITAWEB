@@ -1309,6 +1309,11 @@ class PropertyService
             $builder->where('properties.vagas >=', (int) $filters['vagas']);
         }
 
+        // Aba "Lançamentos" da página premium da imobiliária (Fase 5).
+        if (isset($filters['is_novo']) && $filters['is_novo'] === true) {
+            $builder->where('properties.is_novo', true);
+        }
+
         if (!empty($filters['property_ids'])) {
             $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
             $ids = array_values(array_filter(array_map('intval', $ids)));
@@ -1808,6 +1813,38 @@ class PropertyService
         $model = (new PropertyModel())->where('properties.account_id', $accountId);
         $this->publicVisibility->apply($model);
         return $model->countAllResults();
+    }
+
+    /**
+     * Mesma contagem de countPublicPropertiesByAccount(), mas em lote — uma
+     * query GROUP BY em vez de uma por conta. PartnerController::index()
+     * chamava a versão singular dentro de um foreach (N+1: uma query extra
+     * por parceiro da página); contas ausentes do resultado (zero imóveis
+     * públicos) não aparecem na chave, então o chamador deve usar `?? 0`.
+     *
+     * @param int[] $accountIds
+     * @return array<int,int> account_id => contagem
+     */
+    public function countPublicPropertiesByAccounts(array $accountIds): array
+    {
+        if ($accountIds === []) {
+            return [];
+        }
+
+        $model = (new PropertyModel())
+            ->select('properties.account_id, COUNT(*) as total')
+            ->whereIn('properties.account_id', $accountIds)
+            ->groupBy('properties.account_id');
+        $this->publicVisibility->apply($model);
+
+        $rows = $model->findAll();
+
+        $counts = [];
+        foreach ($rows as $row) {
+            $counts[(int) $row->account_id] = (int) $row->total;
+        }
+
+        return $counts;
     }
 
     public function countPublicProperties(): int
