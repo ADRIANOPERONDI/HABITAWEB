@@ -11,6 +11,7 @@ class Account extends Entity
     protected $casts   = [
         'whatsapp_hub_config' => 'json-array',
         'whatsapp_messages_config' => 'json-array',
-        'is_verified' => 'boolean'
+        'is_verified' => 'boolean',
+        'cobranca_leads_isenta' => 'boolean',
     ];
 }

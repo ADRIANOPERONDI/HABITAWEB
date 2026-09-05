@@ -294,6 +294,47 @@ calcula o nível efetivo com `App\Libraries\Search\HighlightSql`, que trata
 destaque vencido como nível 0. Se este cron parar, ninguém recebe exposição
 indevida — apenas as colunas denormalizadas ficam desatualizadas até ele voltar.
 
+**Cobrança por lead recebido (Fase 3)** — aprovação automática do que passou
+da janela de contestação, diária:
+
+```cron
+0 3 * * * cd /var/www/habitaweb && php spark leads:aprovar-cobrancas
+```
+
+Roda de madrugada, depois que o dia inteiro de contestações já aconteceu.
+Cada cobrança nasce PENDING com `contest_deadline` = recebimento + 7 dias; o
+comando promove para APPROVED só quem passou do prazo sem o tenant contestar
+via `/admin/minhas-cobrancas`. Sem este cron, cobrança nenhuma chega a
+APPROVED e o fechamento de ciclo mensal não teria o que faturar.
+
+**Crédito mensal de lead (Ouro/Diamante)** — dia 1 de cada mês, antes de
+qualquer fechamento de ciclo:
+
+```cron
+5 0 1 * * cd /var/www/habitaweb && php spark creditos:conceder
+```
+
+Idempotente (índice único parcial em `lead_credit_ledger`): rodar de novo no
+mesmo mês não duplica a concessão. Precisa rodar **antes** de
+`leads:fechar-ciclo` consumir o crédito do mês.
+
+**Fechamento de ciclo de lead** — dia 1, depois da concessão de crédito:
+
+```cron
+15 3 1 * * cd /var/www/habitaweb && php spark leads:fechar-ciclo >> writable/logs/leads-fechar-ciclo.log 2>&1
+```
+
+Fecha o **mês anterior** (default do comando): soma as cobranças APPROVED por
+conta, abate o crédito do próprio período, cobra o restante no gateway e
+marca tudo INVOICED — o gatilho que finalmente dá um chamador para
+`LeadChargeService::markInvoiced()`. Sem gateway configurado, a conta fica
+como está (ainda APPROVED) para a próxima execução tentar de novo — nunca
+fatura sem cobrança real por trás. `--dry-run` lista o que fecharia sem
+gravar nada; rode-o manualmente antes de confiar no cron pela primeira vez.
+O retorno do pagamento fecha o ciclo pelo webhook do gateway
+(`payment_transactions.type = 'LEAD_INVOICE'` → `markPaidByTransaction`),
+mesmo caminho que já existe para turbinada paga.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL

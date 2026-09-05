@@ -13,9 +13,13 @@ class LeadModel extends Model
     protected $useSoftDeletes   = false;
     protected $protectFields    = true;
     protected $allowedFields    = [
-        'property_id', 'account_id_anunciante', 'user_id_responsavel', 'nome_visitante', 
+        'property_id', 'account_id_anunciante', 'user_id_responsavel', 'nome_visitante',
         'telefone_visitante', 'email_visitante', 'mensagem', 'origem', 'tipo_lead', 'status',
-        'closed_at', 'closing_value', 'closing_notes'
+        'closed_at', 'closing_value', 'closing_notes',
+        // Snapshot no momento do lead, para a cobrança por lead recebido não
+        // mudar de valor se o anúncio ou o dispositivo do visitante mudarem
+        // depois. Ver LeadChargeService::onLeadReceived e LeadQualityService.
+        'tipo_negocio', 'ip_address', 'user_agent', 'referrer',
     ];
 
     // Constantes de Status para CRM

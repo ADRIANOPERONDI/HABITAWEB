@@ -276,12 +276,12 @@
             </a>
 
             <?php if (auth()->user()->inGroup('superadmin')): ?>
-            <a href="<?= site_url('admin/comissoes') ?>" class="nav-link <?= strpos(uri_string(), 'admin/comissoes') !== false ? 'active' : '' ?>">
-                <i class="fa-solid fa-hand-holding-dollar"></i> Comissões
+            <a href="<?= site_url('admin/cobrancas') ?>" class="nav-link <?= strpos(uri_string(), 'admin/cobrancas') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Cobranças
             </a>
             <?php else: ?>
-            <a href="<?= site_url('admin/minhas-comissoes') ?>" class="nav-link <?= strpos(uri_string(), 'minhas-comissoes') !== false ? 'active' : '' ?>">
-                <i class="fa-solid fa-hand-holding-dollar"></i> Minhas comissões
+            <a href="<?= site_url('admin/minhas-cobrancas') ?>" class="nav-link <?= strpos(uri_string(), 'minhas-cobrancas') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Minhas cobranças
             </a>
             <?php endif; ?>
 
