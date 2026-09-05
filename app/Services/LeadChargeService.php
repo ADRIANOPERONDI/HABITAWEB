@@ -590,8 +590,11 @@ class LeadChargeService
     }
 
     /** Extrato do próprio tenant — somente leitura, para não haver surpresa na fatura. */
-    public function statementFor(int $accountId, int $perPage = 25): array
+    public function statementFor(int $accountId, ?string $periodo = null, int $perPage = 25): array
     {
-        return $this->charges->listFiltered(['account_id' => $accountId], $perPage);
+        return $this->charges->listFiltered(array_filter([
+            'account_id' => $accountId,
+            'periodo'    => $periodo,
+        ]), $perPage);
     }
 }

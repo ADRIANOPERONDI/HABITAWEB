@@ -214,7 +214,7 @@
             
             <?php if (!auth()->user()->inGroup('superadmin')): ?>
              <a href="<?= site_url('admin/promotions') ?>" class="nav-link">
-                <i class="fa-solid fa-rocket"></i> Destaques
+                <i class="fa-solid fa-rocket"></i> Turbinadas
             </a>
             
             <a href="<?= site_url('admin/subscription') ?>" class="nav-link <?= strpos(uri_string(), 'subscription') !== false ? 'active' : '' ?>">

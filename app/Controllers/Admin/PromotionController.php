@@ -14,8 +14,9 @@ class PromotionController extends BaseController
         $promotionModel = model('App\Models\PromotionModel');
         $user = auth()->user();
 
-        $builder = $promotionModel->select('promotions.*, properties.titulo, properties.id as property_id')
-                                  ->join('properties', 'properties.id = promotions.property_id');
+        $builder = $promotionModel->select('promotions.*, properties.titulo, properties.id as property_id, promotion_packages.nome as pacote_nome')
+                                  ->join('properties', 'properties.id = promotions.property_id')
+                                  ->join('promotion_packages', 'promotion_packages.id = promotions.promotion_package_id', 'left');
         
         // Se user tem conta e não é superadmin/admin, filtra
         if ($user && $user->account_id && !$user->inGroup('superadmin', 'admin')) {

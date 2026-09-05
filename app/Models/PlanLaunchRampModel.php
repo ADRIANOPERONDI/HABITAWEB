@@ -60,4 +60,26 @@ class PlanLaunchRampModel extends Model
 
         return $this->forMonth((int) $atual['mes_ate'] + 1, $onDate);
     }
+
+    /**
+     * Faixas vigentes hoje, em ordem de mês de vida — usadas pra montar o
+     * resumo da rampa na vitrine pública ("6 meses grátis, depois 50%,
+     * depois cheio"). Diferente de forMonth()/next(), que resolvem uma
+     * assinatura concreta; aqui não há conta nenhuma, só o catálogo atual.
+     *
+     * @return array[] cada item com mes_de, mes_ate, percentual
+     */
+    public function vigentes(?string $onDate = null): array
+    {
+        $onDate ??= date('Y-m-d');
+
+        return $this->where('is_active', true)
+            ->where('valid_from <=', $onDate)
+            ->groupStart()
+                ->where('valid_to IS NULL', null, false)
+                ->orWhere('valid_to >=', $onDate)
+            ->groupEnd()
+            ->orderBy('mes_de', 'ASC')
+            ->findAll();
+    }
 }

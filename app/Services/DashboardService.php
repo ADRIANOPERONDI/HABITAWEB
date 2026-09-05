@@ -167,6 +167,57 @@ class DashboardService
             'leadsComparado'     => $leadsComparado,
             'viewOrigins'        => $viewOrigins,
             'marketShare'        => $marketShare,
+            'nextPlanUpsell'     => $isSuperAdmin ? null : $this->buildNextPlanUpsell($plan),
+        ];
+    }
+
+    /**
+     * O que o próximo plano (por `exposure_weight`) entrega a mais do que o
+     * atual — usado pelo card de upsell do dashboard. Antes disso o card era
+     * texto fixo ("No plano Ouro ou Diamante...") pra qualquer conta, mesmo
+     * quem já estava no Ouro e só faltava o Diamante.
+     *
+     * @return array{plan_name: string, missing_features: string[], turbo_gain: int|string|null, credit_gain: float}|null
+     */
+    private function buildNextPlanUpsell(?\App\Entities\Plan $currentPlan): ?array
+    {
+        $pesoAtual = $currentPlan?->exposureWeight() ?? -1;
+
+        $proximo = null;
+        foreach ($this->planModel->comercializaveis() as $candidato) {
+            if ($candidato->exposureWeight() <= $pesoAtual) {
+                continue;
+            }
+            if ($proximo === null || $candidato->exposureWeight() < $proximo->exposureWeight()) {
+                $proximo = $candidato;
+            }
+        }
+
+        if ($proximo === null) {
+            return null;
+        }
+
+        $featuresAtuais = $currentPlan?->activeFeatures() ?? [];
+        $featuresFaltando = array_values(array_diff(
+            array_intersect($proximo->activeFeatures(), PlanFeature::visiveis()),
+            $featuresAtuais
+        ));
+
+        $turbosAtual  = $currentPlan?->turbosIncluidos();
+        $turbosProximo = $proximo->turbosIncluidos();
+        $turboGain = match (true) {
+            $turbosProximo === null => 'ilimitadas',
+            $turbosAtual === null   => null, // já tem ilimitado, próximo não pode dar "mais"
+            default                 => max(0, $turbosProximo - ($turbosAtual ?? 0)),
+        };
+
+        $creditoGain = $proximo->creditoLeadsMensal() - ($currentPlan?->creditoLeadsMensal() ?? 0.0);
+
+        return [
+            'plan_name'        => $proximo->nome,
+            'missing_features' => array_map(static fn (string $f) => PlanFeature::label($f), $featuresFaltando),
+            'turbo_gain'       => $turboGain,
+            'credit_gain'      => max(0.0, $creditoGain),
         ];
     }
 

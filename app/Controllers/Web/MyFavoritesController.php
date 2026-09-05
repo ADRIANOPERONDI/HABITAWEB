@@ -9,6 +9,7 @@ class MyFavoritesController extends BaseController
 {
     public function index()
     {
+        helper('format');
         $userId = auth()->id();
         $favModel = Factories::models(\App\Models\PropertyFavoriteModel::class);
         $propertyModel = Factories::models(\App\Models\PropertyModel::class);

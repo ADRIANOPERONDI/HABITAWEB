@@ -56,6 +56,8 @@ class LeadsController extends BaseController
             // Vem de uma consulta só para a página inteira — buscar por lead
             // dentro do laço da view seria N+1.
             'crmStatus' => $this->crmStatusFor($data['leads']),
+            // Cobrança por lead (D3), mesma lógica de lote.
+            'charges'   => $this->chargesFor($data['leads']),
         ]);
     }
 
@@ -85,6 +87,14 @@ class LeadsController extends BaseController
         }
 
         return $indexed;
+    }
+
+    /** Cobrança de cada lead da página, indexada por lead_id — mesmo padrão de lote de crmStatusFor(). */
+    private function chargesFor(array $leads): array
+    {
+        $ids = array_filter(array_map(static fn ($lead) => (int) ($lead->id ?? 0), $leads));
+
+        return $ids === [] ? [] : model(\App\Models\LeadChargeModel::class)->findByLeadIds($ids);
     }
 
     /**

@@ -11,6 +11,7 @@ class MapSearchController extends BaseController
 
     public function getMapData()
     {
+        helper('format');
         $filters = $this->getFiltersFromRequest();
         $propertyService = service('propertyService');
         $page = max(1, (int) ($this->request->getGet('page') ?? 1));

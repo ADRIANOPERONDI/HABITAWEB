@@ -162,10 +162,7 @@
                                     </div>
                                     
                                     <div class="mt-auto d-flex align-items-center justify-content-between">
-                                        <div class="fw-bold text-dark">R$ <?= number_format($property->preco, 2, ',', '.') ?></div>
-                                        <?php if($property->tipo_negocio === 'ALUGUEL'): ?>
-                                            <small class="text-muted x-small">Mês</small>
-                                        <?php endif; ?>
+                                        <div class="fw-bold text-dark"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></div>
                                     </div>
                                 </div>
                             </a>

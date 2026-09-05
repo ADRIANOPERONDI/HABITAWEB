@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Database\Seeds\PlanSeeder;
 use App\Models\PaymentTransactionModel;
+use App\Models\SubscriptionModel;
 use Tests\Support\Factories\TenantFactory;
 use Tests\Support\HabitawebTestCase;
 
@@ -84,5 +85,26 @@ final class SubscriptionPageTest extends HabitawebTestCase
 
         $this->assertStringContainsString('Fatura de leads', $html);
         $this->assertStringContainsString('Turbinada', $html);
+    }
+
+    /**
+     * D4: a barra de "Uso do Plano" (imóveis ativos — todo plano comercial
+     * atual é ilimitado, então não media nada de útil) dá lugar à cota de
+     * turbinada do plano e ao estágio da rampa de lançamento.
+     */
+    public function testMostraCotaDeTurbinadaEEstagioDaRampa(): void
+    {
+        $tenant = (new TenantFactory())->create([], 'OURO');
+
+        model(SubscriptionModel::class)->update($tenant['subscription']->id, [
+            'ramp_started_at'    => date('Y-m-d', strtotime('-2 months')), // mes 3: 0%
+            'ramp_percent_atual' => 0,
+        ]);
+
+        $response = $this->actingAs($tenant['user'])->get('admin/subscription');
+
+        $response->assertSee('Turbinadas do plano');
+        $response->assertSee('Usadas este mês');
+        $response->assertSee('Rampa de lançamento: mês 3');
     }
 }

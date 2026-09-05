@@ -147,13 +147,14 @@
                         <th>Contato</th>
                         <th>Imóvel</th>
                         <th>Status</th>
+                        <th>Cobrança</th>
                         <th class="text-end pe-4">Ação</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($leads)): ?>
                         <tr>
-                            <td colspan="<?= $isAdmin ? 7 : 6 ?>" class="text-center py-5">
+                            <td colspan="<?= $isAdmin ? 8 : 7 ?>" class="text-center py-5">
                                 <i class="fa-regular fa-comment-dots fa-3x text-muted mb-3 d-block"></i>
                                 <p class="text-muted">Nenhum lead recebido ainda.</p>
                             </td>
@@ -231,6 +232,20 @@
                                     <option value="CONCLUIDO" <?= $lead->status == 'CONCLUIDO' ? 'selected' : '' ?>>Concluído</option>
                                     <option value="PERDIDO" <?= $lead->status == 'PERDIDO' ? 'selected' : '' ?>>Perdido</option>
                                 </select>
+                            </td>
+                            <td>
+                                <?php $charge = ($charges ?? [])[(int) $lead->id] ?? null; ?>
+                                <?php if ($charge === null): ?>
+                                    <span class="text-muted small">—</span>
+                                <?php else: ?>
+                                    <div class="small">
+                                        <span class="badge bg-<?= $charge->statusBadge() ?>"><?= esc($charge->statusLabel()) ?></span>
+                                        <div class="fw-bold text-dark mt-1">R$ <?= number_format((float) $charge->commission_value, 2, ',', '.') ?></div>
+                                        <?php if ($charge->isContestable()): ?>
+                                            <a href="<?= site_url('admin/minhas-cobrancas') ?>" class="small text-decoration-none">contestar</a>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="text-end pe-4">
                                 <button class="btn btn-sm btn-light rounded-circle p-2 view-lead" data-id="<?= $lead->id ?>" title="Explorar">

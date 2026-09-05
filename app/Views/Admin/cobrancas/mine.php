@@ -15,15 +15,40 @@
 
 <?php $brl = static fn ($v) => 'R$ ' . number_format((float) $v, 2, ',', '.'); ?>
 
-<p class="text-muted">
-    Cobrança gerada a cada lead recebido nos seus imóveis. Os valores só entram em
-    fatura depois de aprovados — automaticamente, se você não contestar dentro do prazo.
-</p>
+<div class="panel-card p-4 mb-4">
+    <h6 class="fw-bold mb-2"><i class="fa-solid fa-circle-info text-primary me-1"></i> Como funciona</h6>
+    <p class="text-muted small mb-2">
+        Cada lead recebido nos seus imóveis gera uma cobrança. Você tem
+        <strong><?= \App\Services\LeadChargeService::CONTEST_WINDOW_DIAS ?> dias</strong> pra contestar antes de ela
+        ser aprovada automaticamente; só depois de aprovada ela entra na fatura do fechamento do mês.
+    </p>
+    <?php if ($regrasPlataforma !== []): ?>
+        <?php
+            $rotulosNegocio = ['VENDA' => 'Venda', 'ALUGUEL' => 'Aluguel', 'TEMPORADA' => 'Temporada'];
+            $trechos        = [];
+            foreach ($regrasPlataforma as $tipo => $regra) {
+                $trechos[] = ($rotulosNegocio[$tipo] ?? $tipo) . ' R$ ' . number_format((float) $regra->value, 2, ',', '.');
+            }
+        ?>
+        <p class="text-muted small mb-0">Preço vigente: <?= esc(implode(' · ', $trechos)) ?>.</p>
+    <?php endif; ?>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label small text-muted mb-1">Período</label>
+        <select name="periodo" class="form-select form-select-sm" onchange="this.form.submit()">
+            <?php foreach (($periodoOpcoes ?? []) as $valor => $rotulo): ?>
+                <option value="<?= esc(substr($valor, 0, 7)) ?>" <?= $valor === $periodo ? 'selected' : '' ?>><?= esc($rotulo) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+</form>
 
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="kpi">
-            <div class="text-muted small">Período em aberto</div>
+            <div class="text-muted small">Período</div>
             <div class="valor"><?= esc(\CodeIgniter\I18n\Time::parse($periodo)->format('M/Y')) ?></div>
         </div>
     </div>
@@ -39,6 +64,12 @@
             <div class="valor"><?= $brl($creditoAtual) ?></div>
         </div>
     </div>
+    <div class="col-6 col-lg-3">
+        <div class="kpi">
+            <div class="text-muted small">A pagar (líquido do crédito)</div>
+            <div class="valor"><?= $brl(max(0, $projetado - $creditoAtual)) ?></div>
+        </div>
+    </div>
 </div>
 
 <?php if ($totals !== []): ?>
@@ -46,7 +77,7 @@
         <?php foreach ($totals as $status => $t): ?>
             <div class="col-6 col-lg-3">
                 <div class="kpi">
-                    <div class="text-muted small"><?= esc($status) ?></div>
+                    <div class="text-muted small"><?= esc(\App\Entities\LeadCharge::labelFor($status)) ?></div>
                     <div class="valor"><?= $brl($t['total']) ?></div>
                     <div class="text-muted small"><?= (int) $t['count'] ?> lead(s)</div>
                 </div>

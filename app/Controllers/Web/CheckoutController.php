@@ -22,7 +22,13 @@ class CheckoutController extends BaseController
         $plans = model('App\Models\PlanModel')->comercializaveis();
 
         return view('web/checkout/plans', [
-            'plans' => $plans
+            'plans'      => $plans,
+            // Preço de lead é único, igual em todo plano (ver docblock da
+            // Fase 3) — mostrado uma vez na página, não por card.
+            'leadPrices' => model('App\Models\LeadChargeRuleModel')->platformDefaults(),
+            // Rampa (D1): resumo genérico das faixas vigentes, só pro ciclo
+            // mensal (P6) — o mesmo texto vale pra qualquer plano.
+            'rampBands'  => model('App\Models\PlanLaunchRampModel')->vigentes(),
         ]);
     }
 

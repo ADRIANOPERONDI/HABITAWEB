@@ -82,9 +82,9 @@
                             <input type="number" name="limite_fotos_por_imovel" class="form-control" value="<?= old('limite_fotos_por_imovel', $plan->limite_fotos_por_imovel ?? '10') ?>" required>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Selos de Destaque</label>
+                            <label class="form-label">Turbinadas/mês</label>
                             <input type="number" name="limite_turbo_mensal" class="form-control" value="<?= old('limite_turbo_mensal', $plan->limite_turbo_mensal ?? '0') ?>" placeholder="Vazio = ilimitado">
-                            <div class="form-text">É este campo que o sistema aplica.</div>
+                            <div class="form-text">Cota mensal de turbinada incluída no plano.</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Carência (Dias)</label>

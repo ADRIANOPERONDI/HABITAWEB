@@ -43,6 +43,30 @@ class LeadChargeModel extends Model
     }
 
     /**
+     * Cobranças de vários leads de uma vez, indexadas por `lead_id` — a
+     * coluna "Cobrança" da lista de leads não pode fazer uma query por linha
+     * (mesmo problema de N+1 que `LeadsController::crmStatusFor` já resolve
+     * pro status de envio ao CRM).
+     *
+     * @param int[] $leadIds
+     * @return array<int, \App\Entities\LeadCharge>
+     */
+    public function findByLeadIds(array $leadIds): array
+    {
+        if ($leadIds === []) {
+            return [];
+        }
+
+        $indexed = [];
+
+        foreach ($this->whereIn('lead_id', $leadIds)->findAll() as $charge) {
+            $indexed[(int) $charge->lead_id] = $charge;
+        }
+
+        return $indexed;
+    }
+
+    /**
      * Lista com filtros, para a tela do superadmin.
      *
      * @return array{items: \App\Entities\LeadCharge[], pager: mixed}
@@ -68,6 +92,10 @@ class LeadChargeModel extends Model
             $builder->where('lead_charges.created_at <=', $filters['to'] . ' 23:59:59');
         }
 
+        if (! empty($filters['periodo'])) {
+            $builder->where('lead_charges.periodo', $filters['periodo']);
+        }
+
         $items = $builder->orderBy('lead_charges.created_at', 'DESC')->paginate($perPage);
 
         return ['items' => $items, 'pager' => $this->pager];
@@ -86,6 +114,10 @@ class LeadChargeModel extends Model
 
         if (! empty($filters['account_id'])) {
             $builder->where('account_id', (int) $filters['account_id']);
+        }
+
+        if (! empty($filters['periodo'])) {
+            $builder->where('periodo', $filters['periodo']);
         }
 
         $out = [];

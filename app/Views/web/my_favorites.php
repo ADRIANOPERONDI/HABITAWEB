@@ -36,8 +36,10 @@
                             </p>
                             <div class="d-flex justify-content-between align-items-center mt-3">
                                 <div>
-                                    <span class="d-block small text-muted">A partir de</span>
-                                    <span class="h5 fw-bold text-primary mb-0">R$ <?= number_format($property->preco, 2, ',', '.') ?></span>
+                                    <?php if((float) $property->preco > 0): ?>
+                                        <span class="d-block small text-muted">A partir de</span>
+                                    <?php endif; ?>
+                                    <span class="h5 fw-bold text-primary mb-0"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></span>
                                 </div>
                                 <a href="<?= site_url('imovel/' . $property->id) ?>" class="btn btn-outline-primary rounded-pill btn-sm">Detalhes</a>
                             </div>

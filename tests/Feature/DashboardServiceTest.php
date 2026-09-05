@@ -159,14 +159,48 @@ final class DashboardServiceTest extends HabitawebTestCase
 
     // ------------------------------------------------------- render real
 
-    public function testPrataRendeSemAGrandeQueTraCartaoDeUpsell(): void
+    /**
+     * D4: o card de upsell deixou de ser texto fixo ("No plano Ouro ou
+     * Diamante...") — mostra o NOME do próximo plano de verdade (Ouro, no
+     * caso do Prata) e o que ele entrega a mais.
+     */
+    public function testPrataRendeCartaoDeUpsellParaOOuro(): void
     {
         $tenant = (new TenantFactory())->create([], 'PRATA');
 
-        $html = $this->actingAs($tenant['user'])->get('admin/dashboard')->getBody();
+        $response = $this->actingAs($tenant['user'])->get('admin/dashboard');
 
-        $this->assertStringContainsString('Desbloqueie o painel completo', $html);
-        $this->assertStringNotContainsString('leadsChart', $html);
+        $response->assertSee('Desbloqueie o plano Ouro');
+        $this->assertStringNotContainsString('leadsChart', (string) $response->getBody());
+    }
+
+    /**
+     * Diff entre o plano atual e o próximo (por exposure_weight): só entra
+     * o que o Prata NÃO tem — nunca uma feature repetida, e o ganho de
+     * turbinada/crédito é a diferença, não o valor absoluto do próximo plano.
+     */
+    public function testUpsellListaSoOQueFalta(): void
+    {
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+
+        $data = (new DashboardService())->getDashboardData((int) $tenant['account']->id);
+
+        $this->assertNotNull($data['nextPlanUpsell']);
+        $this->assertSame('Ouro — Performance', $data['nextPlanUpsell']['plan_name']);
+        $this->assertContains('Painel completo', $data['nextPlanUpsell']['missing_features']);
+        // 5 (Ouro) - 0 (Prata) = 5, nunca o valor absoluto do Ouro sozinho.
+        $this->assertSame(5, $data['nextPlanUpsell']['turbo_gain']);
+        $this->assertSame(200.0, $data['nextPlanUpsell']['credit_gain']);
+    }
+
+    /** Diamante já é o topo do catálogo comercial — não há "próximo plano" a vender. */
+    public function testDiamanteNaoTemProximoPlanoParaUpsell(): void
+    {
+        $tenant = (new TenantFactory())->create([], 'DIAMANTE');
+
+        $data = (new DashboardService())->getDashboardData((int) $tenant['account']->id);
+
+        $this->assertNull($data['nextPlanUpsell']);
     }
 
     public function testDiamanteRendeOPainelCompletoComOGraficoEComparativo(): void

@@ -8,8 +8,9 @@ class PropertyDetailsController extends BaseController
 {
     public function show($id)
     {
+        helper('format');
         $propertyService = service('propertyService');
-        
+
         $data = $propertyService->getPublicPropertyDetails((int) $id);
 
         if (!$data) {

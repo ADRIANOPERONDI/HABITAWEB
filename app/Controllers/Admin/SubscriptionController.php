@@ -84,6 +84,60 @@ class SubscriptionController extends BaseController
         // Todos os planos para "Upgrade" (Simulação)
         $allPlans = $planModel->comercializaveis();
 
+        // Preço que a conta pagaria HOJE em cada plano, com a rampa aplicada
+        // (D4) — precisa ser coerente com o que previewUpgrade() mostra no
+        // modal de confirmação; mostrar o preço de tabela cru faria o card
+        // prometer um valor diferente do que a troca de plano de fato cobra.
+        $plansEffectivePrices = [];
+        if ($subscription) {
+            $rampServiceForCards = new \App\Services\LaunchRampService();
+            $cycleForCards       = (string) ($subscription->billing_cycle ?? 'MONTHLY');
+            foreach ($allPlans as $p) {
+                $plansEffectivePrices[$p->id] = $rampServiceForCards->amountFor($p, $cycleForCards, $subscription);
+            }
+        }
+
+        // Cota de turbinada do plano atual (D4) — substitui a barra de
+        // "Uso do Plano" morta (imóveis ilimitados em todo plano comercial
+        // atual não tinham mais o que medir).
+        $turboQuota = $subscription ? service('turboService')->quotaFor($accountId) : null;
+
+        // Leads do período + projeção de cobrança (mesma fonte que
+        // /admin/minhas-cobrancas usa).
+        $periodoAtual   = date('Y-m-01');
+        $leadsNoPeriodo = model('App\Models\LeadModel')
+            ->where('account_id_anunciante', $accountId)
+            ->where('created_at >=', $periodoAtual)
+            ->countAllResults();
+        $leadsProjetado = model('App\Models\LeadChargeModel')->projectedTotalFor($accountId, $periodoAtual);
+
+        // Preço vigente da turbinada avulsa (7 dias), pra não repetir "R$ 50"
+        // como texto fixo na tela — vem do mesmo catálogo que a tela de
+        // turbinar usa.
+        $turboPacotes = (new \App\Services\PromotionService())->listPackages();
+        $turboPacote  = $turboPacotes[0] ?? null;
+
+        // Estágio da rampa de lançamento desta assinatura (D4).
+        $rampInfo = null;
+        if ($subscription && $subscription->ramp_started_at !== null && $plan) {
+            $rampService  = new \App\Services\LaunchRampService();
+            $billingCycle = (string) ($subscription->billing_cycle ?? 'MONTHLY');
+            $mesVida      = $rampService->monthsAlive($subscription);
+            $faixaAtual   = model('App\Models\PlanLaunchRampModel')->forMonth($mesVida);
+            $proxima      = $rampService->nextTransition($subscription);
+
+            $rampInfo = [
+                'mes_vida'      => $mesVida,
+                'mes_ate'       => $faixaAtual['mes_ate'] ?? null,
+                'percent_atual' => $faixaAtual['percentual'] ?? 100,
+                'valor_atual'   => $rampService->amountFor($plan, $billingCycle, $subscription),
+                'proxima_data'  => $proxima['date'] ?? null,
+                'proximo_valor' => $proxima !== null
+                    ? round((new \App\Services\PaymentService())->getPlanAmountForBillingCycle($plan, $billingCycle) * $proxima['to_percent'] / 100, 2)
+                    : null,
+            ];
+        }
+
         // Fetch Pending Transaction Details (Pix/Boleto info)
         $lastTransaction = null;
         $transactionModel = model('App\Models\PaymentTransactionModel');
@@ -132,7 +186,13 @@ class SubscriptionController extends BaseController
             'plan' => $plan,
             'pendingPlan' => $pendingPlan,
             'usage' => $usage,
-            'allPlans' => $allPlans
+            'allPlans' => $allPlans,
+            'plansEffectivePrices' => $plansEffectivePrices,
+            'turboQuota' => $turboQuota,
+            'leadsNoPeriodo' => $leadsNoPeriodo,
+            'leadsProjetado' => $leadsProjetado,
+            'turboPacote' => $turboPacote,
+            'rampInfo' => $rampInfo,
         ]);
     }
 
@@ -173,11 +233,33 @@ class SubscriptionController extends BaseController
         $paymentService = new \App\Services\PaymentService();
         $rampService = new \App\Services\LaunchRampService($paymentService);
         $billingCycle = (string) ($activeSub->billing_cycle ?? 'MONTHLY');
+        $newPrice = $rampService->amountFor($newPlan, $billingCycle, $activeSub);
 
+        // Pró-rata só faz sentido quando o novo plano de fato vai cobrar
+        // algo: com o valor EFETIVO da rampa em R$0, upgrade() (passo 4) vai
+        // pelo caminho gratuito e não cobra nada — mostrar aqui uma cobrança
+        // calculada sobre o preço CHEIO (::previewUpgradeProRata não conhece
+        // rampa) prometeria uma fatura que nunca chega.
         $proRata = 0;
-        if ($isUpgrade) {
+        if ($isUpgrade && $newPrice > 0) {
             $calc = $paymentService->previewUpgradeProRata($accountId, (int)$planId);
             $proRata = $calc['value'];
+        }
+
+        // Mesma lógica de CheckoutController::rampPreviewFor(), mas sobre a
+        // assinatura ATIVA (a troca de plano continua o relógio dela, não
+        // reinicia — ver upgrade() passo 4).
+        $rampPreview = null;
+        if ($newPrice <= 0 && $activeSub->ramp_started_at !== null) {
+            $proxima = $rampService->nextTransition($activeSub);
+
+            if ($proxima !== null) {
+                $baseCiclo = $paymentService->getPlanAmountForBillingCycle($newPlan, $billingCycle);
+                $rampPreview = [
+                    'next_amount' => round($baseCiclo * $proxima['to_percent'] / 100, 2),
+                    'next_date'   => $proxima['date'],
+                ];
+            }
         }
 
         return $this->response->setJSON([
@@ -186,8 +268,9 @@ class SubscriptionController extends BaseController
             'pro_rata' => $proRata,
             'old_plan_name' => $oldPlan->nome,
             'new_plan_name' => $newPlan->nome,
-            'new_price' => $rampService->amountFor($newPlan, $billingCycle, $activeSub),
-            'formatted_pro_rata' => number_format($proRata, 2, ',', '.')
+            'new_price' => $newPrice,
+            'formatted_pro_rata' => number_format($proRata, 2, ',', '.'),
+            'ramp_preview' => $rampPreview,
         ]);
     }
 

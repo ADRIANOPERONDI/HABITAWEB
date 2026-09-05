@@ -26,7 +26,17 @@ class LeadCharge extends Entity
 
     public function statusLabel(): string
     {
-        return match ($this->attributes['status'] ?? '') {
+        return self::labelFor((string) ($this->attributes['status'] ?? ''));
+    }
+
+    /**
+     * Mesmo rótulo de statusLabel(), mas sem precisar de uma entity — usado
+     * pelos totais agrupados por status (`totalsByStatus()`), que trafegam
+     * como string crua, não como LeadCharge.
+     */
+    public static function labelFor(string $status): string
+    {
+        return match ($status) {
             LeadChargeModel::STATUS_PENDING   => 'Aguardando aprovação',
             LeadChargeModel::STATUS_APPROVED  => 'Aprovada',
             LeadChargeModel::STATUS_DISPUTED  => 'Contestada',
@@ -34,7 +44,7 @@ class LeadCharge extends Entity
             LeadChargeModel::STATUS_PAID      => 'Paga',
             LeadChargeModel::STATUS_CANCELLED => 'Cancelada',
             LeadChargeModel::STATUS_WAIVED    => 'Isentada',
-            default                           => (string) ($this->attributes['status'] ?? ''),
+            default                           => $status,
         };
     }
 
