@@ -316,14 +316,22 @@
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
-    // O botão reflete o status real (rodando / em cooldown / livre) em vez
-    // de assumir que terminou assim que o clique volta — quem processa de
-    // fato é o cron, minutos depois.
+    // O botão reflete o status real (rodando / agendado / em cooldown /
+    // livre) em vez de assumir que terminou assim que o clique volta — quem
+    // processa de fato é o cron, minutos depois. `priority_pending` fica
+    // true desde o clique em "Sincronizar agora" até a rodada que atende o
+    // pedido terminar (IntegrationSyncService só limpa no fim) — sem checar
+    // isso aqui, quem recarregasse a página nesse meio-tempo (ou reabrisse
+    // a aba depois) só via "Aguarde Xs" igual a um cooldown comum, sem
+    // saber se tinha algo de fato agendado ou se era só o intervalo mínimo
+    // entre cliques.
     function atualizarBotaoSincronizar(s) {
         const $btn = $('#btnSincronizar');
 
         if (s.running) {
             $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-1"></i> Rodando...');
+        } else if (s.priority_pending) {
+            $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-1"></i> Agendado, aguardando o cron...');
         } else if (s.cooldown_remaining > 0) {
             $btn.prop('disabled', true).html('<i class="fa-solid fa-clock me-1"></i> Aguarde ' + s.cooldown_remaining + 's');
         } else {
@@ -335,9 +343,19 @@
         $.get(base + '/status').done(function (s) {
             atualizarBotaoSincronizar(s);
 
-            if (s.running) {
+            // priority_pending fica true do clique até a rodada que atende
+            // o pedido terminar (IntegrationSyncService só limpa no fim) —
+            // sem checar isso aqui também, esta função encerrava o polling
+            // e anunciava "Concluído" enquanto o cron ainda nem tinha
+            // começado a rodar (running só vira true quando a execução
+            // realmente inicia).
+            if (s.running || s.priority_pending) {
                 if (Swal.isVisible()) {
-                    Swal.update({ title: 'Rodando há ' + s.running_seconds + 's...' });
+                    Swal.update({
+                        title: s.running
+                            ? 'Rodando há ' + s.running_seconds + 's...'
+                            : 'Agendado — aguardando o cron rodar...',
+                    });
                 }
                 return;
             }
@@ -402,14 +420,23 @@
         executar(base + '/toggle', 'Atualizando...');
     });
 
-    // Ao abrir a página: reflete cooldown já em curso e retoma o polling se
-    // a página foi recarregada com uma sincronização ainda rodando.
+    // Ao abrir a página: reflete cooldown/agendamento já em curso e retoma
+    // o polling se a página foi recarregada (ou reaberta em outra aba, por
+    // qualquer pessoa da conta) com uma sincronização rodando ou só
+    // esperando o cron pegar o pedido.
     $.get(base + '/status').done(function (s) {
         atualizarBotaoSincronizar(s);
 
         if (s.running) {
             Swal.fire({
                 title: 'Rodando há ' + s.running_seconds + 's...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            pollTimer = setInterval(consultarStatus, 5000);
+        } else if (s.priority_pending) {
+            Swal.fire({
+                title: 'Agendado — aguardando o cron rodar...',
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading(),
             });
