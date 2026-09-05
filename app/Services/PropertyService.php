@@ -543,32 +543,43 @@ class PropertyService
     /**
      * Retorna imóveis em destaque (Recentes + Ativos) com imagem de capa.
      */
+    /**
+     * Prateleira "Destaques Recomendados" da home — lane B pura (Fase 2), não
+     * um ranking de todo mundo com desempate por preço de plano.
+     *
+     * Elegibilidade idêntica à do slot patrocinado da busca
+     * (`HighlightSql::sponsorshipEligible`): curadoria editorial da Habitaweb
+     * (`is_destaque`) OU turbo vigente com a feature `exposicao.busca` do
+     * plano. Uma imobiliária Prata que compra turbinada avulsa aparece na
+     * PRÓPRIA página do imóvel como "Patrocinado", mas não entra nesta
+     * prateleira — que é justamente o espaço institucional que a proposta
+     * reserva para Ouro/Diamante ("maior exposição... imóveis destacados").
+     *
+     * Sem eligível suficiente, a prateleira mostra menos itens (a view já
+     * trata `empty($featuredProperties)` com "Novos imóveis em breve.") — não
+     * é preenchida com imóveis orgânicos só para não ficar vazia.
+     */
     public function getFeaturedProperties(int $limit = 6): array
     {
-        // Use Builder to allow Joins
         $builder = $this->propertyModel->builder();
         $builder->select('properties.*, accounts.is_verified as account_verified')
                 ->where('properties.status', 'ACTIVE');
 
-        // Joins para buscar dados do Plano + Assinatura (WEIGHTED SORT)
         $builder->join('accounts', 'accounts.id = properties.account_id', 'left')
                 ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
                 ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
+                ->where(\App\Libraries\Search\HighlightSql::sponsorshipEligible(), null, false)
                 ->groupBy('properties.id')
                 ->groupBy('accounts.is_verified')
-                ->groupBy('plans.preco_mensal'); // Required for ORDER BY in Postgres
+                ->groupBy('plans.exposure_weight');
 
         $this->publicVisibility->apply($builder);
 
-        // Formula: (PlanPrice + (IsDestaque * 100) + (TurboLevel * 100)) * (Score / 100)
-        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (CASE WHEN properties.is_destaque = true THEN 100 ELSE 0 END) + ("
-                 . \App\Libraries\Search\HighlightSql::effectiveLevel()
-                 . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
-        
-        $builder->orderBy($sqlSort, 'DESC', false)
+        $builder->orderBy(\App\Libraries\Search\HighlightSql::sponsorshipWeight(), 'DESC', false)
+                ->orderBy('properties.score_qualidade', 'DESC')
                 ->orderBy('properties.created_at', 'DESC');
-                
-        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class); // Get results as Entities
+
+        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class);
 
         if (empty($properties)) {
             return [];
@@ -700,17 +711,12 @@ class PropertyService
 
         $builder = $this->propertyModel->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
                                        ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
-                                       ->join('accounts', 'accounts.id = properties.account_id', 'left');
-
-        // Joins para buscar dados do Plano + Assinatura
-        $builder->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
-                ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
-                ->groupBy('properties.id')
-                ->groupBy('accounts.tipo_conta')  
-                ->groupBy('accounts.nome')       
-                ->groupBy('accounts.logo')       
-                ->groupBy('accounts.is_verified')
-                ->groupBy('plans.preco_mensal');
+                                       ->join('accounts', 'accounts.id = properties.account_id', 'left')
+                                       ->groupBy('properties.id')
+                                       ->groupBy('accounts.tipo_conta')
+                                       ->groupBy('accounts.nome')
+                                       ->groupBy('accounts.logo')
+                                       ->groupBy('accounts.is_verified');
 
         if ($publicOnly) {
             $this->publicVisibility->apply($builder);
@@ -744,50 +750,6 @@ class PropertyService
             $builder->where('accounts.tipo_conta', $filters['account_type']);
         }
 
-        if (!empty($filters['tipo_imovel'])) {
-            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
-        }
-        
-        if (!empty($filters['tipo_negocio'])) {
-            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
-        }
-
-        if (!empty($filters['quartos'])) {
-            $builder->where('properties.quartos >=', $filters['quartos']);
-        }
-
-        if (!empty($filters['banheiros'])) {
-            $builder->where('properties.banheiros >=', $filters['banheiros']);
-        }
-
-        if (!empty($filters['vagas'])) {
-            $builder->where('properties.vagas >=', $filters['vagas']);
-        }
-        
-        if (!empty($filters['property_ids'])) {
-            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
-            $ids = array_map('intval', $ids);
-            if (!empty($ids)) {
-                $builder->whereIn('properties.id', $ids);
-            }
-        }
-        
-        // Cidade/bairro: match EXATO indexável em vez do LIKE '%..%' anterior —
-        // que além de forçar seq scan era sensível a caso/acento (slug de URL
-        // SEO nunca casava com "São Paulo"). resolveLocationName normaliza
-        // slug/sem-acento para o nome exato do banco; sem resolução, cai no
-        // LOWER() = (coberto pelo índice funcional idx_properties_status_lower_city_neighborhood).
-        $this->applyLocationFilter($builder, $filters, 'cidade');
-        $this->applyLocationFilter($builder, $filters, 'bairro');
-
-        if (isset($filters['min_price'])) {
-            $builder->where('properties.preco >=', $filters['min_price']);
-        }
-        
-        if (isset($filters['max_price'])) {
-            $builder->where('properties.preco <=', $filters['max_price']);
-        }
-        
         if (isset($filters['promoted_only']) && $filters['promoted_only'] === true) {
              $builder->groupStart()
                      ->where('properties.is_destaque', true)
@@ -795,58 +757,20 @@ class PropertyService
                      ->groupEnd();
         }
 
-        // --- Spatial Filters ---
-        if (!empty($filters['bounds'])) {
-            // bounds format: "southWestLng,southWestLat,northEastLng,northEastLat"
-            $coords = explode(',', $filters['bounds']);
-            if (count($coords) === 4) {
-                $swLng = (float)$coords[0];
-                $swLat = (float)$coords[1];
-                $neLng = (float)$coords[2];
-                $neLat = (float)$coords[3];
-                
-                // Calcular mínimo e máximo para garantir a ordem correta independente do hemisfério e direção do arrasto
-                $minLng = min($swLng, $neLng);
-                $maxLng = max($swLng, $neLng);
-                $minLat = min($swLat, $neLat);
-                $maxLat = max($swLat, $neLat);
-                
-                $builder->where('properties.longitude >=', $minLng)
-                        ->where('properties.longitude <=', $maxLng)
-                        ->where('properties.latitude >=', $minLat)
-                        ->where('properties.latitude <=', $maxLat);
-            }
-        }
+        $this->applySearchFilters($builder, $filters);
 
-        if (!empty($filters['polygon'])) {
-            // polygon format: JSON string of array of coordinates [[lng, lat], [lng, lat], ...] or GeoJSON
-            $polyData = json_decode($filters['polygon'], true);
-            if (is_array($polyData)) {
-                $points = [];
-                // Handle basic array of [lng, lat]
-                foreach ($polyData as $pt) {
-                    if (is_array($pt) && count($pt) >= 2) {
-                        $points[] = sprintf('(%F,%F)', (float)$pt[0], (float)$pt[1]);
-                    }
-                }
-                if (count($points) >= 3) {
-                    $polyString = '(' . implode(',', $points) . ')';
-                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '{$polyString}'", null, false);
-                }
-            }
-        }
-        // -----------------------
-
-        // Ordenação Ponderada
-        // Formula: (PlanPrice + (TurboLevel * 100)) * (Score / 100)
-        // 1. COALESCE(plans.preco_mensal, 0): Valor do plano base (0 se Free)
-        // 2. (properties.highlight_level * 100): Turbo adiciona "valor virtual" (Lvl 1 = +100, Lvl 2 = +200)
-        // 3. * (properties.score_qualidade / 100): Score age como multiplicador de eficiência (0.0 a 1.0)
-        // Alta qualidade aproveita 100% do investimento. Baixa qualidade desperdiça.
-        
-        $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (" . \App\Libraries\Search\HighlightSql::effectiveLevel() . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
-        
-        $builder->orderBy($sqlSort, 'DESC', false)
+        // Ranking puramente orgânico: só qualidade do anúncio, nunca quanto o
+        // anunciante paga. A fórmula antiga usava plans.preco_mensal como peso
+        // — Diamante (R$2.490) media 2,5x o de Prata (R$990) em TODA busca,
+        // exatamente o que a proposta comercial exige não fazer. Exposição
+        // paga agora é posição (slot), não multiplicador de relevância — ver
+        // App\Services\Search\SponsoredPlacementService.
+        //
+        // Efeito colateral: os joins subscriptions/plans e o groupBy que a
+        // fórmula antiga exigia (obrigatório no Postgres com GROUP BY) saem
+        // desta consulta. Só a lane patrocinada (getSponsoredCandidates, LIMIT
+        // pequeno) ainda precisa deles.
+        $builder->orderBy('properties.score_qualidade', 'DESC')
                 ->orderBy('properties.created_at', 'DESC');
 
         $results = $builder->paginate($perPage);
@@ -898,6 +822,18 @@ class PropertyService
         $total = $pager->getTotal();
         $currentPage = max(1, $page);
 
+        // Slots patrocinados: só na página 1 e só quando o visitante não
+        // escolheu uma ordenação explícita (price_asc/price_desc/recent) —
+        // quem pede "mais barato primeiro" está dizendo que não quer
+        // patrocinado furando a fila. O total/pager continua refletindo só a
+        // lane orgânica: o slot reordena o que já ia aparecer, não infla
+        // "quantos imóveis correspondem à busca".
+        $sort = $filters['sort'] ?? 'relevance';
+        if ($currentPage === 1 && $sort === 'relevance') {
+            $candidatos = $this->getSponsoredCandidates($filters, \App\Services\Search\SponsoredPlacementService::SLOT_COUNT);
+            $properties = (new \App\Services\Search\SponsoredPlacementService())->merge($properties, $candidatos, $currentPage);
+        }
+
         return [
             'properties' => $properties,
             'pager'      => $pager,
@@ -909,18 +845,25 @@ class PropertyService
         ];
     }
 
+    /**
+     * Query base da busca pública (mapa e lista) — SEM os joins de plano.
+     *
+     * A fórmula antiga de ordenação usava `plans.preco_mensal`, o que obrigava
+     * TODA busca a fazer LEFT JOIN em `subscriptions`+`plans` e GROUP BY
+     * (exigência do Postgres para o ORDER BY agregado). O ranking orgânico não
+     * usa mais preço de plano nenhum — só a lane patrocinada
+     * (`getSponsoredCandidates`, `LIMIT` pequeno) ainda precisa desses dados,
+     * então só ela paga o custo do join.
+     */
     private function buildPublicMapSearchQuery(array $filters = [], bool $withCover = false)
     {
         $builder = $this->propertyModel
             ->join('accounts', 'accounts.id = properties.account_id', 'left')
-            ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
-            ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
             ->groupBy('properties.id')
             ->groupBy('accounts.tipo_conta')
             ->groupBy('accounts.nome')
             ->groupBy('accounts.logo')
-            ->groupBy('accounts.is_verified')
-            ->groupBy('plans.preco_mensal');
+            ->groupBy('accounts.is_verified');
 
         if ($withCover) {
             $builder
@@ -931,77 +874,11 @@ class PropertyService
 
         $this->publicVisibility->apply($builder);
 
-        if (!empty($filters['tipo_imovel'])) {
-            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
-        }
+        $this->applySearchFilters($builder, $filters);
 
-        if (!empty($filters['tipo_negocio'])) {
-            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
-        }
-
-        if (!empty($filters['quartos'])) {
-            $builder->where('properties.quartos >=', (int) $filters['quartos']);
-        }
-
-        if (!empty($filters['banheiros'])) {
-            $builder->where('properties.banheiros >=', (int) $filters['banheiros']);
-        }
-
-        if (!empty($filters['vagas'])) {
-            $builder->where('properties.vagas >=', (int) $filters['vagas']);
-        }
-
-        if (!empty($filters['property_ids'])) {
-            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
-            $ids = array_values(array_filter(array_map('intval', $ids)));
-            if (!empty($ids)) {
-                $builder->whereIn('properties.id', $ids);
-            }
-        }
-
-        // Mesmo racional do listProperties: match exato indexável (ver
-        // resolveLocationName) em vez de LIKE sensível a caso/acento.
-        $this->applyLocationFilter($builder, $filters, 'cidade');
-        $this->applyLocationFilter($builder, $filters, 'bairro');
-
-        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
-            $builder->where('properties.preco >=', (float) $filters['min_price']);
-        }
-
-        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
-            $builder->where('properties.preco <=', (float) $filters['max_price']);
-        }
-
-        if (!empty($filters['bounds'])) {
-            $coords = explode(',', $filters['bounds']);
-            if (count($coords) === 4) {
-                $swLng = (float) $coords[0];
-                $swLat = (float) $coords[1];
-                $neLng = (float) $coords[2];
-                $neLat = (float) $coords[3];
-
-                $builder->where('properties.longitude >=', min($swLng, $neLng))
-                    ->where('properties.longitude <=', max($swLng, $neLng))
-                    ->where('properties.latitude >=', min($swLat, $neLat))
-                    ->where('properties.latitude <=', max($swLat, $neLat));
-            }
-        }
-
-        if (!empty($filters['polygon'])) {
-            $polyData = json_decode($filters['polygon'], true);
-            if (is_array($polyData)) {
-                $points = [];
-                foreach ($polyData as $pt) {
-                    if (is_array($pt) && count($pt) >= 2) {
-                        $points[] = sprintf('(%F,%F)', (float) $pt[0], (float) $pt[1]);
-                    }
-                }
-                if (count($points) >= 3) {
-                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '(" . implode(',', $points) . ")'", null, false);
-                }
-            }
-        }
-
+        // Ranking orgânico puro — ver o comentário equivalente em
+        // listProperties(). price_asc/price_desc/recent são escolha explícita
+        // do usuário e continuam sem tocar em destaque nenhum.
         $sort = $filters['sort'] ?? 'relevance';
         if ($sort === 'price_asc') {
             $builder->orderBy('properties.preco', 'ASC');
@@ -1010,12 +887,52 @@ class PropertyService
         } elseif ($sort === 'recent') {
             $builder->orderBy('properties.created_at', 'DESC');
         } else {
-            $sqlSort = "(COALESCE(plans.preco_mensal, 0) + (" . \App\Libraries\Search\HighlightSql::effectiveLevel() . " * 100)) * (COALESCE(properties.score_qualidade, 0) / 100)";
-            $builder->orderBy($sqlSort, 'DESC', false)
+            $builder->orderBy('properties.score_qualidade', 'DESC')
                 ->orderBy('properties.created_at', 'DESC');
         }
 
         return $builder;
+    }
+
+    /**
+     * Candidatos elegíveis a slot patrocinado para ESTE MESMO filtro de busca
+     * — a lane B da Fase 2.
+     *
+     * Usa `applySearchFilters()`, o MESMO ponto de montagem do `WHERE` da lane
+     * orgânica (`buildPublicMapSearchQuery`): é isso que garante que um
+     * patrocinado nunca aparece fora do que o visitante pediu. A elegibilidade
+     * em si (`HighlightSql::sponsorshipEligible`) é decidida à parte, e é
+     * restritiva de propósito — turbo comprado sozinho não basta, precisa da
+     * feature `exposicao.busca` do plano (ver o comentário da própria função).
+     */
+    public function getSponsoredCandidates(array $filters, int $limit): array
+    {
+        if ($limit <= 0) {
+            return [];
+        }
+
+        $builder = $this->propertyModel
+            ->select('properties.*, accounts.tipo_conta as account_type, accounts.nome as account_name, accounts.logo as account_logo, accounts.is_verified as account_verified')
+            ->select('(SELECT url FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL ORDER BY principal DESC, ordem ASC LIMIT 1) as cover_image')
+            ->select('(SELECT COUNT(*) FROM property_media WHERE property_media.property_id = properties.id AND property_media.deleted_at IS NULL) as media_count')
+            ->join('accounts', 'accounts.id = properties.account_id', 'left')
+            ->join('subscriptions', "subscriptions.account_id = accounts.id AND subscriptions.status IN ('ACTIVE', 'TRIAL')", 'left')
+            ->join('plans', 'plans.id = subscriptions.plan_id', 'left')
+            ->where(\App\Libraries\Search\HighlightSql::sponsorshipEligible(), null, false)
+            ->groupBy('properties.id')
+            ->groupBy('accounts.tipo_conta')
+            ->groupBy('accounts.nome')
+            ->groupBy('accounts.logo')
+            ->groupBy('accounts.is_verified')
+            ->groupBy('plans.exposure_weight');
+
+        $this->publicVisibility->apply($builder);
+        $this->applySearchFilters($builder, $filters);
+
+        $builder->orderBy(\App\Libraries\Search\HighlightSql::sponsorshipWeight(), 'DESC', false)
+                ->orderBy('properties.score_qualidade', 'DESC');
+
+        return $builder->get($limit)->getResult(\App\Entities\Property::class);
     }
 
     private function normalizeMapFilters(array $filters): array
@@ -1321,6 +1238,113 @@ class PropertyService
             'bairros' => $publicDistinct('bairro'),
             'tipos'   => $publicDistinct('tipo_imovel'),
         ];
+    }
+
+    /**
+     * Filtros de busca de imóvel — o `WHERE` que define "o que corresponde à
+     * pesquisa do visitante". Único ponto de montagem, usado por
+     * `listProperties` (catálogo do parceiro/admin) e `buildPublicMapSearchQuery`
+     * (busca pública do mapa/lista).
+     *
+     * Isto é pré-requisito da Fase 2 (exposição por slot): a lane patrocinada
+     * precisa aplicar EXATAMENTE o mesmo `WHERE` da lane orgânica, senão um
+     * slot pode mostrar imóvel fora do filtro que o visitante pediu — que é
+     * exatamente o que o cliente disse que não quer ("não colocar casa de
+     * R$1,5mi na frente de quem buscou apto até R$500 mil"). Se cada lane
+     * montasse o filtro por um caminho próprio, mais cedo ou tarde os dois
+     * caminhos divergiam.
+     *
+     * Não inclui filtros de ESCOPO (account_id, status, user_id_responsavel,
+     * external_id, account_type, show_deleted) — esses decidem QUEM pode ver
+     * o quê (painel do parceiro, admin), não O QUE bate com a pesquisa, e só
+     * `listProperties` precisa deles.
+     */
+    private function applySearchFilters($builder, array $filters): void
+    {
+        if (!empty($filters['tipo_imovel'])) {
+            $builder->where('properties.tipo_imovel', $filters['tipo_imovel']);
+        }
+
+        if (!empty($filters['tipo_negocio'])) {
+            $builder->where('properties.tipo_negocio', $filters['tipo_negocio']);
+        }
+
+        if (!empty($filters['quartos'])) {
+            $builder->where('properties.quartos >=', (int) $filters['quartos']);
+        }
+
+        if (!empty($filters['banheiros'])) {
+            $builder->where('properties.banheiros >=', (int) $filters['banheiros']);
+        }
+
+        if (!empty($filters['vagas'])) {
+            $builder->where('properties.vagas >=', (int) $filters['vagas']);
+        }
+
+        if (!empty($filters['property_ids'])) {
+            $ids = is_array($filters['property_ids']) ? $filters['property_ids'] : explode(',', $filters['property_ids']);
+            $ids = array_values(array_filter(array_map('intval', $ids)));
+            if (!empty($ids)) {
+                $builder->whereIn('properties.id', $ids);
+            }
+        }
+
+        // Cidade/bairro: match EXATO indexável em vez do LIKE '%..%' anterior —
+        // que além de forçar seq scan era sensível a caso/acento (slug de URL
+        // SEO nunca casava com "São Paulo"). resolveLocationName normaliza
+        // slug/sem-acento para o nome exato do banco; sem resolução, cai no
+        // LOWER() = (coberto pelo índice funcional idx_properties_status_lower_city_neighborhood).
+        $this->applyLocationFilter($builder, $filters, 'cidade');
+        $this->applyLocationFilter($builder, $filters, 'bairro');
+
+        // isset()+string-vazia, não só isset(): min_price='' chegando aqui
+        // (querystring com o campo presente e vazio) faria
+        // `WHERE preco >= ''`, que o Postgres rejeita — coluna numérica não
+        // aceita string vazia, nem por coerção implícita.
+        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
+            $builder->where('properties.preco >=', (float) $filters['min_price']);
+        }
+
+        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
+            $builder->where('properties.preco <=', (float) $filters['max_price']);
+        }
+
+        // --- Spatial Filters ---
+        if (!empty($filters['bounds'])) {
+            // bounds format: "southWestLng,southWestLat,northEastLng,northEastLat"
+            $coords = explode(',', $filters['bounds']);
+            if (count($coords) === 4) {
+                $swLng = (float) $coords[0];
+                $swLat = (float) $coords[1];
+                $neLng = (float) $coords[2];
+                $neLat = (float) $coords[3];
+
+                // Min/max para garantir a ordem correta independente do
+                // hemisfério e da direção do arrasto.
+                $builder->where('properties.longitude >=', min($swLng, $neLng))
+                        ->where('properties.longitude <=', max($swLng, $neLng))
+                        ->where('properties.latitude >=', min($swLat, $neLat))
+                        ->where('properties.latitude <=', max($swLat, $neLat));
+            }
+        }
+
+        if (!empty($filters['polygon'])) {
+            // polygon format: JSON string de [[lng, lat], [lng, lat], ...]
+            $polyData = json_decode($filters['polygon'], true);
+            if (is_array($polyData)) {
+                $points = [];
+                foreach ($polyData as $pt) {
+                    if (is_array($pt) && count($pt) >= 2) {
+                        $points[] = sprintf('(%F,%F)', (float) $pt[0], (float) $pt[1]);
+                    }
+                }
+                if (count($points) >= 3) {
+                    $polyString = '(' . implode(',', $points) . ')';
+                    $builder->where("point(properties.longitude, properties.latitude) <@ polygon '{$polyString}'", null, false);
+                }
+            }
+        }
+        // -----------------------
     }
 
     /**
