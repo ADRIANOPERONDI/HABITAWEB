@@ -290,6 +290,14 @@ class IntegrationSyncService
             if ($custouDetalhe) {
                 $processados++;
             }
+
+            // Progresso ao vivo pro painel ("Rodando... 42 processados, 8
+            // criados") em vez de só o cronômetro — a cada 5 itens da
+            // listagem, não a cada um, pra não martelar o banco num
+            // catálogo de milhares de itens quase todos inalterados.
+            if ($result->totalFetched % 5 === 0) {
+                $this->runModel->updateProgress($runId, $result->toCounters());
+            }
         }
 
         return true;

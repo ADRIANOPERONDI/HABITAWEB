@@ -265,6 +265,7 @@ class IntegrationsController extends BaseController
                 'trigger_type'  => $lastRun->trigger_type,
                 'finished_at'   => $lastRun->finished_at ? (string) $lastRun->finished_at : null,
                 'duration'      => $lastRun->durationSeconds(),
+                'total_fetched' => (int) $lastRun->total_fetched,
                 'created_count' => (int) $lastRun->created_count,
                 'updated_count' => (int) $lastRun->updated_count,
                 'skipped_count' => (int) $lastRun->skipped_count,
