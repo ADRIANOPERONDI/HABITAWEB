@@ -156,17 +156,40 @@ there. So: properties flow *Simob → Habitaweb*, leads flow *Habitaweb → Simo
 `IntegrationSyncService` (catalog run), `IntegrationOutboxService` (leads out),
 `IntegrationCommissionService` (charge per closed lead).
 
-**Commands:** `integration:sync` (cron, every 30 min) and `integration:outbox`
-(cron, every minute). Both documented in `GUIA_ESCALABILIDADE_PRODUCAO.md` §3.4.
+**Commands:** `integration:sync` and `integration:outbox` (both cron, every
+minute). `integration:sync` running every minute is what gives the panel's
+"Sincronizar agora" low latency (it never runs the sync inside the web
+request — it only flags `sync_priority_requested_at`, and the next cron pass
+picks it up with no PHP time limit); each integration's own automatic
+interval stays ~25 min via `AccountIntegrationModel::dueForSync()`'s
+staleness filter, not the cron frequency. Both documented in
+`GUIA_ESCALABILIDADE_PRODUCAO.md` §3.4.
 
 **Tenant panel:** `/admin/integracoes`. Routes take only the *connector code* —
 the account always comes from `auth()->user()`, never from the URL, so there is
 no id to tamper with.
 
 > Imported properties are **read-only mirrors**. `IntegrationService::MANAGED_FIELDS`
-> lists the columns the sync overwrites; `PropertyController::update` strips them
-> server-side for any property that has a `property_external_refs` row. The
-> `readonly` in the form is convenience, not the barrier.
+> lists the columns the sync overwrites (`status` is deliberately NOT in it —
+> a mirrored property's status is sync-managed only on the CREATE, so the
+> tenant's own pause/publish choice afterward survives every later sync).
+> The guard itself lives in `PropertyService::trySaveProperty()` (the
+> `$fromSync` param is how the sync's own writes bypass it) — controllers
+> just surface `ignored_fields` from its return, they don't filter anything
+> themselves. Deleting a mirrored property calls
+> `PropertyService::deleteOrPauseProperty()`, which pauses instead of
+> deleting — soft-deleting it would make the next sync's dedupe treat it as
+> new and reimport it. The `readonly` in the form is convenience, not the
+> barrier.
+
+> The sync lock is a column, not a cache key: `account_integrations.sync_locked_until`,
+> acquired with an atomic conditional `UPDATE ... WHERE sync_locked_until IS
+> NULL OR sync_locked_until < now()` (1 row affected = acquired). A cache-based
+> lock couldn't survive a PHP Fatal Error (`max_execution_time`, for
+> instance) — that skips every `catch`/`finally`, so the key stayed locked
+> until it expired on its own with no way to clear it early. The column
+> expires the same way but a `register_shutdown_function` also clears it
+> immediately when the shutdown handler runs.
 
 > Integration credentials use **reversible** encryption (`Services::encrypter()`,
 > the `PaymentGatewayConfigModel` pattern) — unlike `api_keys.key_hash`, which is

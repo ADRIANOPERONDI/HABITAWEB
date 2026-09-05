@@ -144,6 +144,28 @@ final class IntegrationHttpClientTest extends TestCase
     }
 
     /**
+     * O token de integração vai em texto puro no corpo de cada chamada — por
+     * http ele trafega em claro pra qualquer um no caminho da rede. UrlGuard
+     * continua aceitando http de propósito (ele também protege webhook e URL
+     * de imagem, onde exigir https quebraria integrações legítimas); a
+     * exigência de https é só desta classe, e só fora do ambiente de
+     * desenvolvimento.
+     */
+    public function testBaseUrlHttpERecusadaEmProducao(): void
+    {
+        $client = new FakeHttpClient('http://simob-exemplo.com.br', [[200, '{}']]);
+
+        $this->expectException(IntegrationException::class);
+        $this->expectExceptionMessage('https');
+
+        try {
+            $client->get('/v2/teste');
+        } finally {
+            $this->assertSame(0, $client->attempts, 'não pode nem ter tentado sair');
+        }
+    }
+
+    /**
      * Apontar a integração para o site institucional em vez do sistema é o
      * erro de digitação mais provável do tenant. A mensagem precisa dizer isso,
      * e não estourar um json_decode em algum lugar distante.

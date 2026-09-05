@@ -22,6 +22,16 @@ final class SyncResult
     public int $geocoded     = 0;
     public int $errors       = 0;
 
+    /**
+     * Fotos que falharam ao baixar (rede, formato) — não invalidam o imóvel,
+     * mas ficavam completamente invisíveis: a tela de execuções só mostrava
+     * "0 imagem(ns)", sem dizer se foi porque a origem não tinha foto
+     * nenhuma ou porque todas falharam.
+     */
+    public int $imageErrors     = 0;
+    /** Fotos descartadas pelo teto de fotos do PLANO, não por falha técnica. */
+    public int $photoLimitHits  = 0;
+
     /** @var string[] */
     public array $errorMessages = [];
 
@@ -68,19 +78,32 @@ final class SyncResult
 
     public function errorSummary(): ?string
     {
-        if ($this->errorMessages === []) {
-            return $this->planLimitReached
-                ? 'Limite de imóveis do plano atingido: os imóveis existentes continuaram sendo atualizados, mas nenhum novo foi criado.'
-                : null;
+        $partes = [];
+
+        if ($this->errorMessages !== []) {
+            $summary = implode(' | ', $this->errorMessages);
+
+            if ($this->errors > count($this->errorMessages)) {
+                $summary .= sprintf(' (+%d erro(s) não listado(s))', $this->errors - count($this->errorMessages));
+            }
+
+            $partes[] = $summary;
+        } elseif ($this->planLimitReached) {
+            $partes[] = 'Limite de imóveis do plano atingido: os imóveis existentes continuaram sendo '
+                . 'atualizados, mas nenhum novo foi criado.';
         }
 
-        $summary = implode(' | ', $this->errorMessages);
-
-        if ($this->errors > count($this->errorMessages)) {
-            $summary .= sprintf(' (+%d erro(s) não listado(s))', $this->errors - count($this->errorMessages));
+        if ($this->imageErrors > 0 || $this->photoLimitHits > 0) {
+            $partes[] = sprintf(
+                '%d foto(s) falharam ao baixar%s.',
+                $this->imageErrors,
+                $this->photoLimitHits > 0
+                    ? sprintf(' (%d descartada(s) pelo limite de fotos do plano)', $this->photoLimitHits)
+                    : ''
+            );
         }
 
-        return $summary;
+        return $partes === [] ? null : implode(' ', $partes);
     }
 
     /** Resumo curto para o toast do painel e para o output do comando. */

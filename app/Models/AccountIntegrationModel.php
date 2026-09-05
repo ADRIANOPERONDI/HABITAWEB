@@ -16,7 +16,7 @@ class AccountIntegrationModel extends Model
     protected $allowedFields    = [
         'account_id', 'provider_code', 'is_active', 'status',
         'last_test_at', 'last_test_message', 'last_sync_at', 'sync_cursor', 'settings',
-        'sync_priority_requested_at',
+        'sync_priority_requested_at', 'sync_locked_until',
     ];
 
     /** Janela de "vencido" pro sync automático — ver dueForSync(). */
@@ -91,6 +91,38 @@ class AccountIntegrationModel extends Model
             ->orderBy('(sync_priority_requested_at IS NOT NULL)', 'DESC')
             ->orderBy('last_sync_at', 'ASC')
             ->findAll($limit);
+    }
+
+    /**
+     * Adquire a trava de sincronização — UPDATE condicional, atômico no
+     * próprio banco. `sync_locked_until IS NULL OR < now()` cobre tanto a
+     * primeira rodada quanto uma trava velha que sobrou de um processo que
+     * morreu sem liberar (Fatal Error): depois de $ttlSeconds ela expira
+     * sozinha, mesmo sem ninguém chamar releaseLock().
+     *
+     * 1 linha afetada = adquiriu. "Ler o estado, decidir, gravar" em passos
+     * separados (o desenho anterior, em cache) tem uma janela de corrida
+     * entre o cron e um clique manual batendo ao mesmo tempo; um único
+     * UPDATE com a condição na cláusula WHERE não tem essa janela.
+     */
+    public function acquireLock(int $id, int $ttlSeconds): bool
+    {
+        $builder = $this->builder();
+        $builder->set('sync_locked_until', date('Y-m-d H:i:s', time() + $ttlSeconds))
+            ->where('id', $id)
+            ->groupStart()
+                ->where('sync_locked_until IS NULL', null, false)
+                ->orWhere('sync_locked_until <', date('Y-m-d H:i:s'))
+            ->groupEnd();
+
+        $builder->update();
+
+        return $this->db->affectedRows() === 1;
+    }
+
+    public function releaseLock(int $id): bool
+    {
+        return (bool) $this->update($id, ['sync_locked_until' => null]);
     }
 
     public function markTested(int $id, bool $ok, string $message): bool

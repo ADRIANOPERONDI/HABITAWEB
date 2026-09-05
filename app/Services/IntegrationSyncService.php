@@ -37,12 +37,23 @@ use App\Models\PropertyModel;
  */
 class IntegrationSyncService
 {
-    /** Uma rodada nunca passa disto, para o cron não ficar preso num tenant. */
-    /** Testável via construtor — o valor de produção é o default. */
+    /**
+     * Uma rodada nunca passa disto, para o cron não ficar preso num tenant.
+     * Testável via construtor — o valor de produção é o default.
+     */
     private int $maxItemsPerRun = 2000;
 
-    /** Trava para não haver duas rodadas simultâneas da mesma integração. */
-    private const LOCK_TTL = 1800;
+    /**
+     * Trava para não haver duas rodadas simultâneas da mesma integração.
+     * 900s (15 min), não 1800: com a trava agora atômica na coluna do banco
+     * (AccountIntegrationModel::acquireLock) e reconciliada no início de
+     * cada rodada (closeStaleRunning), não precisa da folga generosa que a
+     * versão em cache tinha pra compensar não ter jeito de destravar cedo.
+     */
+    private const LOCK_TTL = 900;
+
+    /** Consecutivos: a partir daqui, um erro de transporte vira desligamento (ver run()). */
+    private const MAX_CONSECUTIVE_TRANSPORT_ERRORS = 5;
 
     /**
      * Geocodificação é I/O externo lento (a Nominatim exige ~1 req/s) — um
@@ -91,20 +102,46 @@ class IntegrationSyncService
      */
     public function run(AccountIntegration $integration, string $trigger = IntegrationSyncRunModel::TRIGGER_CRON, bool $forceFull = false): SyncResult
     {
-        $result   = new SyncResult();
-        $lockKey  = 'integration_sync_lock_' . $integration->id;
+        $result    = new SyncResult();
         $startedAt = date('Y-m-d H:i:s');
         $this->geocodedThisRun = 0;
 
-        if (cache($lockKey) !== null) {
+        // Reconcilia ANTES de tentar adquirir: uma rodada anterior morta por
+        // Fatal Error (que não passa pelo shutdown handler abaixo se o
+        // processo que o registrou já não existe mais) não pode bloquear
+        // esta pra sempre.
+        $this->runModel->closeStaleRunning(self::LOCK_TTL);
+
+        if (! $this->integrationModel->acquireLock((int) $integration->id, self::LOCK_TTL)) {
             $result->addError('Já existe uma sincronização em andamento para esta integração.');
 
             return $result;
         }
 
-        cache()->save($lockKey, time(), self::LOCK_TTL);
+        $runId          = $this->runModel->start((int) $integration->id, $trigger);
+        $integrationId  = (int) $integration->id;
+        $runModel       = $this->runModel;
+        $integrationModel = $this->integrationModel;
+        $finalizada     = false;
 
-        $runId = $this->runModel->start((int) $integration->id, $trigger);
+        // Um Fatal Error de PHP (max_execution_time, por exemplo) NÃO é
+        // \Throwable — não passa por nenhum catch nem pelo finally logo
+        // abaixo. Sem isto, tanto a trava quanto a linha RUNNING ficavam
+        // presas até a trava expirar sozinha (closeStaleRunning cobre a
+        // rodada seguinte, mas esta mesma ficaria "Rodando" na tela até lá).
+        register_shutdown_function(static function () use (&$finalizada, $runModel, $integrationModel, $runId, $integrationId) {
+            if ($finalizada) {
+                return;
+            }
+
+            $erro     = error_get_last();
+            $mensagem = $erro !== null
+                ? sprintf('Interrompida por erro fatal: %s', $erro['message'])
+                : 'Interrompida — processo encerrado sem finalizar.';
+
+            $runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, [], $mensagem);
+            $integrationModel->releaseLock($integrationId);
+        });
 
         try {
             $connector = $this->integrationService->makeConnector($integration);
@@ -167,16 +204,30 @@ class IntegrationSyncService
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_PARTIAL, $result->toCounters(), $e->getMessage());
         } catch (\Throwable $e) {
+            // Erro de transporte (Simob fora do ar por um instante, timeout,
+            // 5xx) não pode desligar uma credencial que continua válida —
+            // só quando ele SE REPETE é que vira algo estrutural que
+            // justifica isso. Um `status = ERROR` a cada soluço tira a
+            // integração do dueForSync() (que exclui ERROR de propósito) e
+            // exige o tenant testar a conexão de novo pra uma credencial que
+            // nunca deixou de funcionar.
             log_message('error', '[IntegrationSync] Falha na integração ' . $integration->id . ': ' . $e->getMessage());
             $result->addError($e->getMessage());
             $this->runModel->finish($runId, IntegrationSyncRunModel::STATUS_ERROR, $result->toCounters(), $e->getMessage());
-            $this->integrationModel->update($integration->id, [
-                'status'                     => AccountIntegrationModel::STATUS_ERROR,
+
+            $atualizacoesDeErro = [
                 'last_test_message'          => $e->getMessage(),
                 'sync_priority_requested_at' => null,
-            ]);
+            ];
+
+            if ($this->runModel->consecutiveErrors($integrationId, self::MAX_CONSECUTIVE_TRANSPORT_ERRORS) >= self::MAX_CONSECUTIVE_TRANSPORT_ERRORS) {
+                $atualizacoesDeErro['status'] = AccountIntegrationModel::STATUS_ERROR;
+            }
+
+            $this->integrationModel->update($integration->id, $atualizacoesDeErro);
         } finally {
-            cache()->delete($lockKey);
+            $finalizada = true;
+            $this->integrationModel->releaseLock($integrationId);
         }
 
         return $result;
@@ -560,9 +611,24 @@ class IntegrationSyncService
 
                 if (! empty($res['success']) && empty($res['skipped'])) {
                     $baixadas++;
+
+                    continue;
+                }
+
+                // Falha silenciosa até aqui: o resumo da rodada não tinha
+                // nenhum contador pra isso, e "0 fotos" na tela de execuções
+                // não diz se foi porque a origem não mandou imagem nenhuma
+                // ou porque todas falharam ao baixar.
+                if (empty($res['success'])) {
+                    if (($res['code'] ?? null) === 'PHOTO_LIMIT_REACHED') {
+                        $result->photoLimitHits++;
+                    } else {
+                        $result->imageErrors++;
+                    }
                 }
             } catch (\Throwable $e) {
                 // Foto que não baixa não invalida o imóvel.
+                $result->imageErrors++;
                 log_message('warning', "[IntegrationSync] imagem do imóvel {$propertyId} falhou: " . $e->getMessage());
             }
         }

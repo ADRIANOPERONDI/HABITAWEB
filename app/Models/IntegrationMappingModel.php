@@ -102,4 +102,27 @@ class IntegrationMappingModel extends Model
             ->where('is_confirmed', false)
             ->countAllResults();
     }
+
+    /**
+     * Confirma toda linha ainda não revisada que já tem destino atribuído —
+     * pelo palpite automático ou por uma escolha anterior que não chegou a
+     * ser salva como confirmada. O que ficou sem destino (inclusive
+     * "— Não importar —") não é tocado: continua pendente de revisão.
+     *
+     * @return int linhas afetadas
+     */
+    public function confirmAllWithTarget(int $accountIntegrationId, string $kind): int
+    {
+        $column = $kind === self::KIND_CATEGORY ? 'target_value' : 'target_field';
+
+        $this->builder()
+            ->where('account_integration_id', $accountIntegrationId)
+            ->where('kind', $kind)
+            ->where('is_confirmed', false)
+            ->where($column . ' IS NOT NULL', null, false)
+            ->set('is_confirmed', true)
+            ->update();
+
+        return $this->db->affectedRows();
+    }
 }

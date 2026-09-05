@@ -269,6 +269,19 @@ class IntegrationHttpClient
             throw new IntegrationException('URL da plataforma externa não configurada.');
         }
 
+        // UrlGuard aceita http e https de propósito: ele também protege a
+        // target_url de webhook e a URL de imagem do import, onde exigir
+        // https quebraria integrações legítimas que ainda servem por http.
+        // Uma credencial de integração (token, aqui) trafegando em texto
+        // puro por http é um risco de outra categoria — a chave vaza pra
+        // qualquer um no caminho da rede —, e essa exigência é só desta
+        // classe, não do guard genérico.
+        if (ENVIRONMENT !== 'development' && ! str_starts_with(strtolower($this->baseUrl), 'https://')) {
+            throw new IntegrationException(
+                'URL da plataforma externa inválida: apenas conexões https são aceitas.'
+            );
+        }
+
         $check = (new UrlGuard())->validate($this->baseUrl);
 
         if (! ($check['valid'] ?? false)) {
