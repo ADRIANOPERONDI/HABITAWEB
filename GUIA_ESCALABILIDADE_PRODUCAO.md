@@ -909,35 +909,37 @@ verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
 
 ### 13.1 Sequência
 
-1. **Deploy com `valid_from` no futuro.** `plan_launch_ramps` já vem seedada
-   (migration `2026-08-16-090000_CreatePlanLaunchRampsTable.php`) com
-   `valid_from` = data da migration — ajuste manualmente para a data real da
-   virada antes de ir para produção (`UPDATE plan_launch_ramps SET
-   valid_from = '2026-MM-DD'`). É a chave-mestra: nenhuma conta entra na
-   rampa antes dessa data, mesmo que o código já esteja rodando.
-
-   **Decisão do cliente (premissa P8 do plano): a promoção vale para quem
-   entrar até 31/12/2026** — `UPDATE plan_launch_ramps SET valid_to =
-   '2026-12-31'` nas três faixas. Importante: isso é um prazo de
-   **inscrição**, não um prazo que encurta a rampa de quem já entrou — uma
-   conta que aderiu em novembro/2026 continua os 6 meses inteiros mesmo
-   depois de o calendário virar 2027 (`LaunchRampService::percentFor()`
-   checa `valid_from`/`valid_to` contra a data de ADESÃO da conta, não
-   contra hoje — ver commit `fix/decisoes-comerciais-cliente`).
+1. **Deploy — um comando só prepara o catálogo e a janela da rampa.**
+   ```bash
+   php spark comercial:preparar-lancamento
+   ```
+   Roda `PlanSeeder` + `PromotionPackageSeeder` + `LeadChargeRuleSeeder`
+   (idempotente — seguro rodar mais de uma vez, inclusive em re-deploys) e
+   grava a janela de validade da rampa em `plan_launch_ramps`. Por default
+   usa `--rampa-valid-from=hoje` e `--rampa-valid-to=2026-12-31` — o prazo
+   **decidido com o cliente** (premissa P8 do plano): quem ENTRAR até essa
+   data leva a rampa inteira. Isso é um prazo de **inscrição**, não um prazo
+   que encurta a rampa de quem já entrou — uma conta que aderiu em
+   novembro/2026 continua os 6 meses inteiros mesmo depois de o calendário
+   virar 2027 (`LaunchRampService::percentFor()` checa `valid_from`/`valid_to`
+   contra a data de ADESÃO da conta, não contra hoje — ver commit
+   `fix/decisoes-comerciais-cliente`). Se a data real da virada não for
+   hoje, ou o prazo combinado mudar, passe os dois explicitamente:
+   ```bash
+   php spark comercial:preparar-lancamento --rampa-valid-from 2026-MM-DD --rampa-valid-to 2026-12-31
+   ```
+   `--dry-run` roda os três seeders (idempotentes, baixo risco) mas não
+   grava a janela — só mostra a data que seria aplicada.
 
    **Contas já existentes também entram na rampa** (decisão do cliente): a
    migração comercial (passo 3 abaixo) roda com `--modo rampa`, não
    `--modo cheio`, para a base toda — desde que a migração aconteça dentro
    da mesma janela (até 31/12/2026).
 
-   Mesmo deploy: rode `php spark db:seed LeadChargeRuleSeeder` (já entra em
-   `MainSeeder`, então um `db:seed MainSeeder` completo também cobre). Sem
-   ele, `lead_charge_rules` fica vazia e nenhum lead recebido gera cobrança —
-   a receita do semestre de lançamento simplesmente não liga. É idempotente
-   (upsert por tipo de negócio) e respeita `LEAD_CHARGE_VALID_FROM` no
-   `.env` — a mesma lógica de "código no ar não é a mesma coisa que cobrar":
-   defina essa variável para a data real da virada, não para hoje, se o
-   deploy sair antes da data combinada.
+   `LeadChargeRuleSeeder` (chamado pelo comando acima) respeita
+   `LEAD_CHARGE_VALID_FROM` no `.env` — a mesma lógica de "código no ar não
+   é a mesma coisa que cobrar": defina essa variável para a data real da
+   virada, não para hoje, se o deploy sair antes da data combinada.
 2. **Comunicação, 30 dias antes.** Fora do código (não há infraestrutura de
    e-mail transacional para isso neste repositório): avisar cada conta em
    plano legado do preço novo, da rampa (se aplicável) e da data.
