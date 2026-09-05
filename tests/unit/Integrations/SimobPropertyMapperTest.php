@@ -78,7 +78,7 @@ final class SimobPropertyMapperTest extends TestCase
         $this->assertStringContainsString('PROXIMIDADE: Cerâmica Wunsch', $p->fields['descricao']);
     }
 
-    public function testMontaAUrlDeImagemPeloCdnComACapaNaPrimeira(): void
+    public function testMontaAUrlDeImagemViaBaseUrlImagemComACapaNaPrimeira(): void
     {
         $detail = $this->fixture('detalhe_imovel')['result'][0];
 
@@ -86,7 +86,7 @@ final class SimobPropertyMapperTest extends TestCase
 
         $this->assertCount(1, $p->images);
         $this->assertSame(
-            self::BASE . '/cdn/imovelImages/3376/9f2bcfc4be1ee43c1b10304b1ac280e6883eb9c8.jpg',
+            self::BASE . '/arquivos_imobiliaria/imobiliaria_1/imovel_3376/9f2bcfc4be1ee43c1b10304b1ac280e6883eb9c8.jpg',
             $p->images[0]->url
         );
         $this->assertTrue($p->images[0]->principal);
@@ -330,10 +330,11 @@ final class SimobPropertyMapperTest extends TestCase
         }
 
         $p = $this->mapper([], [], ['max_images' => 3])->mapDetail([
-            'id'          => '40',
-            'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
-            'cidade'      => 'Chapecó',
-            'imagens'     => $imagens,
+            'id'            => '40',
+            'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
+            'cidade'        => 'Chapecó',
+            'baseUrlImagem' => 'arquivos_imobiliaria/imobiliaria_1/imovel_40',
+            'imagens'       => $imagens,
         ]);
 
         $this->assertCount(3, $p->images);
@@ -345,10 +346,11 @@ final class SimobPropertyMapperTest extends TestCase
     public function testImagemSemNomeOuExtensaoEIgnorada(): void
     {
         $p = $this->mapper()->mapDetail([
-            'id'          => '41',
-            'configVenda' => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
-            'cidade'      => 'Chapecó',
-            'imagens'     => [
+            'id'            => '41',
+            'configVenda'   => ['disponibilizarPortal' => true, 'inativo' => false, 'valor' => '1'],
+            'cidade'        => 'Chapecó',
+            'baseUrlImagem' => 'arquivos_imobiliaria/imobiliaria_1/imovel_41',
+            'imagens'       => [
                 ['baseNomeImagem' => '', 'extensao' => 'jpg'],
                 ['baseNomeImagem' => 'ok', 'extensao' => ''],
                 ['baseNomeImagem' => 'bom', 'extensao' => 'png', 'posicao' => 1],

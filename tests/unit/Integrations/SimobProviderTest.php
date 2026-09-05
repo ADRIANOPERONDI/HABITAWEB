@@ -309,11 +309,16 @@ final class SimobProviderTest extends TestCase
 
     // ------------------------------------------------------------ URL de mídia
 
-    public function testUrlDeImagemUsaOCdnEEscapaOsSegmentos(): void
+    public function testUrlDeImagemUsaOBaseUrlImagemEEscapaOsSegmentos(): void
     {
         $this->assertSame(
-            'https://demo.simob.com.br/cdn/imovelImages/3376/abc123.jpg',
-            SimobClient::imageUrl('https://demo.simob.com.br/', '3376', 'abc123', '.jpg')
+            'https://demo.simob.com.br/arquivos_imobiliaria/imobiliaria_1/imovel_3376/abc123.jpg',
+            SimobClient::imageUrl(
+                'https://demo.simob.com.br/',
+                '/arquivos_imobiliaria/imobiliaria_1/imovel_3376/',
+                'abc123',
+                '.jpg'
+            )
         );
     }
 }

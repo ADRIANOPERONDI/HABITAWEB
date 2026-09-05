@@ -84,13 +84,15 @@ class IntegrationHttpClient
      */
     public function postMultipart(string $endpoint, array $fields): array
     {
-        $multipart = [];
-
-        foreach ($fields as $name => $contents) {
-            $multipart[] = ['name' => $name, 'contents' => $contents];
-        }
-
-        return $this->send('POST', $endpoint, ['multipart' => $multipart]);
+        // CURLRequest repassa `multipart` direto para CURLOPT_POSTFIELDS sem
+        // nenhum tratamento (ver CURLRequest::applyBody) — não existe o shim
+        // estilo Guzzle que interpretaria [['name'=>.., 'contents'=>..], ...].
+        // Passar isso faz o cURL nativo tratar os índices numéricos como nome
+        // de campo e achatar 'name'/'contents' em colchetes (`0[name]`,
+        // `0[contents]`), então o campo `data` que a origem exige nunca chega
+        // com esse nome. Precisa ser um array associativo simples
+        // campo => valor, que é o que o cURL nativo espera.
+        return $this->send('POST', $endpoint, ['multipart' => $fields]);
     }
 
     /**
