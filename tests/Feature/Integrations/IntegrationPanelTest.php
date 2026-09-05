@@ -588,6 +588,43 @@ final class IntegrationPanelTest extends HabitawebTestCase
     }
 
     /**
+     * IntegrationSyncService::consume() grava contadores parciais a cada 5
+     * itens (updateProgress()) — sem isso, o painel só tinha o cronômetro
+     * ("Rodando há Xs...") pra mostrar durante uma sincronização longa, sem
+     * nenhum sinal de quanto já tinha sido processado. Como /status sempre
+     * lê o último run (rodando ou não), uma rodada AINDA RUNNING com
+     * contadores parciais já grafados precisa aparecer aqui do mesmo jeito.
+     */
+    public function testStatusDevolveProgressoDeRodadaAindaRodando(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED, 'is_active' => true]);
+
+        $runModel = model(IntegrationSyncRunModel::class);
+        $runId    = $runModel->start((int) $int->id, IntegrationSyncRunModel::TRIGGER_CRON);
+        $runModel->updateProgress($runId, [
+            'total_fetched' => 37,
+            'created_count' => 12,
+            'updated_count' => 3,
+        ]);
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])->get('admin/integracoes/simob/status')->getJSON(),
+            true
+        );
+
+        $this->assertTrue($body['running'], 'updateProgress() nao pode mudar o status de RUNNING');
+        $this->assertSame(37, $body['last_run']['total_fetched']);
+        $this->assertSame(12, $body['last_run']['created_count']);
+        $this->assertSame(3, $body['last_run']['updated_count']);
+
+        $rodada = $runModel->find($runId);
+        $this->assertSame(IntegrationSyncRunModel::STATUS_RUNNING, $rodada->status, 'updateProgress() nunca fecha a rodada — so finish() faz isso');
+        $this->assertNull($rodada->finished_at);
+    }
+
+    /**
      * closeStaleRunning() (início de run()) já fecha rodadas presas sozinho,
      * mas só na PRÓXIMA vez que o cron passar por ali — pode levar minutos.
      * "Abortar" existe pro tenant não ficar de mãos atadas até lá.

@@ -339,6 +339,24 @@
         }
     }
 
+    // Contadores ao vivo da rodada em curso — IntegrationSyncService grava
+    // isso no banco a cada 5 itens processados (updateProgress()), e como
+    // /status sempre devolve os contadores do último run (rodando ou não),
+    // só ler daqui já basta: nenhum endpoint novo precisou existir.
+    function progressoTexto(s) {
+        const r = s.last_run;
+        if (!r) { return 'iniciando...'; }
+
+        const partes = [];
+        if (r.total_fetched > 0) { partes.push(r.total_fetched + ' processado(s)'); }
+        if (r.created_count > 0) { partes.push(r.created_count + ' criado(s)'); }
+        if (r.updated_count > 0) { partes.push(r.updated_count + ' atualizado(s)'); }
+        if (r.ignored_count > 0) { partes.push(r.ignored_count + ' ignorado(s)'); }
+        if (r.error_count > 0) { partes.push(r.error_count + ' erro(s)'); }
+
+        return partes.length > 0 ? partes.join(', ') : 'iniciando...';
+    }
+
     function consultarStatus() {
         $.get(base + '/status').done(function (s) {
             atualizarBotaoSincronizar(s);
@@ -355,6 +373,11 @@
                         title: s.running
                             ? 'Rodando há ' + s.running_seconds + 's...'
                             : 'Agendado — aguardando o cron rodar...',
+                        // last_run, enquanto running=false (só agendado),
+                        // ainda é a rodada ANTERIOR — mostrar os contadores
+                        // dela aqui confundiria "isso já é o progresso do
+                        // pedido novo" com números de uma execução passada.
+                        html: s.running ? progressoTexto(s) : '',
                     });
                 }
                 return;
@@ -430,6 +453,7 @@
         if (s.running) {
             Swal.fire({
                 title: 'Rodando há ' + s.running_seconds + 's...',
+                html: progressoTexto(s),
                 allowOutsideClick: false,
                 didOpen: () => Swal.showLoading(),
             });

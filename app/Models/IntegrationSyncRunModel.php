@@ -50,6 +50,20 @@ class IntegrationSyncRunModel extends Model
         ]));
     }
 
+    /**
+     * Grava os contadores parciais de uma rodada AINDA RUNNING — sem tocar
+     * `status`/`finished_at` (só `finish()` fecha a rodada). Existe pro
+     * painel mostrar progresso de verdade ("42 processados, 8 criados...")
+     * em vez de só "Rodando há Xs...": `IntegrationsController::status()`
+     * já devolve os contadores do último run pra qualquer chamador, rodando
+     * ou não, então persistir aqui é o suficiente pro polling do painel
+     * pegar sozinho, sem endpoint novo.
+     */
+    public function updateProgress(int $runId, array $counters): bool
+    {
+        return (bool) $this->update($runId, $counters);
+    }
+
     /** @return \App\Entities\IntegrationSyncRun[] */
     public function recentFor(int $accountIntegrationId, int $limit = 20): array
     {
