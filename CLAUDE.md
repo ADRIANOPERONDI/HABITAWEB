@@ -79,11 +79,16 @@ Image fixtures live in `tests/_support/fixtures/images/` — including a JPEG wi
 Composer also exposes `composer test` (plain `phpunit`).
 
 ### Custom spark commands
-`app/Commands/` contains only operational commands such as Asaas sync, expiry
-checks, curation, the email worker, metrics flushing, media generation, upload
-migration, cleanup and password/account maintenance. The `e2e:setup` command
-is test-only: it requires the Playwright marker and refuses every database
-except `habitaweb_test`.
+`app/Commands/` contains only operational commands: Asaas sync, expiry
+checks, curation, the email worker, metrics flushing/pruning, media
+generation, upload migration, cleanup, password/account maintenance,
+integration sync/outbox (`integration:sync`, `integration:outbox`), and the
+commercial-model commands from the pricing restructuring — lead-charge
+lifecycle (`leads:aprovar-cobrancas`, `leads:fechar-ciclo`,
+`creditos:conceder`), launch-ramp transitions (`assinaturas:aplicar-rampa`)
+and the one-time legacy-plan migration (`planos:migrar-comercial`). The
+`e2e:setup` command is test-only: it requires the Playwright marker and
+refuses every database except `habitaweb_test`.
 
 ## Architecture
 
@@ -115,6 +120,35 @@ Two entry points, one pipeline: multipart upload (`PropertyService::addMedia`) a
 
 ### Payment gateways
 `App\PaymentGateways\GatewayInterface` defines a common contract (customer CRUD, subscription CRUD, one-off payments, webhook parsing, pending-payment lookup) implemented by `AsaasGateway`, `StripeGateway`, and `MercadoPagoGateway`. `App\Services\PaymentService` is the orchestration layer above these (sync, overdue detection, etc.); `App\Services\AsaasService` holds Asaas-specific logic. Gateway credentials/config live in DB (`PaymentGatewayConfigModel`/`PaymentGatewayModel`), manageable at `/admin/payment-gateways`, not just `.env`.
+
+### Commercial model (plans, lead charges, launch ramp)
+`PRATA`/`OURO`/`DIAMANTE` are the current plans (`PlanSeeder`); the plans they
+replaced live under `<CHAVE>_LEGADO` (`ativo=false`, same features so no
+tenant loses anything on the seed run — see the seeder's own docblock).
+`App\Services\PlanGate::has($accountId, $feature)` is the single point of
+truth for plan-gated features (constants in `App\Entities\PlanFeature`) —
+always go through it rather than reading `plans.features` directly. Property
+listings are billed by **lead received**, not by closed deal
+(`App\Services\LeadChargeService`, `lead_charges`/`lead_charge_rules`
+tables); `spark leads:aprovar-cobrancas` and `spark leads:fechar-ciclo`
+(cron, see `GUIA_ESCALABILIDADE_PRODUCAO.md` §3.4) turn approved charges
+into gateway invoices monthly.
+
+**Launch ramp** (`App\Services\LaunchRampService`, `plan_launch_ramps`
+table): a subscription's mensalidade can start free and ramp up over its
+own lifetime (from `subscriptions.ramp_started_at`, not the calendar — a
+coupon-style global date range doesn't fit "6 months free from *this*
+account's signup"). `ramp_started_at IS NULL` means the subscription simply
+isn't enrolled and always pays full price — that's the safety default
+every call site relies on. `spark assinaturas:aplicar-rampa` (daily cron)
+applies faixa transitions; it corrects price automatically on a
+subscription that already has a real gateway subscription, but deliberately
+does **not** auto-create the first-ever real charge for a 0%→X% transition
+(no payment method confirmed, no advance-notice email infra) — that one
+transition is flagged in `audit_logs` for manual follow-up.
+`spark planos:migrar-comercial` is the one-time, human-operated tool that
+moves accounts off `*_LEGADO` plans onto the new ones (see the runbook in
+`GUIA_ESCALABILIDADE_PRODUCAO.md` §13).
 
 ### Property scoring
 `App\Services\Scoring\ScorerFactory::make($propertyType)` returns a `PropertyScorerInterface` implementation chosen by property type — `LandScorer` (terreno/lote), `CommercialScorer` (comercial/sala/loja), `WarehouseScorer` (galpão), defaulting to `ResidentialScorer` (apartamento/casa/cobertura/sobrado, and unknown types). Used by curation/verification and the admin "calculate score" endpoint.
