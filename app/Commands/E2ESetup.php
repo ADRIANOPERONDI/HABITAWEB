@@ -128,6 +128,7 @@ class E2ESetup extends BaseCommand
 
         if ($exists > 0) {
             CLI::write('Tenant de teste já existe, pulando.', 'cyan');
+            $this->ensureActiveSubscriptionForTenant();
             return;
         }
 
@@ -171,6 +172,48 @@ class E2ESetup extends BaseCommand
         (new ApiKeyModel())->generateKey($accountId, 'E2E Frontend Key', $userId);
 
         CLI::write('Tenant de teste criado: ' . self::TENANT_EMAIL, 'green');
+    }
+
+    /**
+     * "Já existe, pulando" acima só checava a identidade Shield (auth_identities),
+     * nunca a assinatura — encontrado rodando o Playwright de verdade pela
+     * primeira vez: a conta e o usuário existiam de uma execução anterior, mas
+     * a assinatura não (0 linhas em subscriptions), e AdminAuth bloqueava
+     * `/admin/properties/new` inteiro com "Você precisa de uma assinatura
+     * ativa" — nenhum teste de property-crud conseguia nem chegar no form.
+     * Autocura: garante uma ACTIVE toda vez, sem depender de o restante do
+     * fixture já existir.
+     */
+    private function ensureActiveSubscriptionForTenant(): void
+    {
+        $accountModel = new AccountModel();
+        $account = $accountModel->where('email', self::TENANT_EMAIL)->first();
+
+        if (! $account) {
+            CLI::error('e2e:setup: tenant tem identidade Shield mas nenhuma account com o e-mail esperado.');
+            return;
+        }
+
+        $subscriptionModel = new SubscriptionModel();
+        $hasActive = $subscriptionModel->where('account_id', $account->id)->where('status', 'ACTIVE')->countAllResults() > 0;
+
+        if ($hasActive) {
+            return;
+        }
+
+        $plan = (new PlanModel())->where('chave', self::PLAN_CHAVE)->first();
+
+        $subscriptionModel->insert([
+            'account_id'        => $account->id,
+            'plan_id'           => $plan->id,
+            'status'            => 'ACTIVE',
+            'billing_cycle'     => 'mensal',
+            'data_inicio'       => date('Y-m-d'),
+            'data_fim'          => date('Y-m-d', strtotime('+1 year')),
+            'proximo_pagamento' => date('Y-m-d', strtotime('+1 month')),
+        ]);
+
+        CLI::write('Tenant de teste sem assinatura ativa — assinatura recriada.', 'yellow');
     }
 
     /**
