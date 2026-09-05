@@ -11,6 +11,7 @@ class MapSearchController extends BaseController
 
     public function getMapData()
     {
+        helper('format');
         $filters = $this->getFiltersFromRequest();
         $propertyService = service('propertyService');
         $page = max(1, (int) ($this->request->getGet('page') ?? 1));
@@ -23,6 +24,16 @@ class MapSearchController extends BaseController
             return !is_null($value) && $value !== '';
         });
         
+        // Registrado ANTES de forçar status=ACTIVE: 'status' não é filtro
+        // semântico de busca, e incluí-lo no array só poluiria o dedup por
+        // IP em SearchMetricsService::record sem mudar o resultado (toda
+        // busca pública já é sempre ACTIVE).
+        try {
+            (new \App\Services\SearchMetricsService())->record($filters);
+        } catch (\Throwable $e) {
+            log_message('error', 'Erro ao registrar metrica de busca: ' . $e->getMessage());
+        }
+
         $filters['status'] = 'ACTIVE';
 
         $pins = $listOnly ? [] : $propertyService->searchMapPins($filters);

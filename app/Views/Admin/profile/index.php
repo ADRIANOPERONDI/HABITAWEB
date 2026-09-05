@@ -185,6 +185,99 @@
                     </div>
 
                     <div class="mt-5 pt-4 border-top">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h5 class="fw-bold mb-0"><i class="fas fa-store text-primary me-2"></i> Página Pública da Imobiliária</h5>
+                            <?php if (!empty($account->slug)): ?>
+                                <a href="<?= partner_url($account) ?>" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                    <i class="fas fa-external-link-alt me-1"></i> Ver minha página
+                                </a>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-4 mb-4">
+                            <div class="logo-preview-wrapper" style="width: 140px; height: 90px; border-radius: 12px;">
+                                <?php if ($account->capa): ?>
+                                    <img src="<?= media_url($account->capa) ?>" alt="Capa da Página" id="capaPreview" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+                                <?php else: ?>
+                                    <i class="fa-solid fa-image fa-2x text-light" id="capaPlaceholder"></i>
+                                    <img src="" alt="Preview" id="capaPreview" style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+                                <?php endif; ?>
+                                <label for="capaInput" class="upload-btn-chip">
+                                    <i class="fa-solid fa-camera"></i>
+                                </label>
+                                <input type="file" name="capa" id="capaInput" class="d-none" accept="image/*">
+                            </div>
+                            <p class="text-muted small mb-0">Capa exibida no topo da sua página pública. Recomendado: 1600×500px.</p>
+                        </div>
+
+                        <div class="row g-4">
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold small text-muted">Descrição / Sobre a Imobiliária</label>
+                                <textarea name="descricao" class="form-control input-premium" rows="3" maxlength="1000"><?= esc($account->descricao) ?></textarea>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">Site</label>
+                                <input type="url" name="site" class="form-control input-premium" placeholder="https://" value="<?= esc($account->site) ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">Instagram</label>
+                                <input type="text" name="instagram" class="form-control input-premium" placeholder="https://instagram.com/..." value="<?= esc($account->instagram) ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">Facebook</label>
+                                <input type="text" name="facebook" class="form-control input-premium" placeholder="https://facebook.com/..." value="<?= esc($account->facebook) ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">LinkedIn</label>
+                                <input type="text" name="linkedin" class="form-control input-premium" placeholder="https://linkedin.com/..." value="<?= esc($account->linkedin) ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">YouTube</label>
+                                <input type="text" name="youtube" class="form-control input-premium" placeholder="https://youtube.com/..." value="<?= esc($account->youtube) ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">TikTok</label>
+                                <input type="text" name="tiktok" class="form-control input-premium" placeholder="https://tiktok.com/@..." value="<?= esc($account->tiktok) ?>">
+                            </div>
+
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold small text-muted">Horário de Atendimento</label>
+                                <input type="text" name="horario_atendimento" class="form-control input-premium" placeholder="Seg a Sex, 9h às 18h" value="<?= esc($account->horario_atendimento) ?>">
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small text-muted">CEP</label>
+                                <input type="text" name="cep" id="cepInput" class="form-control input-premium" value="<?= esc($account->cep) ?>">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold small text-muted">Estado</label>
+                                <input type="text" name="estado" class="form-control input-premium" maxlength="2" value="<?= esc($account->estado) ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-muted">Cidade</label>
+                                <input type="text" name="cidade" class="form-control input-premium" value="<?= esc($account->cidade) ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small text-muted">Bairro</label>
+                                <input type="text" name="bairro" class="form-control input-premium" value="<?= esc($account->bairro) ?>">
+                            </div>
+                            <div class="col-md-7">
+                                <label class="form-label fw-bold small text-muted">Rua</label>
+                                <input type="text" name="rua" class="form-control input-premium" value="<?= esc($account->rua) ?>">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold small text-muted">Número</label>
+                                <input type="text" name="numero" class="form-control input-premium" value="<?= esc($account->numero) ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small text-muted">Complemento</label>
+                                <input type="text" name="complemento" class="form-control input-premium" value="<?= esc($account->complemento) ?>">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 pt-4 border-top">
                         <h5 class="fw-bold mb-4"><i class="fas fa-shield-alt text-primary me-2"></i> Verificação de Identidade (Anti-Fraude)</h5>
                         
                             <?php if (in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true)): ?>

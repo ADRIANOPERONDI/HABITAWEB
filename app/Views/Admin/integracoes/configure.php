@@ -1,0 +1,459 @@
+<?= $this->extend('Layouts/master') ?>
+
+<?= $this->section('title') ?><?= esc($provider->name) ?><?= $this->endSection() ?>
+<?= $this->section('page_title') ?>Integração — <?= esc($provider->name) ?><?= $this->endSection() ?>
+
+<?= $this->section('styles') ?>
+<style>
+    .panel-card { border: 1px solid #f0f0f0; border-radius: 16px; background: #fff; }
+    .lock-badge { font-size: .7rem; background: #ecfdf5; color: #047857; padding: 2px 8px; border-radius: 6px; }
+    .field-help { font-size: .8rem; color: #6b7280; }
+</style>
+<?= $this->endSection() ?>
+
+<?= $this->section('content') ?>
+
+<?php
+    // status é saúde da CONEXÃO; pausa é só is_active — os dois são
+    // independentes (ver IntegrationService::toggleActive). "Pausado" só
+    // existe combinando os dois, nunca como um status isolado.
+    [$badgeClass, $badgeLabel] = match (true) {
+        $integration->status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED && ! $integration->is_active
+            => ['warning', 'Conectado (pausado)'],
+        $integration->status === \App\Models\AccountIntegrationModel::STATUS_CONNECTED
+            => ['success', 'Conectado'],
+        $integration->status === \App\Models\AccountIntegrationModel::STATUS_ERROR
+            => ['danger', 'Erro'],
+        default => ['secondary', 'Aguardando teste'],
+    };
+
+    // Passo atual do onboarding: o primeiro que ainda não foi cumprido. Sem
+    // isto, um tenant que só salvou credenciais e nunca testou não tinha
+    // como saber, olhando a tela, o que falta pra sincronizar de verdade.
+    $onboardingSteps = [
+        1 => ['label' => 'Credenciais', 'done' => $credentials !== []],
+        2 => ['label' => 'Testar',      'done' => $integration->isConnected()],
+        3 => ['label' => 'Mapear',      'done' => $integration->isConnected() && $unconfirmed === 0],
+        4 => ['label' => 'Ativar',      'done' => $integration->is_active],
+    ];
+
+    $onboardingCurrentStep = 4;
+
+    foreach ($onboardingSteps as $n => $step) {
+        if (! $step['done']) {
+            $onboardingCurrentStep = $n;
+
+            break;
+        }
+    }
+
+    $onboardingConcluido = $onboardingSteps[4]['done'];
+?>
+
+<div class="mb-3">
+    <a href="<?= site_url('admin/integracoes') ?>" class="text-decoration-none text-muted small">
+        <i class="fa-solid fa-arrow-left me-1"></i> Voltar para integrações
+    </a>
+</div>
+
+<div class="panel-card p-3 mb-3" data-onboarding-current-step="<?= $onboardingCurrentStep ?>">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <?php foreach ($onboardingSteps as $n => $step): ?>
+            <span class="badge rounded-pill <?= $step['done'] ? 'bg-success' : ($n === $onboardingCurrentStep ? 'bg-primary' : 'bg-light text-dark') ?>">
+                <?php if ($step['done']): ?><i class="fa-solid fa-check me-1"></i><?php endif; ?>
+                <?= $n ?>. <?= esc($step['label']) ?>
+            </span>
+            <?php if ($n < 4): ?><i class="fa-solid fa-arrow-right text-muted small"></i><?php endif; ?>
+        <?php endforeach; ?>
+    </div>
+    <?php if (! $onboardingConcluido): ?>
+        <p class="text-muted small mt-2 mb-0">
+            Passo atual: <strong><?= esc($onboardingSteps[$onboardingCurrentStep]['label']) ?></strong>
+        </p>
+    <?php endif; ?>
+</div>
+
+<div class="panel-card p-3 mb-4">
+    <h6 class="mb-2"><i class="fa-solid fa-circle-info me-1 text-muted"></i> Como funciona</h6>
+    <ul class="small text-muted mb-0 ps-3">
+        <li>Os imóveis do <?= esc($provider->name) ?> entram automaticamente no Habitaweb.</li>
+        <li>Leads capturados no portal voltam para o CRM do <?= esc($provider->name) ?>.</li>
+        <li>Imóveis importados são espelhos: você só edita status (pausar/publicar) e fotos — os demais dados vêm da próxima sincronização.</li>
+    </ul>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="panel-card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="mb-0">Credenciais</h5>
+                <span class="badge bg-<?= $badgeClass ?>"><?= esc($badgeLabel) ?></span>
+            </div>
+
+            <?php if ($integration->last_test_message): ?>
+                <div class="alert alert-<?= $integration->isConnected() ? 'success' : 'danger' ?> py-2 px-3 small">
+                    <?= esc($integration->last_test_message) ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" action="<?= site_url('admin/integracoes/' . $provider->code) ?>">
+                <?= csrf_field() ?>
+
+                <?php foreach ($provider->getSchemaFields() as $field): ?>
+                    <?php
+                        $key       = $field['key'];
+                        $sensitive = ! empty($field['is_sensitive']);
+                        $current   = $credentials[$key] ?? '';
+                    ?>
+                    <div class="mb-3">
+                        <label class="form-label" for="cfg_<?= esc($key, 'attr') ?>">
+                            <?= esc($field['label'] ?? $key) ?>
+                            <?php if (! empty($field['required'])): ?><span class="text-danger">*</span><?php endif; ?>
+                            <?php if ($sensitive): ?>
+                                <span class="lock-badge ms-1"><i class="fa-solid fa-lock"></i> Seguro</span>
+                            <?php endif; ?>
+                        </label>
+
+                        <input
+                            type="<?= $sensitive ? 'password' : 'text' ?>"
+                            class="form-control"
+                            id="cfg_<?= esc($key, 'attr') ?>"
+                            name="config[<?= esc($key, 'attr') ?>]"
+                            autocomplete="off"
+                            <?php if ($sensitive): ?>
+                                <?php /* Nunca devolvemos o segredo ao navegador: só o que já existe, mascarado. */ ?>
+                                placeholder="<?= $current !== '' ? esc($current, 'attr') . ' (deixe em branco para manter)' : 'Cole o token aqui' ?>"
+                            <?php else: ?>
+                                value="<?= esc($current, 'attr') ?>"
+                                placeholder="<?= esc($field['placeholder'] ?? '', 'attr') ?>"
+                            <?php endif; ?>
+                        >
+
+                        <?php if (! empty($field['help'])): ?>
+                            <div class="field-help mt-1"><?= esc($field['help']) ?></div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+
+                <hr class="my-4">
+                <h6 class="mb-3">Sincronização</h6>
+
+                <div class="mb-3">
+                    <label class="form-label d-block">O que importar</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="fin_2" name="settings[finalidades][]" value="2"
+                            <?= in_array(2, $settings['finalidades'], true) ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="fin_2">Imóveis à venda</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="fin_1" name="settings[finalidades][]" value="1"
+                            <?= in_array(1, $settings['finalidades'], true) ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="fin_1">Imóveis para locação</label>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="initial_status">Como o imóvel novo entra</label>
+                        <select class="form-select" id="initial_status" name="settings[initial_status]">
+                            <option value="DRAFT" <?= $settings['initial_status'] === 'DRAFT' ? 'selected' : '' ?>>
+                                Rascunho (você revisa antes de publicar)
+                            </option>
+                            <option value="ACTIVE" <?= $settings['initial_status'] === 'ACTIVE' ? 'selected' : '' ?>>
+                                Publicado direto no portal
+                            </option>
+                        </select>
+                        <div class="field-help mt-1">
+                            Comece por rascunho até conferir os mapeamentos.
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="max_images">Máximo de fotos por imóvel</label>
+                        <input type="number" class="form-control" id="max_images" name="settings[max_images]"
+                               min="1" max="50" value="<?= (int) $settings['max_images'] ?>">
+                        <?php if ($planPhotoLimit !== null && (int) $settings['max_images'] > $planPhotoLimit): ?>
+                            <div class="field-help mt-1 text-warning">
+                                <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                                Seu plano permite só <?= (int) $planPhotoLimit ?> foto(s) por imóvel — o excedente é
+                                descartado na sincronização.
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" id="import_images" name="settings[import_images]" value="1"
+                        <?= $settings['import_images'] ? 'checked' : '' ?>>
+                    <label class="form-check-label" for="import_images">Importar as fotos dos imóveis</label>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-floppy-disk me-1"></i> Salvar configurações
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="panel-card p-4 mb-4">
+            <h6 class="mb-3">Ações</h6>
+
+            <button type="button" class="btn btn-outline-primary w-100 mb-2" id="btnTestar">
+                <i class="fa-solid fa-plug-circle-check me-1"></i> Testar conexão
+            </button>
+
+            <button type="button" class="btn btn-outline-success w-100 mb-2" id="btnSincronizar"
+                <?= $integration->isConnected() ? '' : 'disabled' ?>>
+                <i class="fa-solid fa-rotate me-1"></i> Sincronizar agora
+            </button>
+
+            <button type="button" class="btn btn-outline-secondary w-100 mb-2" id="btnToggle"
+                <?= $integration->isConnected() || $integration->is_active ? '' : 'disabled' ?>>
+                <i class="fa-solid fa-clock me-1"></i>
+                <?= $integration->is_active ? 'Pausar sincronização automática' : 'Ativar sincronização automática' ?>
+            </button>
+
+            <hr>
+
+            <a href="<?= site_url('admin/integracoes/' . $provider->code . '/mapeamentos') ?>"
+               class="btn btn-outline-dark w-100 mb-2">
+                <i class="fa-solid fa-right-left me-1"></i> Mapeamentos
+                <?php if ($unconfirmed > 0): ?>
+                    <span class="badge bg-warning text-dark ms-1"><?= (int) $unconfirmed ?></span>
+                <?php endif; ?>
+            </a>
+
+            <a href="<?= site_url('admin/integracoes/' . $provider->code . '/execucoes') ?>"
+               class="btn btn-outline-dark w-100">
+                <i class="fa-solid fa-list-check me-1"></i> Histórico de sincronizações
+            </a>
+        </div>
+
+        <div class="panel-card p-4">
+            <h6 class="mb-3">Situação</h6>
+            <dl class="row mb-0 small">
+                <dt class="col-6 text-muted fw-normal">Imóveis sincronizados</dt>
+                <dd class="col-6 text-end"><?= (int) $synced ?></dd>
+
+                <dt class="col-6 text-muted fw-normal">Sync automático</dt>
+                <dd class="col-6 text-end">
+                    <?= $integration->is_active ? '<span class="text-success">Ativo</span>' : '<span class="text-muted">Desligado</span>' ?>
+                </dd>
+
+                <dt class="col-6 text-muted fw-normal">Última sincronização</dt>
+                <dd class="col-6 text-end">
+                    <?= $integration->last_sync_at
+                        ? esc(\CodeIgniter\I18n\Time::parse((string) $integration->last_sync_at)->humanize())
+                        : '—' ?>
+                </dd>
+
+                <?php if ($lastRun !== null): ?>
+                    <dt class="col-6 text-muted fw-normal">Último resultado</dt>
+                    <dd class="col-6 text-end">
+                        <span class="badge bg-<?= $lastRun->statusBadge() ?>"><?= esc($lastRun->status) ?></span>
+                    </dd>
+                <?php endif; ?>
+
+                <?php if ((int) $drafts > 0): ?>
+                    <dt class="col-6 text-muted fw-normal">Em rascunho</dt>
+                    <dd class="col-6 text-end"><?= (int) $drafts ?></dd>
+                <?php endif; ?>
+            </dl>
+
+            <?php if ((int) $drafts > 0): ?>
+                <div class="alert alert-warning small mt-3 mb-0">
+                    <?= (int) $drafts ?> imóvel(is) importado(s) ainda em rascunho — eles não aparecem
+                    no site enquanto você não publicar.
+                    <button type="button" class="btn btn-sm btn-warning w-100 mt-2" id="btnPublicarRascunhos">
+                        <i class="fa-solid fa-upload me-1"></i> Publicar os <?= (int) $drafts ?> rascunhos
+                    </button>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <div class="mt-3 text-center">
+            <form method="post" action="<?= site_url('admin/integracoes/' . $provider->code . '/desconectar') ?>"
+                  onsubmit="return confirm('Apagar as credenciais desta integração? Os imóveis já importados continuam no seu catálogo.');">
+                <?= csrf_field() ?>
+                <button type="submit" class="btn btn-link btn-sm text-danger text-decoration-none">
+                    Desconectar integração
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+(function () {
+    const base = '<?= site_url('admin/integracoes/' . $provider->code) ?>';
+    let pollTimer = null;
+
+    // O CSRF vai automático pelo $.ajaxSetup do Layouts/master.
+    function executar(url, titulo) {
+        Swal.fire({ title: titulo, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        return $.post(url)
+            .done(function (r) {
+                Swal.fire({
+                    icon: r.success ? 'success' : 'error',
+                    title: r.success ? 'Tudo certo' : 'Não deu',
+                    text: r.message,
+                }).then(() => { if (r.success) location.reload(); });
+            })
+            .fail(function () {
+                Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível concluir. Tente novamente.' });
+            });
+    }
+
+    $('#btnTestar').on('click', function () {
+        executar(base + '/testar', 'Falando com o <?= esc($provider->name, 'js') ?>...');
+    });
+
+    function pararPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    // O botão reflete o status real (rodando / em cooldown / livre) em vez
+    // de assumir que terminou assim que o clique volta — quem processa de
+    // fato é o cron, minutos depois.
+    function atualizarBotaoSincronizar(s) {
+        const $btn = $('#btnSincronizar');
+
+        if (s.running) {
+            $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin me-1"></i> Rodando...');
+        } else if (s.cooldown_remaining > 0) {
+            $btn.prop('disabled', true).html('<i class="fa-solid fa-clock me-1"></i> Aguarde ' + s.cooldown_remaining + 's');
+        } else {
+            $btn.prop('disabled', s.status !== 'CONNECTED').html('<i class="fa-solid fa-rotate me-1"></i> Sincronizar agora');
+        }
+    }
+
+    function consultarStatus() {
+        $.get(base + '/status').done(function (s) {
+            atualizarBotaoSincronizar(s);
+
+            if (s.running) {
+                if (Swal.isVisible()) {
+                    Swal.update({ title: 'Rodando há ' + s.running_seconds + 's...' });
+                }
+                return;
+            }
+
+            pararPolling();
+
+            const r = s.last_run;
+            const resumo = r
+                ? (r.created_count + ' criado(s), ' + r.updated_count + ' atualizado(s), '
+                    + r.ignored_count + ' ignorado(s), ' + r.error_count + ' erro(s)')
+                : 'nenhuma execução registrada ainda.';
+
+            Swal.fire({
+                icon: (r && r.status === 'ERROR') ? 'error' : 'success',
+                title: 'Concluído',
+                text: resumo,
+            });
+        });
+    }
+
+    $('#btnSincronizar').on('click', function () {
+        Swal.fire({
+            icon: 'question',
+            title: 'Sincronizar agora?',
+            text: 'A sincronização roda em segundo plano — pode levar alguns minutos em catálogos grandes.',
+            showCancelButton: true,
+            confirmButtonText: 'Sincronizar',
+            cancelButtonText: 'Cancelar',
+        }).then(function (res) {
+            if (!res.isConfirmed) { return; }
+
+            // Não usa executar(): essa chamada só AGENDA (responde na hora,
+            // sem nada novo pra mostrar ainda), diferente de testar/toggle,
+            // que já terminam o trabalho antes de responder — recarregar a
+            // página aqui só mostraria o mesmo estado de antes.
+            Swal.fire({ title: 'Agendando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            $.post(base + '/sincronizar')
+                .done(function (r) {
+                    if (!r.success) {
+                        Swal.fire({ icon: 'error', title: 'Não deu', text: r.message });
+                        return;
+                    }
+
+                    Swal.fire({
+                        title: 'Agendado — aguardando o cron rodar...',
+                        allowOutsideClick: false,
+                        didOpen: () => Swal.showLoading(),
+                    });
+
+                    pararPolling();
+                    pollTimer = setInterval(consultarStatus, 5000);
+                    consultarStatus();
+                })
+                .fail(function () {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível concluir. Tente novamente.' });
+                });
+        });
+    });
+
+    $('#btnToggle').on('click', function () {
+        executar(base + '/toggle', 'Atualizando...');
+    });
+
+    // Ao abrir a página: reflete cooldown já em curso e retoma o polling se
+    // a página foi recarregada com uma sincronização ainda rodando.
+    $.get(base + '/status').done(function (s) {
+        atualizarBotaoSincronizar(s);
+
+        if (s.running) {
+            Swal.fire({
+                title: 'Rodando há ' + s.running_seconds + 's...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            pollTimer = setInterval(consultarStatus, 5000);
+        } else if (s.cooldown_remaining > 0) {
+            pollTimer = setInterval(function () {
+                $.get(base + '/status').done(function (s2) {
+                    atualizarBotaoSincronizar(s2);
+                    if (s2.cooldown_remaining <= 0) { pararPolling(); }
+                });
+            }, 5000);
+        }
+    });
+
+    $('#btnPublicarRascunhos').on('click', function () {
+        Swal.fire({
+            icon: 'question',
+            title: 'Publicar os imóveis importados?',
+            text: 'Eles passam a aparecer no site. Você pode pausar qualquer um depois, individualmente.',
+            showCancelButton: true,
+            confirmButtonText: 'Publicar',
+            cancelButtonText: 'Cancelar',
+        }).then(function (res) {
+            if (!res.isConfirmed) { return; }
+
+            Swal.fire({ title: 'Publicando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            $.post('<?= site_url('admin/properties/bulk-status') ?>', {
+                scope: 'imported_drafts',
+                provider_code: '<?= esc($provider->code, 'js') ?>',
+                status: 'ACTIVE',
+            })
+                .done(function (r) {
+                    Swal.fire({
+                        icon: r.success ? 'success' : 'error',
+                        title: r.success ? 'Pronto' : 'Não deu',
+                        text: r.message,
+                    }).then(() => { if (r.success) location.reload(); });
+                })
+                .fail(function () {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível concluir. Tente novamente.' });
+                });
+        });
+    });
+})();
+</script>
+<?= $this->endSection() ?>

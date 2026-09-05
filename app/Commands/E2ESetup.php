@@ -65,6 +65,8 @@ class E2ESetup extends BaseCommand
         $this->ensureReviewTargetAccount();
         $this->ensureCheckoutCoupon();
         $this->ensurePublicProperty();
+        $this->ensureLeadChargeRule();
+        $this->ensurePendingLeadCharge();
 
         // Busca/mapa usam cache; a limpeza é restrita ao Redis DB 6 do E2E.
         cache()->clean();
@@ -392,5 +394,103 @@ class E2ESetup extends BaseCommand
         ]);
 
         CLI::write('Imóvel público E2E criado.', 'green');
+    }
+
+    /**
+     * Regra padrão de cobrança por lead (VENDA) — sem ela,
+     * `e2e/charges.spec.ts` não teria como calcular o valor esperado, e
+     * `checkout/plans` (D1) não teria preço de lead nenhum pra mostrar.
+     * Mesmo formato de `LeadChargeRuleSeeder`, idempotente por
+     * (account_id, provider_code, tipo_negocio).
+     */
+    private function ensureLeadChargeRule(): void
+    {
+        $db = \Config\Database::connect();
+        $exists = $db->table('lead_charge_rules')
+            ->where('account_id', null)
+            ->where('provider_code', null)
+            ->where('tipo_negocio', 'VENDA')
+            ->countAllResults() > 0;
+
+        if ($exists) {
+            CLI::write('Regra de cobrança de lead (VENDA) já existe, pulando.', 'cyan');
+            return;
+        }
+
+        $db->table('lead_charge_rules')->insert([
+            'account_id'    => null,
+            'provider_code' => null,
+            'tipo_negocio'  => 'VENDA',
+            'model'         => 'FIXED',
+            'value'         => 80.00,
+            // Boolean via query builder cru precisa ir como 't'/'f' — o
+            // Postgres rejeita o true/false nativo do PHP aqui (mesmo motivo
+            // documentado em LeadChargeRuleSeeder/PlanSeeder).
+            'is_active'     => 't',
+            'valid_from'    => date('Y-m-d'),
+            'created_at'    => date('Y-m-d H:i:s'),
+            'updated_at'    => date('Y-m-d H:i:s'),
+        ]);
+
+        CLI::write('Regra de cobrança de lead (VENDA) criada.', 'green');
+    }
+
+    /**
+     * Uma `lead_charge` PENDING do tenant fixo, com prazo de contestação
+     * aberto — `e2e/charges.spec.ts` usa esta linha para exercer o botão
+     * "contestar" em admin/minhas-cobrancas sem depender de disparar um
+     * lead de verdade (fluxo de qualidade/dedup não é o que este cenário
+     * quer testar).
+     */
+    private function ensurePendingLeadCharge(): void
+    {
+        $db = \Config\Database::connect();
+        $account = $db->table('accounts')->where('email', self::TENANT_EMAIL)->get()->getRow();
+        $property = $db->table('properties')->where('titulo', 'E2E Imóvel Público')->get()->getRow();
+
+        if (! $account || ! $property) {
+            throw new \RuntimeException('Fixture tenant/imóvel ausente ao criar lead_charge E2E.');
+        }
+
+        $exists = $db->table('lead_charges')->where('account_id', $account->id)->countAllResults() > 0;
+        if ($exists) {
+            CLI::write('Cobrança de lead E2E já existe, pulando.', 'cyan');
+            return;
+        }
+
+        $lead = $db->table('leads')->where('email_visitante', 'e2e-lead-cobranca@teste.habitaweb.local')->get()->getRow();
+        if (! $lead) {
+            $db->table('leads')->insert([
+                'property_id'           => $property->id,
+                'account_id_anunciante' => $account->id,
+                'nome_visitante'        => 'E2E Lead Cobrança',
+                'email_visitante'       => 'e2e-lead-cobranca@teste.habitaweb.local',
+                'telefone_visitante'    => '11988887777',
+                'tipo_lead'             => 'MSG',
+                'origem'                => 'SITE',
+                'status'                => 'NOVO',
+                'tipo_negocio'          => 'VENDA',
+                'created_at'            => date('Y-m-d H:i:s'),
+                'updated_at'            => date('Y-m-d H:i:s'),
+            ]);
+            $lead = $db->table('leads')->where('email_visitante', 'e2e-lead-cobranca@teste.habitaweb.local')->get()->getRow();
+        }
+
+        $db->table('lead_charges')->insert([
+            'account_id'       => $account->id,
+            'lead_id'          => $lead->id,
+            'property_id'      => $property->id,
+            'tipo_negocio'     => 'VENDA',
+            'origem'           => 'LEAD_RECEBIDO',
+            'periodo'          => date('Y-m-01'),
+            'base_value'       => 0,
+            'commission_value' => 80.00,
+            'status'           => 'PENDING',
+            'contest_deadline' => date('Y-m-d H:i:s', strtotime('+7 days')),
+            'created_at'       => date('Y-m-d H:i:s'),
+            'updated_at'       => date('Y-m-d H:i:s'),
+        ]);
+
+        CLI::write('Cobrança de lead E2E (PENDING) criada.', 'green');
     }
 }

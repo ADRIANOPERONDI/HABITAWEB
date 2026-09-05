@@ -221,7 +221,7 @@ pm.max_requests = 1000
 ### 3.4 Cron jobs: em UMA instância só
 
 Os comandos agendados (`php spark asaas:sync`, `subscription:check`,
-`send-property-alerts` etc.) devem rodar **em apenas uma** instância (ou num
+`alerts:send` etc.) devem rodar **em apenas uma** instância (ou num
 host worker dedicado). Rodar em todas dispararia sincronizações e e-mails
 duplicados. Marque uma instância como "worker" no seu provisionamento e instale
 o crontab só nela.
@@ -237,6 +237,63 @@ Postgres por cron — adicione à instância worker:
 Sem esse cron, as visitas continuam sendo contadas (ficam no Redis), mas a
 coluna `visitas_count` para de refletir no painel até o próximo flush. Se o
 Redis cair, o app volta sozinho a gravar visitas direto no banco (fallback).
+
+O mesmo `metrics:flush` agora também descarrega as séries diárias do painel
+por período (Fase 4): `property_view_daily`, `property_view_source_daily` e
+`search_daily`. Diferença importante em relação às visitas: se o Redis cair,
+**não há fallback síncrono** para essas séries — elas são agregadas por
+natureza, não existe "linha crua" para gravar direto. Uma visualização ou
+busca durante um blecaute de Redis simplesmente não entra nessas tabelas;
+nunca derruba a página.
+
+**Retenção das séries diárias** — mensal, mesma instância worker:
+
+```cron
+0 4 1 * * cd /var/www/habitaweb && php spark metrics:prune
+```
+
+Remove linhas com mais de 24 meses de `property_view_daily`,
+`property_view_source_daily` e `search_daily`. A granularidade diária já
+limita o volume por natureza; sem retenção, ainda assim cresceria pra
+sempre.
+
+**Integrações com plataformas externas (Simob e afins)** — também só na
+instância worker:
+
+```cron
+* * * * * cd /var/www/habitaweb && php spark integration:sync >> writable/logs/integration-sync.log 2>&1
+* * * * * cd /var/www/habitaweb && php spark integration:outbox --max-time=55 >> writable/logs/integration-outbox.log 2>&1
+```
+
+`integration:sync` percorre as integrações ativas e vencidas (mais de 25 min
+desde o último sync, ou com "sincronizar agora" pedido no painel), mais
+antigas/prioritárias primeiro, e é seguro rodar concorrentemente por engano:
+cada integração tem uma trava atômica na própria linha de
+`account_integrations` (`sync_locked_until`, `UPDATE ... WHERE ... IS NULL OR
+< now()`) — sobrevive a um Fatal Error de PHP (que não passa por
+`catch`/`finally`) porque expira sozinha depois do TTL, e um
+`register_shutdown_function` libera na hora quando o processo consegue
+detectar a queda. Rodar a cada minuto
+(em vez de a cada 30) é o que dá latência baixa para o botão "Sincronizar
+agora" do painel sem martelar a origem de todo tenant a todo minuto — quem
+garante isso é o filtro de "vencido" em
+`AccountIntegrationModel::dueForSync()`, não a frequência do cron; o
+intervalo automático de cada integração continua sendo de ~25-30 min. O
+botão do painel nunca roda o sync dentro do request web (isso já causou
+timeout real, com download de imagens de um catálogo médio estourando os 30s
+de `max_execution_time` do PHP) — ele só marca a integração como prioritária,
+e é esta mesma passada do cron que processa de fato, sem limite de tempo por
+rodar via CLI.
+
+`integration:outbox` entrega os leads capturados no Habitaweb de volta pro
+CRM da plataforma externa (`crm_interesse/create` no caso do Simob) — fila
+baseada em tabela (`integration_outbox`), não Redis, porque durabilidade
+importa mais que latência aqui: um lead não pode sumir num restart.
+
+Cada execução do sync fica registrada em `integration_sync_runs` e aparece
+para o tenant em `/admin/integracoes/<conector>/execucoes`. Se a credencial
+de um tenant for recusada, aquela integração é desligada sozinha e marcada
+com o erro — as demais continuam rodando normalmente.
 
 **Turbinadas vencidas** — o `promo:cleanup` existia desde a criação de
 `promotions` e nunca esteve em crontab nenhum. Adicione à mesma instância worker:
@@ -255,6 +312,74 @@ de exposição**: desde a correção do ciclo de vida do turbo, toda consulta p�
 calcula o nível efetivo com `App\Libraries\Search\HighlightSql`, que trata
 destaque vencido como nível 0. Se este cron parar, ninguém recebe exposição
 indevida — apenas as colunas denormalizadas ficam desatualizadas até ele voltar.
+
+**Cobrança por lead recebido (Fase 3)** — aprovação automática do que passou
+da janela de contestação, diária:
+
+```cron
+0 3 * * * cd /var/www/habitaweb && php spark leads:aprovar-cobrancas
+```
+
+Roda de madrugada, depois que o dia inteiro de contestações já aconteceu.
+Cada cobrança nasce PENDING com `contest_deadline` = recebimento + 7 dias; o
+comando promove para APPROVED só quem passou do prazo sem o tenant contestar
+via `/admin/minhas-cobrancas`. Sem este cron, cobrança nenhuma chega a
+APPROVED e o fechamento de ciclo mensal não teria o que faturar.
+
+**Crédito mensal de lead (Ouro/Diamante)** — dia 1 de cada mês, antes de
+qualquer fechamento de ciclo:
+
+```cron
+5 0 1 * * cd /var/www/habitaweb && php spark creditos:conceder
+```
+
+Idempotente (índice único parcial em `lead_credit_ledger`): rodar de novo no
+mesmo mês não duplica a concessão. Precisa rodar **antes** de
+`leads:fechar-ciclo` consumir o crédito do mês.
+
+**Fechamento de ciclo de lead** — dia 1, depois da concessão de crédito:
+
+```cron
+15 3 1 * * cd /var/www/habitaweb && php spark leads:fechar-ciclo >> writable/logs/leads-fechar-ciclo.log 2>&1
+```
+
+Fecha o **mês anterior** (default do comando): soma as cobranças APPROVED por
+conta, abate o crédito do próprio período, cobra o restante no gateway e
+marca tudo INVOICED — o gatilho que finalmente dá um chamador para
+`LeadChargeService::markInvoiced()`. Sem gateway configurado, a conta fica
+como está (ainda APPROVED) para a próxima execução tentar de novo — nunca
+fatura sem cobrança real por trás. `--dry-run` lista o que fecharia sem
+gravar nada; rode-o manualmente antes de confiar no cron pela primeira vez.
+O retorno do pagamento fecha o ciclo pelo webhook do gateway
+(`payment_transactions.type = 'LEAD_INVOICE'` → `markPaidByTransaction`),
+mesmo caminho que já existe para turbinada paga.
+
+**Rampa de lançamento por coorte (Fase 6)** — diária, mesma instância worker:
+
+```cron
+0 6 * * * cd /var/www/habitaweb && php spark assinaturas:aplicar-rampa >> writable/logs/rampa.log 2>&1
+```
+
+Compara o percentual de hoje (`LaunchRampService::percentFor`, contado a
+partir de `subscriptions.ramp_started_at` — o relógio de CADA conta, não o
+calendário) com o último gravado (`ramp_percent_atual`) em toda assinatura
+ACTIVE que participa da rampa. Duas transições, tratadas de forma diferente:
+
+- **Correção de valor numa assinatura que já existe no gateway** (ex.:
+  50%→100%): automática, via `PaymentService::updateSubscriptionAmount()`.
+- **Primeira cobrança real da conta** (0%→qualquer coisa, sem
+  `asaas_subscription_id` ainda): **não é automatizada**. Fica registrada em
+  `audit_logs` (`ramp.pronta_para_cobranca_inicial`) e reportada no output do
+  comando como ação manual — criar uma assinatura recorrente real sem o
+  cliente ter escolhido forma de pagamento, e sem o aviso de 30 dias que a
+  proposta comercial prevê (infraestrutura de e-mail que não existe ainda),
+  é risco demais para automatizar sem supervisão. Quem completa a virada é
+  o time comercial, via `admin/subscription` (o mesmo fluxo do tenant,
+  já ciente da rampa).
+
+`--dry-run` não grava nada: lista as transições dos próximos 30 dias — o
+relatório que o cliente usa para prever caixa. Rode-o manualmente antes de
+confiar no cron pela primeira vez, igual ao `leads:fechar-ciclo`.
 
 ### 3.5 `app.baseURL`
 
@@ -787,3 +912,105 @@ Persistência mínima em qualquer opção (já na seção 2.1): `appendonly yes`
 | ~~Conversão dos últimos `base_url()` de upload para `getPublicUrl()`~~ | **Feito (2026-07-11)** — helpers `media_url()`/`media_variant_url()` em todos os call sites de upload | — |
 | CI com serviço Redis (`phpunit.yml`) | Suíte local já roda contra Redis real; CI segue com FileHandler | Primeira regressão que só se manifestaria com handler Redis |
 | ~~Upgrade CI4 4.6.4 → 4.7.2+ (CVE-2026-48062, regra `ext_in`)~~ | **Feito (2026-07-11)** — 4.7.4 instalado, configs sincronizadas, `composer audit` limpo, suíte completa verde | — |
+
+---
+
+## 13. Runbook: virada comercial (Fases 6 e 7 — rampa de lançamento e migração de planos)
+
+A reestruturação comercial (planos Prata/Ouro/Diamante com mensalidade em
+rampa e cobrança por lead) já está toda no código — `PlanSeeder` já renomeou
+os planos de preço antigo para `<CHAVE>_LEGADO` (`ativo=false`) e criou
+`PRATA`/`OURO`/`DIAMANTE` com os preços novos. Ele também desativa, pela
+chave, qualquer plano fora do catálogo atual que exista no banco por fora do
+seeder (formulário antigo do admin, por exemplo) — `php spark db:seed
+PlanSeeder` sozinho já cobre essa limpeza, sem precisar de UPDATE manual.
+**Rodar o seeder não é a virada** — ele só prepara o catálogo. A virada de
+verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
+é feito à mão, com as ferramentas abaixo, não por deploy.
+
+### 13.1 Sequência
+
+1. **Deploy — um comando só prepara o catálogo e a janela da rampa.**
+   ```bash
+   php spark comercial:preparar-lancamento
+   ```
+   Roda `PlanSeeder` + `PromotionPackageSeeder` + `LeadChargeRuleSeeder`
+   (idempotente — seguro rodar mais de uma vez, inclusive em re-deploys) e
+   grava a janela de validade da rampa em `plan_launch_ramps`. Por default
+   usa `--rampa-valid-from=hoje` e `--rampa-valid-to=2026-12-31` — o prazo
+   **decidido com o cliente** (premissa P8 do plano): quem ENTRAR até essa
+   data leva a rampa inteira. Isso é um prazo de **inscrição**, não um prazo
+   que encurta a rampa de quem já entrou — uma conta que aderiu em
+   novembro/2026 continua os 6 meses inteiros mesmo depois de o calendário
+   virar 2027 (`LaunchRampService::percentFor()` checa `valid_from`/`valid_to`
+   contra a data de ADESÃO da conta, não contra hoje — ver commit
+   `fix/decisoes-comerciais-cliente`). Se a data real da virada não for
+   hoje, ou o prazo combinado mudar, passe os dois explicitamente:
+   ```bash
+   php spark comercial:preparar-lancamento --rampa-valid-from 2026-MM-DD --rampa-valid-to 2026-12-31
+   ```
+   `--dry-run` roda os três seeders (idempotentes, baixo risco) mas não
+   grava a janela — só mostra a data que seria aplicada.
+
+   **Contas já existentes também entram na rampa** (decisão do cliente): a
+   migração comercial (passo 3 abaixo) roda com `--modo rampa`, não
+   `--modo cheio`, para a base toda — desde que a migração aconteça dentro
+   da mesma janela (até 31/12/2026).
+
+   `LeadChargeRuleSeeder` (chamado pelo comando acima) respeita
+   `LEAD_CHARGE_VALID_FROM` no `.env` — a mesma lógica de "código no ar não
+   é a mesma coisa que cobrar": defina essa variável para a data real da
+   virada, não para hoje, se o deploy sair antes da data combinada.
+2. **Comunicação, 30 dias antes.** Fora do código (não há infraestrutura de
+   e-mail transacional para isso neste repositório): avisar cada conta em
+   plano legado do preço novo, da rampa (se aplicável) e da data.
+3. **Dia 1 do mês M — roda o relatório primeiro.**
+   ```bash
+   php spark planos:migrar-comercial --dry-run
+   ```
+   Confira o relatório inteiro (preço atual, preço novo nos dois modos,
+   leads dos últimos 30 dias) antes de aplicar qualquer coisa. Depois, conta
+   por conta (recomendado na primeira leva) ou em lote:
+   ```bash
+   php spark planos:migrar-comercial --confirmar --modo rampa --conta 123
+   # decidido para toda a base (é o combinado com o cliente — ver passo 1):
+   php spark planos:migrar-comercial --confirmar --modo rampa
+   ```
+   `--modo rampa` x `--modo cheio` nunca tem default no comando (ver
+   docblock de `App\Commands\MigrateCommercialPlans`) — é sempre escolha
+   explícita a cada execução, mesmo já sabendo que o combinado é `rampa`
+   para toda a base.
+4. **A partir daqui, os crons já cobrem o resto** (ver seção 3.4):
+   `assinaturas:aplicar-rampa` (diário) aplica as transições de faixa;
+   `leads:aprovar-cobrancas` (diário) e `leads:fechar-ciclo` (dia 1) cobram
+   por lead recebido, rampa ou não — a cobrança por lead nunca esperou a
+   rampa, ela é a receita do semestre de lançamento para quem entrou em
+   `--modo rampa`.
+5. **Dia 1 do mês M+1 — fecha o primeiro ciclo com conferência.**
+   ```bash
+   php spark leads:fechar-ciclo --dry-run
+   ```
+   Revise linha a linha antes de deixar o cron rodar sem supervisão daí em
+   diante.
+
+### 13.2 Coisas que só dão problema se pularem um passo
+
+- **Não rode `--confirmar` sem ter rodado `--dry-run` primeiro** — o
+  relatório é o que embasa a escolha entre `--modo rampa` e `--modo cheio`;
+  aplicar às cegas é decisão de caixa tomada sem dado.
+- **`--modo rampa` cancela a assinatura real no gateway** quando a conta já
+  tinha uma (Asaas não aceita assinatura de valor zero). Isso é esperado —
+  `assinaturas:aplicar-rampa` recria quando a conta sair do 0% — mas se
+  algo além do esperado depender daquela `asaas_subscription_id`
+  (relatório externo, planilha manual), avise quem mantém isso antes.
+- **`assinaturas:aplicar-rampa` não cria assinatura nova sozinho** na
+  virada 0%→50% (ver seção 3.4) — fica marcado como ação manual em
+  `audit_logs`. Quem completa essa virada é o superadmin, pelo botão
+  "Iniciar cobrança no gateway" na aba Assinatura de
+  `admin/accounts/(:num)/edit` (`AccountSubscriptionController::startGateway`)
+  — não é um cron 100% autônomo do início ao fim.
+- **Contas que nunca foram migradas continuam no plano legado
+  indefinidamente** — `PlanGate`/features/turbo lêem o plano da assinatura
+  ativa, seja ele qual for; uma conta esquecida em `_LEGADO` não quebra,
+  só fica congelada na estrutura comercial antiga (turbo, limites, features)
+  até alguém rodar a migração para ela.

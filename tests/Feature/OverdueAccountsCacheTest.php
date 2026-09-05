@@ -64,4 +64,29 @@ final class OverdueAccountsCacheTest extends HabitawebTestCase
         $this->assertNotFalse($result, 'upsertTransaction falhou: ' . json_encode($model->errors()));
         $this->assertContains($accountId, $model->getOverdueAccountIdsCached(3));
     }
+
+    /**
+     * P3: só fatura de ASSINATURA bloqueia. Uma fatura de leads (ou
+     * turbinada) vencida é uma cobrança à parte — não pode derrubar o
+     * catálogo/painel do tenant, que continua com a mensalidade em dia.
+     */
+    public function testFaturaDeLeadVencidaNaoBloqueiaOCatalogo(): void
+    {
+        $tenant    = (new TenantFactory())->create();
+        $accountId = (int) $tenant['account']->id;
+
+        $model = new PaymentTransactionModel();
+        $model->insert([
+            'account_id'             => $accountId,
+            'gateway'                => 'asaas',
+            'gateway_transaction_id' => 'lead_invoice_overdue_' . uniqid(),
+            'amount'                 => 80.00,
+            'status'                 => 'OVERDUE',
+            'type'                   => 'LEAD_INVOICE',
+            'due_date'               => date('Y-m-d', strtotime('-10 days')),
+        ]);
+
+        $this->assertFalse($model->isAccountBlockedByOverdue($accountId));
+        $this->assertNotContains($accountId, $model->getOverdueAccountIds());
+    }
 }

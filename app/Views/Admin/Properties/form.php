@@ -128,6 +128,29 @@
             <?php endif; ?>
         </div>
 
+        <?php
+            // Imóvel espelhado de uma plataforma externa: os campos que o sync
+            // sobrescreve ficam travados. A trava de verdade é no servidor
+            // (PropertyController::update); isto aqui evita que o corretor
+            // perca tempo digitando algo que a próxima rodada vai desfazer.
+            $syncRef = null;
+            if (isset($property)) {
+                $syncRef = (new \App\Services\IntegrationService())->refForProperty((int) $property->id);
+            }
+        ?>
+        <?php if ($syncRef !== null): ?>
+            <div class="alert alert-info d-flex align-items-start gap-2 mb-4">
+                <i class="fa-solid fa-plug mt-1"></i>
+                <div>
+                    <strong>Imóvel sincronizado</strong> (código
+                    <?= esc($syncRef->external_code ?: $syncRef->external_id) ?>).
+                    Os dados do anúncio vêm do sistema de origem e são atualizados automaticamente —
+                    para alterá-los, edite lá. Aqui você continua podendo mexer em destaque,
+                    responsável e informações de SEO.
+                </div>
+            </div>
+        <?php endif; ?>
+
         <?php $action = isset($property) ? site_url('admin/properties/' . $property->id) : site_url('admin/properties') ?>
         <form action="<?= $action ?>" method="post" id="propertyForm">
             <?= csrf_field() ?>
@@ -375,6 +398,8 @@
                                 </div>
                                 
                                 <div class="row g-3">
+                                    <?php // Selo editorial da Habitaweb (P5) — não é algo que o tenant compra ou controla, só superadmin vê o controle. ?>
+                                    <?php if (auth()->user()->inGroup('superadmin')): ?>
                                     <div class="col-lg-4">
                                         <div class="card border-0 shadow-sm h-100 hover-lift">
                                             <div class="card-body p-4">
@@ -391,6 +416,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <?php endif; ?>
 
                                     <div class="col-lg-4">
                                         <div class="card border-0 shadow-sm h-100 hover-lift">
@@ -1567,4 +1593,36 @@ $(document).ready(function() {
     calculateScore();
 });
 </script>
+
+<?php if (($syncRef ?? null) !== null): ?>
+<script>
+// Trava visual dos campos que a integração sobrescreve. A recusa de verdade
+// acontece no servidor (PropertyController::update) — isto é só para o usuário
+// não digitar algo que o próximo sync vai desfazer.
+(function () {
+    const gerenciados = <?= json_encode(\App\Services\IntegrationService::MANAGED_FIELDS) ?>;
+    const form = document.getElementById('propertyForm');
+
+    if (!form) { return; }
+
+    gerenciados.forEach(function (nome) {
+        form.querySelectorAll('[name="' + nome + '"]').forEach(function (campo) {
+            // readonly em vez de disabled: campo disabled não é enviado, e o
+            // servidor precisa receber o formulário inteiro para os campos que
+            // continuam editáveis funcionarem normalmente.
+            if (campo.tagName === 'SELECT' || campo.type === 'checkbox' || campo.type === 'radio') {
+                campo.style.pointerEvents = 'none';
+                campo.tabIndex = -1;
+                campo.setAttribute('aria-readonly', 'true');
+            } else {
+                campo.readOnly = true;
+            }
+
+            campo.classList.add('bg-light');
+            campo.title = 'Gerenciado pela integração — altere no sistema de origem.';
+        });
+    });
+})();
+</script>
+<?php endif; ?>
 <?= $this->endSection() ?>

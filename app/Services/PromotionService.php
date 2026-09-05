@@ -2,19 +2,16 @@
 
 namespace App\Services;
 
-use App\Models\PromotionModel;
 use App\Models\PromotionPackageModel;
 use CodeIgniter\Config\Factories;
 
 class PromotionService
 {
-    protected PromotionModel $promotionModel;
     protected PromotionPackageModel $packageModel;
 
     public function __construct()
     {
-        $this->promotionModel = Factories::models(PromotionModel::class);
-        $this->packageModel   = Factories::models(PromotionPackageModel::class);
+        $this->packageModel = Factories::models(PromotionPackageModel::class);
     }
 
     /** Pacotes que representam exposição de imóvel por prazo. */
@@ -138,109 +135,12 @@ class PromotionService
         }
     }
 
-    /**
-     * Remove promoções expiradas (Rotina de Cron Job)
-     */
-    public function deactivateExpired()
-    {
-        $expired = $this->promotionModel->where('ativo', true)
-                                        ->where('data_fim <', date('Y-m-d H:i:s'))
-                                        ->findAll();
-
-        if (empty($expired)) return;
-
-        $db = \Config\Database::connect();
-        $propModel = new \App\Models\PropertyModel();
-
-        foreach ($expired as $promo) {
-            $db->transStart();
-            
-            $this->promotionModel->update($promo->id, ['ativo' => false]);
-            
-            // Verifica se tem outra promoção ativa antes de zerar?
-            // Simplificação: Zera o destaque do imóvel.
-            // Idealmente buscaria a próxima promoção ativa.
-            $activePromo = $this->promotionModel->where('property_id', $promo->property_id)
-                                                ->where('ativo', true)
-                                                ->where('id !=', $promo->id)
-                                                ->where('data_fim >', date('Y-m-d H:i:s'))
-                                                ->orderBy('data_fim', 'DESC')
-                                                ->first();
-            
-            if ($activePromo) {
-                 // Mantém o nível da outra promo (simplificado)
-                 // TODO: Recalcular nível correto
-            } else {
-                 $propModel->update($promo->property_id, [
-                     'highlight_level' => 0,
-                     'highlight_expires_at' => null
-                 ]);
-            }
-            
-            $db->transComplete();
-        }
-    }
-
-    /**
-     * Ativa uma promoção após a confirmação do pagamento.
-     */
-    public function activatePaidPromotion(int $propertyId, string $packageKey): bool
-    {
-        $package = $this->packageModel->where('chave', $packageKey)->first();
-        if (!$package) return false;
-
-        // Calcula datas
-        $startDate = date('Y-m-d H:i:s');
-        $endDate   = date('Y-m-d H:i:s', strtotime("+{$package->duracao_dias} days"));
-
-        // Define Nível de Destaque.
-        //
-        // TURBO_IMOVEL é o único tipo realmente vendido hoje (TURBO_7_DIAS) e não
-        // tinha braço próprio: caía no `default => 1` por coincidência. Tipo
-        // desconhecido agora falha alto em vez de virar destaque de graça — se um
-        // pacote novo for cadastrado sem mapeamento, queremos saber pelo log, não
-        // descobrir meses depois que ele concedia exposição sem regra.
-        $level = match ($package->tipo_promocao) {
-            self::TIPO_TURBO => 1,
-            'DESTAQUE'       => 1,
-            'SUPER_DESTAQUE' => 2,
-            'VITRINE'        => 3,
-            default          => null,
-        };
-
-        if ($level === null) {
-            log_message('error', sprintf(
-                '[Promocao] tipo_promocao sem nivel mapeado: "%s" (pacote %s, imovel %d). Ativacao abortada.',
-                $package->tipo_promocao,
-                $package->chave,
-                $propertyId
-            ));
-
-            return false;
-        }
-
-        $db = \Config\Database::connect();
-        $db->transStart();
-
-        // 1. Criar ou Atualizar entrada em 'promotions'
-        $data = [
-            'property_id'   => $propertyId,
-            'tipo_promocao' => $package->tipo_promocao,
-            'data_inicio'   => $startDate,
-            'data_fim'      => $endDate,
-            'ativo'         => true
-        ];
-        $this->promotionModel->save($data);
-
-        // 2. Atualizar Imóvel (Denormalização para performance na busca)
-        $propModel = new \App\Models\PropertyModel();
-        $propModel->update($propertyId, [
-            'highlight_level'      => $level,
-            'highlight_expires_at' => $endDate
-        ]);
-
-        $db->transComplete();
-
-        return $db->transStatus();
-    }
+    // A ativação (gravar `promotions` + `properties.highlight_*`) e a limpeza de
+    // vencidos moraram aqui, mas passaram para App\Services\TurboService —
+    // porque a cota mensal incluída no plano e a concessão manual (cortesia)
+    // precisam do MESMO mecanismo de ativação que o pacote pago, e não fazia
+    // sentido esse mecanismo morar num service com "Promotion" no nome enquanto
+    // o domínio inteiro (cota, uso, ativação) é "turbo". Este service fica só
+    // com a ponte de pagamento: listar pacotes e gerar a cobrança no Asaas.
+    // `spark promo:cleanup` chama TurboService::deactivateExpired() agora.
 }

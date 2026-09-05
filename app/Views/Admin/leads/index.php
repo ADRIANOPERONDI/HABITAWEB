@@ -147,13 +147,14 @@
                         <th>Contato</th>
                         <th>Imóvel</th>
                         <th>Status</th>
+                        <th>Cobrança</th>
                         <th class="text-end pe-4">Ação</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($leads)): ?>
                         <tr>
-                            <td colspan="<?= $isAdmin ? 7 : 6 ?>" class="text-center py-5">
+                            <td colspan="<?= $isAdmin ? 8 : 7 ?>" class="text-center py-5">
                                 <i class="fa-regular fa-comment-dots fa-3x text-muted mb-3 d-block"></i>
                                 <p class="text-muted">Nenhum lead recebido ainda.</p>
                             </td>
@@ -175,6 +176,28 @@
                                     <div>
                                         <div class="fw-bold text-dark"><?= esc($lead->nome_visitante) ?></div>
                                         <div class="small text-muted" style="font-size: 0.7rem;"><?= esc($lead->email_visitante) ?></div>
+
+                                        <?php
+                                            // Só aparece em lead de imóvel vindo de integração; para os
+                                            // demais não existe item na fila e a linha fica limpa.
+                                            $crm = ($crmStatus ?? [])[(int) $lead->id] ?? null;
+                                        ?>
+                                        <?php if ($crm !== null): ?>
+                                            <div class="mt-1">
+                                                <span class="badge bg-<?= $crm->badge() ?>" style="font-size: 0.65rem;">
+                                                    <i class="fa-solid fa-plug me-1"></i><?= esc($crm->label()) ?>
+                                                </span>
+                                                <?php if ($crm->isFailed()): ?>
+                                                    <button type="button"
+                                                            class="btn btn-link btn-sm p-0 ms-1 text-decoration-none btn-retry-crm"
+                                                            style="font-size: 0.65rem;"
+                                                            data-lead="<?= (int) $lead->id ?>"
+                                                            title="<?= esc((string) $crm->last_error, 'attr') ?>">
+                                                        reenviar
+                                                    </button>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </td>
@@ -209,6 +232,20 @@
                                     <option value="CONCLUIDO" <?= $lead->status == 'CONCLUIDO' ? 'selected' : '' ?>>Concluído</option>
                                     <option value="PERDIDO" <?= $lead->status == 'PERDIDO' ? 'selected' : '' ?>>Perdido</option>
                                 </select>
+                            </td>
+                            <td>
+                                <?php $charge = ($charges ?? [])[(int) $lead->id] ?? null; ?>
+                                <?php if ($charge === null): ?>
+                                    <span class="text-muted small">—</span>
+                                <?php else: ?>
+                                    <div class="small">
+                                        <span class="badge bg-<?= $charge->statusBadge() ?>"><?= esc($charge->statusLabel()) ?></span>
+                                        <div class="fw-bold text-dark mt-1">R$ <?= number_format((float) $charge->commission_value, 2, ',', '.') ?></div>
+                                        <?php if ($charge->isContestable()): ?>
+                                            <a href="<?= site_url('admin/minhas-cobrancas') ?>" class="small text-decoration-none">contestar</a>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="text-end pe-4">
                                 <button class="btn btn-sm btn-light rounded-circle p-2 view-lead" data-id="<?= $lead->id ?>" title="Explorar">
@@ -553,6 +590,27 @@ $(document).ready(function() {
                 btn.prop('disabled', false).text('Salvar Alterações');
             }
         });
+    });
+
+    // Reenvio ao CRM da plataforma integrada. O CSRF vai automático pelo
+    // $.ajaxSetup do Layouts/master.
+    $(document).on('click', '.btn-retry-crm', function () {
+        const btn    = $(this);
+        const leadId = btn.data('lead');
+
+        btn.prop('disabled', true).text('reenviando...');
+
+        $.post('<?= site_url('admin/leads') ?>/' + leadId + '/reenviar-crm')
+            .done(function (res) {
+                Swal.fire(res.success ? 'Pronto' : 'Erro', res.message, res.success ? 'success' : 'error');
+                if (res.success) { setTimeout(() => location.reload(), 1200); }
+            })
+            .fail(function () {
+                Swal.fire('Erro', 'Não foi possível agendar o reenvio.', 'error');
+            })
+            .always(function () {
+                btn.prop('disabled', false).text('reenviar');
+            });
     });
 });
 </script>

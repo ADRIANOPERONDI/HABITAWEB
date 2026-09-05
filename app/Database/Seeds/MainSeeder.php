@@ -19,6 +19,9 @@ class MainSeeder extends Seeder
         // 2. Criar Pacotes de Turbinar
         $this->call('PromotionPackageSeeder');
 
+        // 2b. Regras padrão de cobrança por lead recebido
+        $this->call('LeadChargeRuleSeeder');
+
         // 3. Criar Contas de Teste e Usuários (opcional, pode ser descomentado)
         // $this->createTestAccount('Habitaweb Imobiliária', 'IMOBILIARIA', 'admin@habitaweb.com', 'DIAMANTE');
         // $this->createTestAccount('Corretor João', 'CORRETOR', 'joao@corretor.com', 'OURO');

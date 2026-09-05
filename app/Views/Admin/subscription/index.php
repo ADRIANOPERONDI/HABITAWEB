@@ -12,7 +12,10 @@
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
                         <h5 class="fw-bold mb-1">Plano Atual</h5>
-                        <div class="text-muted small">Status da sua conta</div>
+                        <div class="text-muted small">
+                            Status da sua conta ·
+                            <a href="<?= site_url('admin/subscription/invoices') ?>">Ver faturas</a>
+                        </div>
                     </div>
                     <?php if(isset($lastTransaction) && $lastTransaction): ?>
                         <span class="badge bg-warning text-dark px-3 py-2 rounded-pill">Pagamento Pendente</span>
@@ -143,7 +146,7 @@
                         <h3 class="fw-bold mb-0"><?= esc($plan ? $plan->nome : 'Gratuito / Sem Plano') ?></h3>
                         <div class="text-muted">
                             <?php if($plan): ?>
-                                R$ <?= number_format($plan->preco_mensal, 2, ',', '.') ?> / mês
+                                R$ <?= number_format((float) ($rampInfo['valor_atual'] ?? $plan->preco_mensal), 2, ',', '.') ?> / mês
                             <?php else: ?>
                                 Grátis
                             <?php endif; ?>
@@ -151,22 +154,41 @@
                     </div>
                 </div>
 
-                <h6 class="fw-bold mb-3">Uso do Plano</h6>
-                <div class="mb-2 d-flex justify-content-between text-muted small">
-                    <span>Imóveis Ativos</span>
-                    <span>
-                        <strong><?= $usage['active_properties'] ?></strong> 
-                        / <?= $usage['is_unlimited'] ? '∞' : $usage['limit'] ?>
-                    </span>
-                </div>
-                <?php 
-                    $percent = 0;
-                    if (!$usage['is_unlimited'] && $usage['limit'] > 0) {
-                        $percent = ($usage['active_properties'] / $usage['limit']) * 100;
-                    }
-                ?>
-                <div class="progress mb-4" style="height: 8px;">
-                    <div class="progress-bar <?= $percent > 90 ? 'bg-danger' : 'bg-primary' ?>" role="progressbar" style="width: <?= $percent ?>%"></div>
+                <?php if (($rampInfo ?? null) !== null): ?>
+                    <div class="alert alert-success border-0 rounded-3 small mb-3">
+                        <i class="fas fa-gift me-1"></i>
+                        <?php if ($rampInfo['proxima_data'] !== null): ?>
+                            Rampa de lançamento: mês <?= (int) $rampInfo['mes_vida'] ?><?= $rampInfo['mes_ate'] !== null ? ' de ' . (int) $rampInfo['mes_ate'] : '' ?>
+                            (<?= (int) $rampInfo['percent_atual'] ?>% do valor — R$ <?= number_format($rampInfo['valor_atual'], 2, ',', '.') ?>)
+                            — a partir de <?= esc(date('d/m/Y', strtotime((string) $rampInfo['proxima_data']))) ?> passa a
+                            R$ <?= number_format((float) $rampInfo['proximo_valor'], 2, ',', '.') ?>.
+                        <?php else: ?>
+                            Rampa de lançamento concluída: valor cheio já vigente (R$ <?= number_format($rampInfo['valor_atual'], 2, ',', '.') ?>).
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <h6 class="fw-bold mb-3">Turbinadas do plano</h6>
+                <?php if (($turboQuota['incluidas'] ?? null) === null && $turboQuota !== null): ?>
+                    <p class="small text-muted mb-4"><?= (int) $turboQuota['usadas'] ?> usada(s) este mês · cota ilimitada</p>
+                <?php elseif (($turboQuota['incluidas'] ?? 0) === 0): ?>
+                    <p class="small text-muted mb-4">
+                        Seu plano não inclui turbinadas mensais<?php if ($turboPacote): ?> — avulsa por R$ <?= number_format((float) $turboPacote->preco, 2, ',', '.') ?> / <?= (int) $turboPacote->duracao_dias ?> dias<?php endif; ?>.
+                    </p>
+                <?php elseif ($turboQuota !== null): ?>
+                    <div class="mb-2 d-flex justify-content-between text-muted small">
+                        <span>Usadas este mês</span>
+                        <span><strong><?= (int) $turboQuota['usadas'] ?></strong> / <?= (int) $turboQuota['incluidas'] ?></span>
+                    </div>
+                    <?php $percentTurbo = $turboQuota['incluidas'] > 0 ? min(100, ($turboQuota['usadas'] / $turboQuota['incluidas']) * 100) : 0; ?>
+                    <div class="progress mb-4" style="height: 8px;">
+                        <div class="progress-bar <?= $percentTurbo > 90 ? 'bg-danger' : 'bg-primary' ?>" role="progressbar" style="width: <?= $percentTurbo ?>%"></div>
+                    </div>
+                <?php endif; ?>
+
+                <div class="d-flex justify-content-between text-muted small mb-4">
+                    <span>Leads recebidos este mês</span>
+                    <span><strong><?= (int) $leadsNoPeriodo ?></strong> · projetado R$ <?= number_format((float) $leadsProjetado, 2, ',', '.') ?></span>
                 </div>
 
                 <hr>
@@ -189,20 +211,41 @@
                         <?php endif; ?>
                         
                         <h5 class="fw-bold mb-3"><?= esc($p->nome) ?></h5>
+                        <?php $precoEfetivo = $plansEffectivePrices[$p->id] ?? (float) $p->preco_mensal; ?>
                         <div class="mb-4">
-                            <span class="h3 fw-bold">R$ <?= number_format($p->preco_mensal, 2, ',', '.') ?></span><span class="text-muted">/mês</span>
+                            <span class="h3 fw-bold">R$ <?= number_format($precoEfetivo, 2, ',', '.') ?></span><span class="text-muted">/mês</span>
+                            <?php if (abs($precoEfetivo - (float) $p->preco_mensal) > 0.01): ?>
+                                <div class="small text-success">preço de lançamento — R$ <?= number_format((float) $p->preco_mensal, 2, ',', '.') ?> depois</div>
+                            <?php endif; ?>
                         </div>
-                        
+
                         <ul class="list-unstyled text-start mb-4 small text-muted flex-grow-1">
-                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i> 
+                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i>
                                 <?= $p->limite_imoveis_ativos === null ? 'Imóveis Ilimitados' : $p->limite_imoveis_ativos . ' Imóveis Ativos' ?>
                             </li>
-                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i> 
+                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i>
                                 <?= $p->limite_fotos_por_imovel ?> Fotos por Imóvel
                             </li>
-                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i> 
-                                <?= $p->destaques_mensais ?> Destaques/mês
+                            <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i>
+                                <?php $turbos = $p->turbosIncluidos(); ?>
+                                <?php if ($turbos === null): ?>
+                                    Turbinadas ilimitadas
+                                <?php elseif ($turbos === 0): ?>
+                                    Turbinadas avulsas<?php if ($turboPacote): ?> (R$ <?= number_format((float) $turboPacote->preco, 2, ',', '.') ?> / <?= (int) $turboPacote->duracao_dias ?> dias)<?php endif; ?>
+                                <?php else: ?>
+                                    <?= $turbos ?> Turbinadas/mês
+                                <?php endif; ?>
                             </li>
+                            <?php if ($p->turboBonusAnual() > 0): ?>
+                                <li class="mb-2"><i class="fa-solid fa-plus text-success me-2"></i>
+                                    +<?= $p->turboBonusAnual() ?> turbinadas/mês no plano anual
+                                </li>
+                            <?php endif; ?>
+                            <?php foreach ($p->activeFeatures() as $feature): ?>
+                                <li class="mb-2"><i class="fa-solid fa-check text-success me-2"></i>
+                                    <?= esc(\App\Entities\PlanFeature::label($feature)) ?>
+                                </li>
+                            <?php endforeach; ?>
                         </ul>
 
                         <?php if($plan && $plan->id == $p->id): ?>
@@ -212,7 +255,7 @@
                                     class="btn btn-primary w-100 rounded-pill btn-change-plan shadow-sm" 
                                     data-id="<?= $p->id ?>" 
                                     data-name="<?= esc($p->nome) ?>"
-                                    <?= ($plan && $plan->preco_mensal > $p->preco_mensal) ? 'data-is-downgrade="true"' : '' ?>>
+                                    <?= ($plan && $plan->exposure_weight > $p->exposure_weight) ? 'data-is-downgrade="true"' : '' ?>>
                                 <i class="fas fa-arrow-right me-1"></i> Mudar de Plano
                             </button>
                         <?php endif; ?>
@@ -295,6 +338,22 @@
                                 Será gerada uma cobrança única de <strong>R$ ${data.formatted_pro_rata}</strong> relativa aos dias restantes até o próximo vencimento.
                             </div>
                             <p class="small text-muted">As próximas mensalidades serão no novo valor integral de R$ ${data.new_price.toLocaleString('pt-BR', {minimumFractionDigits: 2})}.</p>
+                        </div>
+                    `;
+                } else if (data.new_price <= 0 && data.ramp_preview) {
+                    // Rampa de lançamento (D4): o valor efetivo é R$0 este mês —
+                    // upgrade() vai pelo caminho gratuito, sem cobrança nenhuma
+                    // agora nem pró-rata.
+                    const proximaData = new Date(data.ramp_preview.next_date + 'T00:00:00');
+                    config.html = `
+                        <div class="text-start">
+                            <p>Você está mudando para o <strong>${data.new_plan_name}</strong>.</p>
+                            <div class="alert alert-success border-0 py-3">
+                                <i class="fas fa-gift me-2"></i>
+                                Ainda dentro da rampa de lançamento: <strong>R$ 0,00 agora</strong> —
+                                R$ ${data.ramp_preview.next_amount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                a partir de ${proximaData.toLocaleDateString('pt-BR')}.
+                            </div>
                         </div>
                     `;
                 } else {

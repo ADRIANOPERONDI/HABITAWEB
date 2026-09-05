@@ -214,7 +214,7 @@
             
             <?php if (!auth()->user()->inGroup('superadmin')): ?>
              <a href="<?= site_url('admin/promotions') ?>" class="nav-link">
-                <i class="fa-solid fa-rocket"></i> Destaques
+                <i class="fa-solid fa-rocket"></i> Turbinadas
             </a>
             
             <a href="<?= site_url('admin/subscription') ?>" class="nav-link <?= strpos(uri_string(), 'subscription') !== false ? 'active' : '' ?>">
@@ -270,6 +270,20 @@
             <a href="<?= site_url('admin/api-keys') ?>" class="nav-link <?= strpos(uri_string(), 'api-keys') !== false ? 'active' : '' ?>">
                 <i class="fa-solid fa-key"></i> Chaves de API
             </a>
+
+            <a href="<?= site_url('admin/integracoes') ?>" class="nav-link <?= strpos(uri_string(), 'integracoes') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-plug"></i> Integrações
+            </a>
+
+            <?php if (auth()->user()->inGroup('superadmin')): ?>
+            <a href="<?= site_url('admin/cobrancas') ?>" class="nav-link <?= strpos(uri_string(), 'admin/cobrancas') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Cobranças
+            </a>
+            <?php else: ?>
+            <a href="<?= site_url('admin/minhas-cobrancas') ?>" class="nav-link <?= strpos(uri_string(), 'minhas-cobrancas') !== false ? 'active' : '' ?>">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Minhas cobranças
+            </a>
+            <?php endif; ?>
 
             <?php if (auth()->user()->inGroup('superadmin')): ?>
              <a href="<?= site_url('admin/settings') ?>" class="nav-link <?= strpos(uri_string(), 'settings') !== false ? 'active' : '' ?>">

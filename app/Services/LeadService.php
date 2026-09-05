@@ -78,7 +78,27 @@ class LeadService
 
         $lead->account_id_anunciante = $property->account_id;
         $lead->user_id_responsavel   = $property->user_id_responsavel;
-        
+
+        // Snapshot no momento do recebimento — a cobrança por lead recebido
+        // (LeadChargeService::onLeadReceived) e a checagem de qualidade usam
+        // isto depois, e nenhum dos dois pode mudar porque o anunciante
+        // trocou o anúncio de VENDA para ALUGUEL ou porque o dispositivo do
+        // visitante variou entre requisições.
+        if (! $existingLead) {
+            $lead->tipo_negocio = $property->tipo_negocio;
+
+            $request = service('request');
+            $lead->ip_address = $request->getIPAddress();
+            $lead->referrer   = mb_substr((string) $request->getHeaderLine('Referer'), 0, 500) ?: null;
+
+            // getUserAgent() só existe em IncomingRequest — um script de
+            // console (spark, smoke) que crie lead direto pelo service recebe
+            // um CLIRequest, sem esse método.
+            $lead->user_agent = $request instanceof \CodeIgniter\HTTP\IncomingRequest
+                ? (string) $request->getUserAgent()
+                : null;
+        }
+
         if (empty($lead->status)) {
             $lead->status = 'NOVO';
         }
@@ -140,6 +160,30 @@ class LeadService
                     service('webhookService')->dispatch('lead.created', $savedLead->toArray(), $savedLead->account_id_anunciante);
                 } catch (\Throwable $e) {
                     log_message('error', 'Erro ao disparar webhook de lead: ' . $e->getMessage());
+                }
+
+                // Devolve o lead ao CRM da plataforma de origem, se o imóvel
+                // veio de uma integração. Vai para a outbox em vez de sair
+                // agora: se o servidor da imobiliária estiver fora, o lead não
+                // pode se perder nem travar o formulário do visitante
+                // esperando timeout. O try/catch é redundante com o do próprio
+                // service, e é de propósito — nada aqui pode derrubar um lead
+                // que já está salvo.
+                try {
+                    (new \App\Services\IntegrationOutboxService())->enqueueLead($savedLead);
+                } catch (\Throwable $e) {
+                    log_message('error', 'Erro ao enfileirar lead para integração: ' . $e->getMessage());
+                }
+
+                // Cobrança por lead recebido — o gatilho vigente desde a
+                // Fase 3 (antes era o fechamento do negócio). Todo lead
+                // recebido é cobrável, integrado ou não; o service decide
+                // se há regra e se a conta não está isenta. Nunca pode
+                // impedir o visitante de receber a confirmação.
+                try {
+                    (new \App\Services\LeadChargeService())->onLeadReceived($savedLead);
+                } catch (\Throwable $e) {
+                    log_message('error', 'Erro ao cobrar recebimento do lead: ' . $e->getMessage());
                 }
             }
 
@@ -345,7 +389,13 @@ class LeadService
                 'new_status' => $newStatus,
                 'timestamp'  => date('Y-m-d H:i:s')
             ]);
-            
+
+            // Fechar o negócio não cobra mais nada — a cobrança já aconteceu
+            // no recebimento do lead (ver trySaveLead). O gatilho antigo
+            // (LeadChargeService::onLeadClosed, "NEGOCIO_FECHADO") fica
+            // desligado por aqui: o método e o histórico continuam existindo,
+            // só ninguém mais chama.
+
             return true;
         }
 

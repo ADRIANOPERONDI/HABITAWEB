@@ -248,10 +248,7 @@
         <div class="col-lg-4">
             <div class="card border-0 p-4 sticky-top" style="top: 100px; border-radius: 12px; box-shadow: var(--premium-shadow);">
                 <div class="premium-eyebrow"><?= $property->tipo_negocio === 'VENDA' ? 'Compra' : 'Aluguel' ?></div>
-                <h3 class="fw-bold text-dark mb-1">R$ <?= number_format($property->preco, 2, ',', '.') ?></h3>
-                <?php if($property->tipo_negocio === 'ALUGUEL'): ?>
-                    <p class="text-muted">/mês</p>
-                <?php endif; ?>
+                <h3 class="fw-bold text-dark mb-1"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></h3>
 
                 <div class="d-flex flex-column gap-1 mb-4 x-small text-muted">
                     <?php if($property->valor_condominio > 0): ?>
@@ -513,7 +510,7 @@ const propertyInfo = {
     titulo: "<?= esc($property->titulo) ?>",
     cidade: "<?= esc($property->cidade) ?>",
     bairro: "<?= esc($property->bairro) ?>",
-    preco: "<?= number_format($property->preco, 2, ',', '.') ?>",
+    preco: "<?= esc(price_label((float) $property->preco, $property->tipo_negocio)) ?>",
     operacao: "<?= $property->tipo_negocio === 'VENDA' ? 'Comprar' : 'Alugar' ?>",
     url: "<?= current_url() ?>"
 };
@@ -561,7 +558,7 @@ function handleWhatsAppClick(number, channelName) {
     // 1. Gera a mensagem padrão baseada no SOW ou template customizado
     let msgTemplate = whatsappMessagesConfig[propertyInfo.operacao.toUpperCase()] || 
                       whatsappMessagesConfig['DEFAULT'] ||
-                      "Olá! Tenho interesse no imóvel [#{id}] em {bairro}/{cidade} ({operacao}). Valor: R$ {preco}. Link: {url}. Podemos agendar uma visita?";
+                      "Olá! Tenho interesse no imóvel [#{id}] em {bairro}/{cidade} ({operacao}). Valor: {preco}. Link: {url}. Podemos agendar uma visita?";
 
     // Substitui variáveis no template (sem lead_ref fixo agora para ser instantâneo)
     const msg = msgTemplate

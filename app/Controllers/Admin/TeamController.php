@@ -5,6 +5,7 @@ namespace App\Controllers\Admin;
 use App\Controllers\BaseController;
 use App\Entities\User;
 use App\Models\UserModel;
+use Throwable;
 
 class TeamController extends BaseController
 {
@@ -181,6 +182,23 @@ class TeamController extends BaseController
             $user->nome = $data['nome'];
         }
 
+        // Perfil público na página premium da imobiliária (D5) — alimenta
+        // AccountService::getPublicTeam(). Checkbox desmarcado não vem no
+        // POST, então "publico" precisa do !empty() explícito, senão nunca
+        // desligaria de volta pela tela.
+        $user->publico = ! empty($data['publico']);
+        $user->cargo   = isset($data['cargo']) ? trim((string) $data['cargo']) : $user->cargo;
+        $user->bio     = isset($data['bio']) ? trim((string) $data['bio']) : $user->bio;
+
+        $fotoFile = $this->request->getFile('foto');
+        if ($fotoFile && $fotoFile->isValid() && ! $fotoFile->hasMoved()) {
+            if ($error = $this->validateImageUpload($fotoFile, 4096, 'Foto')) {
+                return redirect()->back()->withInput()->with('error', $error);
+            }
+
+            $user->foto = $this->moveAndOptimizeImage($fotoFile, 'uploads/team', 400, 400, 82);
+        }
+
         // Update Role — mesma whitelist usada em create(), nunca aceitar grupo arbitrário
         // (ex.: 'superadmin') vindo do POST.
         if (isset($data['role'])) {
@@ -191,7 +209,7 @@ class TeamController extends BaseController
                 return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
             }
 
-            $user->syncGroups([$data['role']]);
+            $user->syncGroups($data['role']);
 
             audit_log('user.role_changed', [
                 'account_id'  => $accountId,
@@ -227,5 +245,43 @@ class TeamController extends BaseController
         }
 
         return $this->response->setJSON(['success' => false, 'message' => 'Membro não encontrado ou erro ao remover.']);
+    }
+
+    /** Mesmo contrato de ProfileController::validateImageUpload() — foto do membro segue a mesma regra de logo/capa. */
+    private function validateImageUpload($file, int $maxKb, string $label): ?string
+    {
+        if (! $file || ! $file->isValid() || $file->getError() === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+
+        $allowedMime = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        $mime = (string) $file->getMimeType();
+
+        if (! in_array($mime, $allowedMime, true)) {
+            return $label . ': formato inválido. Envie JPG, PNG ou WEBP.';
+        }
+
+        if ($file->getSizeByUnit('kb') > $maxKb) {
+            return $label . ': arquivo muito grande. Máximo de ' . $maxKb . 'KB.';
+        }
+
+        return null;
+    }
+
+    /** Mesmo contrato de ProfileController::moveAndOptimizeImage() — disco público, via a storage abstraction. */
+    private function moveAndOptimizeImage($file, string $relativeDir, int $maxWidth, int $maxHeight, int $quality): string
+    {
+        $newName = $file->getRandomName();
+
+        try {
+            \Config\Services::image('gd')
+                ->withFile($file->getTempName())
+                ->resize($maxWidth, $maxHeight, true, 'auto')
+                ->save($file->getTempName(), $quality);
+        } catch (Throwable $e) {
+            log_message('warning', '[TeamController] Falha ao otimizar imagem: ' . $e->getMessage());
+        }
+
+        return service('publicStorage')->put($relativeDir . '/' . $newName, $file->getTempName());
     }
 }

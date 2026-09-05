@@ -1,0 +1,301 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": "3662",
+      "codigo": "7068",
+      "bairro": "SÃO JORGE",
+      "idBairro": "62",
+      "idImobiliaria": "2",
+      "uf": "SC",
+      "cidade": "SÃO MIGUEL DO OESTE",
+      "complemento": "BLOCO 01",
+      "numero": "APTO 504",
+      "endereco": "RUA OLAVIO BILAC ESQUINA COM A RUA FLORIANOPOLIS",
+      "descricaoCategoria": "APARTAMENTO",
+      "exclusividade": "0",
+      "updatedAt": "2021-06-22 10:57:14",
+      "imagem": "e46363a17533731958310a44be198f5d.png",
+      "idCategoria": "17",
+      "valor": "850.00",
+      "cep": "89900000",
+      "edificio": "RESIDENCIAL VILLAGGIO",
+      "idEmpreendimento": null,
+      "nomeEmpreendimento": null,
+      "descricaoImovel": "",
+      "mmetrics": "19",
+      "countCarac": 0,
+      "finalidade": "1",
+      "baseUrlImagem": "arquivos_imobiliaria/imobiliaria_2/imovel_3662",
+      "baseNomeImagem": "e46363a17533731958310a44be198f5d",
+      "extensao": "png",
+      "caracteristicas": [
+        {
+          "id": 41,
+          "descricao": "DORMITÓRIO(S)",
+          "valor": "2",
+          "idImovelCaracteristica": 52540,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 42,
+          "descricao": "SALA(S)",
+          "valor": "2",
+          "idImovelCaracteristica": 52539,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 44,
+          "descricao": "VAGA DE GARAGEM",
+          "valor": "1",
+          "idImovelCaracteristica": 52534,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 47,
+          "descricao": "CHURRASQUEIRA",
+          "valor": "SIM",
+          "idImovelCaracteristica": 52533,
+          "tipoCaracteristica": 1
+        },
+        {
+          "id": 86,
+          "descricao": "SEGURO INCÊNDIO",
+          "valor": "18.00",
+          "idImovelCaracteristica": 52529,
+          "tipoCaracteristica": 4
+        }
+      ],
+      "imagens": [
+        {
+          "baseNomeImagem": "e46363a17533731958310a44be198f5d",
+          "extensao": "png",
+          "descricao": "FACHADA",
+          "ordem": 1
+        }
+      ]
+    },
+    {
+      "id": "2928",
+      "codigo": "2920",
+      "bairro": "CENTRO",
+      "idBairro": "1",
+      "idImobiliaria": "1",
+      "uf": "SC",
+      "cidade": "SÃO MIGUEL DO OESTE",
+      "complemento": "BOX 14",
+      "numero": "SALA 01",
+      "endereco": "RUA BARÃO DO RIO BRANCO, ESQUINA COM A RUA RUI BARBOSA",
+      "descricaoCategoria": "LOJA COMERCIAL",
+      "exclusividade": "0",
+      "updatedAt": "2021-02-12 16:31:43",
+      "imagem": "f7806bbab502f7798555bd736c48b8744836a8f8.jpg",
+      "idCategoria": "35",
+      "valor": "3500.00",
+      "cep": "89900000",
+      "edificio": "EDIFÍCIO BARUÍ GREEN",
+      "idEmpreendimento": null,
+      "nomeEmpreendimento": null,
+      "descricaoImovel": "<font face=\"Arial, Helvetica, sans-serif\"><font style=\"font-size:10pt;\"><span style=\"color: #666666; font-family: Roboto, cursive; font-size: 16px; text-align: justify; background-color: #f7f7f7;\">O Edifício Baruí Green é o primeiro condomínio Residencial/Comercial em Santa Catarina registrado para Certificação em Sustentabilidade – GBC Brasil Casa e Condomínio. Possui localização privilegiada, salas comercias térreas amplas. </span></font></font><br>\r\n<br>\r\n<br>\r\n<br>\r\n ",
+      "mmetrics": "14",
+      "countCarac": 0,
+      "finalidade": "1",
+      "baseUrlImagem": "arquivos_imobiliaria/imobiliaria_1/imovel_2928",
+      "baseNomeImagem": "f7806bbab502f7798555bd736c48b8744836a8f8",
+      "extensao": "jpg",
+      "caracteristicas": [
+        {
+          "id": 44,
+          "descricao": "VAGA DE GARAGEM",
+          "valor": "01",
+          "idImovelCaracteristica": 50382,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 116,
+          "descricao": "COPA",
+          "valor": "Sim",
+          "idImovelCaracteristica": 50376,
+          "tipoCaracteristica": 1
+        },
+        {
+          "id": 86,
+          "descricao": "SEGURO INCÊNDIO",
+          "valor": "29.00",
+          "idImovelCaracteristica": 50372,
+          "tipoCaracteristica": 4
+        },
+        {
+          "id": 85,
+          "descricao": "VIDROS",
+          "valor": "TODA SUA FACHADA POSSUI VIDRAÇA",
+          "idImovelCaracteristica": 50373,
+          "tipoCaracteristica": 2
+        },
+        {
+          "id": 96,
+          "descricao": "DATA PREV. TERMINO",
+          "valor": "OUTUBRO DE 2021",
+          "idImovelCaracteristica": 50378,
+          "tipoCaracteristica": 2
+        }
+      ],
+      "imagens": [
+        {
+          "baseNomeImagem": "f7806bbab502f7798555bd736c48b8744836a8f8",
+          "extensao": "jpg",
+          "descricao": "FACHADA",
+          "ordem": 1
+        }
+      ]
+    },
+    {
+      "id": "1474",
+      "codigo": "1483",
+      "bairro": "SAGRADO CORAÇÃO",
+      "idBairro": "55",
+      "idImobiliaria": "1",
+      "uf": "SC",
+      "cidade": "SÃO MIGUEL DO OESTE",
+      "complemento": "APTO 204",
+      "numero": "100",
+      "endereco": "RUA WALDEMAR RANGRAB",
+      "descricaoCategoria": "APARTAMENTO",
+      "exclusividade": "0",
+      "updatedAt": "2021-07-07 09:51:29",
+      "imagem": "0c6a59632a9b5371beccc91fedf3d7fb.jpeg",
+      "idCategoria": "17",
+      "valor": "1200.00",
+      "cep": "89900000",
+      "edificio": "",
+      "idEmpreendimento": null,
+      "nomeEmpreendimento": null,
+      "descricaoImovel": "",
+      "mmetrics": "20",
+      "countCarac": 0,
+      "finalidade": "1",
+      "baseUrlImagem": "arquivos_imobiliaria/imobiliaria_1/imovel_1474",
+      "baseNomeImagem": "0c6a59632a9b5371beccc91fedf3d7fb",
+      "extensao": "jpeg",
+      "caracteristicas": [
+        {
+          "id": 41,
+          "descricao": "DORMITÓRIO(S)",
+          "valor": "3",
+          "idImovelCaracteristica": 13382,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 42,
+          "descricao": "SALA(S)",
+          "valor": "1",
+          "idImovelCaracteristica": 13378,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 44,
+          "descricao": "VAGA DE GARAGEM",
+          "valor": "2",
+          "idImovelCaracteristica": 13381,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 86,
+          "descricao": "SEGURO INCÊNDIO",
+          "valor": "19.50",
+          "idImovelCaracteristica": 13394,
+          "tipoCaracteristica": 4
+        },
+        {
+          "id": 97,
+          "descricao": "LATITUDE",
+          "valor": "-26.734189",
+          "idImovelCaracteristica": 34820,
+          "tipoCaracteristica": 2
+        }
+      ],
+      "imagens": [
+        {
+          "baseNomeImagem": "0c6a59632a9b5371beccc91fedf3d7fb",
+          "extensao": "jpeg",
+          "descricao": "Facahda",
+          "ordem": 1
+        }
+      ]
+    },
+    {
+      "id": "2016",
+      "codigo": "2026",
+      "bairro": "CENTRO",
+      "idBairro": "1",
+      "idImobiliaria": "1",
+      "uf": "SC",
+      "cidade": "SÃO MIGUEL DO OESTE",
+      "complemento": "APTO 503",
+      "numero": "1841",
+      "endereco": "RUA PADRE AURÉLIO CANZI",
+      "descricaoCategoria": "APARTAMENTO",
+      "exclusividade": "0",
+      "updatedAt": "2021-06-25 17:12:51",
+      "imagem": "74de88f14ea1009d3ee24f8653abf08c.jpeg",
+      "idCategoria": "17",
+      "valor": "1350.00",
+      "cep": "89900000",
+      "edificio": "EDIFÍCIO SOLAR DO MOINHO",
+      "idEmpreendimento": null,
+      "nomeEmpreendimento": null,
+      "descricaoImovel": "",
+      "mmetrics": "21",
+      "countCarac": 0,
+      "finalidade": "1",
+      "baseUrlImagem": "arquivos_imobiliaria/imobiliaria_1/imovel_2016",
+      "baseNomeImagem": "74de88f14ea1009d3ee24f8653abf08c",
+      "extensao": "jpeg",
+      "caracteristicas": [
+        {
+          "id": 41,
+          "descricao": "DORMITÓRIO(S)",
+          "valor": "3",
+          "idImovelCaracteristica": 19780,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 42,
+          "descricao": "SALA(S)",
+          "valor": "2",
+          "idImovelCaracteristica": 19779,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 44,
+          "descricao": "VAGA DE GARAGEM",
+          "valor": "1",
+          "idImovelCaracteristica": 19782,
+          "tipoCaracteristica": 3
+        },
+        {
+          "id": 47,
+          "descricao": "CHURRASQUEIRA",
+          "valor": "SIM",
+          "idImovelCaracteristica": 19784,
+          "tipoCaracteristica": 1
+        },
+        {
+          "id": 86,
+          "descricao": "SEGURO INCÊNDIO",
+          "valor": "19.50",
+          "idImovelCaracteristica": 19798,
+          "tipoCaracteristica": 4
+        }
+      ],
+      "imagens": [
+        {
+          "baseNomeImagem": "74de88f14ea1009d3ee24f8653abf08c",
+          "extensao": "jpeg",
+          "descricao": "FACHADA",
+          "ordem": 1
+        }
+      ]
+    }
+  ]
+}

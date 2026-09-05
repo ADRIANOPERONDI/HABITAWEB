@@ -47,6 +47,10 @@ $routes->post('webhook/(:segment)', 'Webhook\WebhookController::receive/$1');
 
 // Partner Routes (Public Marketplace)
 $routes->get('parceiros', 'Web\PartnerController::index');
+// URL canônica por slug (Fase 5). parceiro/(:num) segue existindo e vira 301
+// para cá dentro do próprio PartnerController::show() — link antigo/indexado
+// continua funcionando, só deixa de ser o canônico.
+$routes->get('imobiliaria/(:segment)', 'Web\PartnerController::showBySlug/$1');
 $routes->get('parceiro/(:num)', 'Web\PartnerController::show/$1');
 
 // Páginas legais
@@ -182,10 +186,19 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->get('/', 'DashboardController::index');
     // Custom Property Routes (Must come before resource)
     $routes->get('properties/(:num)/turbo', 'PromotionController::turbo/$1');
+    $routes->post('properties/(:num)/turbo/cota', 'PromotionController::useQuota/$1');
     $routes->post('properties/(:num)/media', 'PropertyMediaController::upload/$1');
 
-    $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1');
-    $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit');
+    // is_destaque é selo editorial da Habitaweb (P5), não algo que o tenant
+    // compra ou controla — desde a Fase 1 quem quer exposição paga usa
+    // turbinada. Ficam staff-only pra fechar a rota que ainda dava pro
+    // tenant alcançar o toggle direto por fora da tela (a UI já não mostra,
+    // mas nada no servidor impedia um POST direto).
+    $routes->post('properties/(:num)/toggle-destaque', 'PropertyController::toggleDestaque/$1', ['filter' => 'group:superadmin']);
+    $routes->get('properties/check-destaque-limit', 'PropertyController::checkDestaqueLimit', ['filter' => 'group:superadmin']);
+    // Antes do resource: 'properties/bulk-status' casaria com o
+    // 'properties/(:segment)' de update/show do resource (first-match-wins).
+    $routes->post('properties/bulk-status', 'PropertyController::bulkStatus');
     $routes->resource('properties', ['controller' => 'PropertyController']);
     $routes->post('properties/(:num)/restore', 'PropertyController::restore/$1');
     $routes->get('properties/(:num)/closure-leads', 'PropertyController::getLeadsForClosure/$1');
@@ -196,8 +209,10 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     
     $routes->resource('promotions', ['controller' => 'PromotionController']);
     $routes->resource('leads', ['controller' => 'LeadsController']);
+    $routes->post('leads/(:num)/reenviar-crm', 'LeadsController::retryCrm/$1');
     $routes->post('leads/(:num)/update-status', 'LeadsController::updateStatus/$1');
     $routes->post('leads/(:num)/update', 'LeadsController::update/$1');
+    $routes->post('team/(:num)/update', 'TeamController::update/$1');
     $routes->resource('team', ['controller' => 'TeamController']); // New route
     
     $routes->get('clients/search', 'ClientController::search');
@@ -228,7 +243,6 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('subscription/upgrade/(:num)', 'SubscriptionController::upgrade/$1');
     $routes->post('subscription/payment-method/(:num)', 'SubscriptionController::changePaymentMethod/$1');
     $routes->get('subscription/preview-upgrade/(:num)', 'SubscriptionController::previewUpgrade/$1');
-    $routes->get('subscription/invoice/(:num)', 'SubscriptionController::downloadInvoice/$1');
     $routes->post('subscription/cancel/(:num)', 'SubscriptionController::cancel/$1');
     $routes->get('settings', 'SettingsController::index', ['filter' => 'group:superadmin']);
     $routes->post('settings', 'SettingsController::update', ['filter' => 'group:superadmin']);
@@ -247,6 +261,41 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('api-keys/(:num)/revoke', 'ApiKeysController::revoke/$1');
     $routes->post('api-keys/(:num)/toggle', 'ApiKeysController::toggle/$1');
     $routes->delete('api-keys/(:num)', 'ApiKeysController::delete/$1');
+
+    // Integrações com plataformas externas (por tenant).
+    // A conta NUNCA vem da URL: o segmento é o código do conector, e o
+    // account_id sai de auth()->user() dentro do controller.
+    // As rotas específicas vêm ANTES da genérica de configurar — o router é
+    // first-match-wins e 'integracoes/(:segment)' engoliria 'integracoes/simob/testar'.
+    $routes->get('integracoes', 'IntegrationsController::index');
+    $routes->post('integracoes/(:segment)/testar', 'IntegrationsController::test/$1');
+    $routes->post('integracoes/(:segment)/sincronizar', 'IntegrationsController::syncNow/$1');
+    $routes->get('integracoes/(:segment)/status', 'IntegrationsController::status/$1');
+    $routes->post('integracoes/(:segment)/toggle', 'IntegrationsController::toggle/$1');
+    $routes->post('integracoes/(:segment)/redescobrir', 'IntegrationsController::rediscover/$1');
+    $routes->post('integracoes/(:segment)/desconectar', 'IntegrationsController::disconnect/$1');
+    $routes->get('integracoes/(:segment)/mapeamentos', 'IntegrationsController::mappings/$1');
+    $routes->post('integracoes/(:segment)/mapeamentos', 'IntegrationsController::saveMappings/$1');
+    $routes->get('integracoes/(:segment)/execucoes', 'IntegrationsController::runs/$1');
+    $routes->post('integracoes/(:segment)/execucoes/(:num)/abortar', 'IntegrationsController::abortRun/$1/$2');
+    $routes->get('integracoes/(:segment)', 'IntegrationsController::configure/$1');
+    $routes->post('integracoes/(:segment)', 'IntegrationsController::save/$1');
+
+    // Cobrança por lead recebido (Fase 3 — antes "comissão por negócio
+    // fechado", ver LeadChargeService). A gestão é do superadmin; o tenant só
+    // tem o extrato somente-leitura, e por isso 'minhas-cobrancas' fica fora
+    // do grupo restrito.
+    $routes->get('minhas-cobrancas', 'ChargesController::mine');
+    $routes->post('minhas-cobrancas/(:num)/contestar', 'ChargesController::contest/$1');
+    $routes->group('cobrancas', ['filter' => 'group:superadmin'], function ($routes) {
+        $routes->get('/', 'ChargesController::index');
+        $routes->post('aprovar', 'ChargesController::approve');
+        $routes->post('(:num)/cancelar', 'ChargesController::cancel/$1');
+        $routes->post('(:num)/resolver-disputa', 'ChargesController::resolveDispute/$1');
+        $routes->get('regras', 'ChargesController::rules');
+        $routes->post('regras', 'ChargesController::saveRule');
+        $routes->delete('regras/(:num)', 'ChargesController::deleteRule/$1');
+    });
 
     // Plans Management: ver o $routes->resource('plans', ...) acima, servido por
     // PlanController. Havia aqui um segundo conjunto de rotas apontando para um
@@ -275,6 +324,7 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     $routes->post('accounts/(:num)/subscription/upgrade', 'AccountSubscriptionController::upgrade/$1', ['filter' => 'group:superadmin,admin']);
     $routes->post('accounts/(:num)/subscription/suspend', 'AccountSubscriptionController::suspend/$1', ['filter' => 'group:superadmin,admin']);
     $routes->post('accounts/(:num)/subscription/cancel', 'AccountSubscriptionController::cancel/$1', ['filter' => 'group:superadmin,admin']);
+    $routes->post('accounts/(:num)/subscription/start-gateway', 'AccountSubscriptionController::startGateway/$1', ['filter' => 'group:superadmin,admin']);
     
     $routes->get('users', 'UsersController::index', ['filter' => 'group:superadmin,admin']);
     $routes->get('users/(:num)/edit', 'UsersController::edit/$1', ['filter' => 'group:superadmin,admin']);

@@ -78,11 +78,14 @@
                         <div class="card h-100 border-0 shadow-premium hover-lift overflow-hidden">
                             <div class="position-relative" style="height: 220px;">
                                 <a href="<?= base_url('imovel/'.$property->id) ?>" class="text-decoration-none">
-                                    <!-- Use first image or placeholder -->
-                                    <img src="https://placehold.co/600x400/f1f5f9/94a3b8?text=Sem+Foto" class="w-100 h-100 object-fit-cover" alt="Imóvel">
-                                    
+                                    <?php if($property->cover_image): ?>
+                                        <img src="<?= media_variant_url($property->cover_image, 'card') ?>" class="w-100 h-100 object-fit-cover" alt="<?= esc($property->titulo) ?>" loading="lazy" decoding="async" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
+                                    <?php else: ?>
+                                        <img src="<?= base_url('assets/img/placeholder-house.png') ?>" class="w-100 h-100 object-fit-cover" alt="Sem Foto" loading="lazy" decoding="async">
+                                    <?php endif; ?>
+
                                     <span class="position-absolute top-0 end-0 m-3 badge bg-white text-dark shadow-sm">
-                                        <?= $property->tipo_negocio == 'venda' ? 'Venda' : 'Aluguel' ?>
+                                        <?= $property->tipo_negocio === 'VENDA' ? 'Venda' : 'Aluguel' ?>
                                     </span>
                                 </a>
                             </div>
@@ -99,7 +102,7 @@
                                 
                                 <div class="mt-auto">
                                     <h4 class="fw-bold text-primary mb-0">
-                                        R$ <?= number_format($property->preco, 2, ',', '.') ?>
+                                        <?= price_label((float) $property->preco, $property->tipo_negocio) ?>
                                     </h4>
                                     
                                     <div class="d-flex justify-content-between mt-3 pt-3 border-top small text-muted">

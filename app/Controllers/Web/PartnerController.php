@@ -15,10 +15,14 @@ class PartnerController extends BaseController
         $propertyService = new \App\Services\PropertyService();
         
         $data = $accountService->listPublicPartners(12);
-        
-        // Calculate total properties for each partner via service/model logic
+
+        // Uma query em lote (GROUP BY) para a página inteira, não uma por
+        // parceiro — o loop antigo era N+1: 12 parceiros na página, 12
+        // queries de contagem além da própria listagem.
+        $accountIds = array_map(static fn ($partner) => $partner->id, $data['partners']);
+        $counts = $propertyService->countPublicPropertiesByAccounts($accountIds);
         foreach ($data['partners'] as $partner) {
-            $partner->total_properties = $propertyService->countPublicPropertiesByAccount($partner->id);
+            $partner->total_properties = $counts[(int) $partner->id] ?? 0;
         }
 
         return view('web/partners/index', [
@@ -29,30 +33,87 @@ class PartnerController extends BaseController
     }
 
     /**
-     * Show partner profile and their properties
+     * URL legada por id. Segue funcionando (link antigo/indexado não pode
+     * quebrar), mas quando a conta já tem slug o canônico passa a ser
+     * `imobiliaria/(:segment)` — 301, não 302: é o mesmo parceiro, não uma
+     * mudança temporária, e é o sinal que motores de busca precisam para
+     * transferir o rankeamento da URL antiga para a nova.
      */
     public function show($id)
     {
         $accountService = new \App\Services\AccountService();
-        $propertyService = new \App\Services\PropertyService();
-        
-        $partner = $accountService->getAccountById((int)$id);
+        $partner = $accountService->getAccountById((int) $id);
 
         if (!$partner) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound('Parceiro não encontrado.');
         }
 
-        // Get properties for this partner via service
-        $propData = $propertyService->listPublicProperties([
-            'account_id' => $id,
-            'status'     => 'ACTIVE'
-        ], 9);
+        if (!empty($partner->slug)) {
+            return redirect()->to(site_url('imobiliaria/' . $partner->slug), 301);
+        }
 
-        return view('web/partners/show', [
+        return $this->renderShow($partner);
+    }
+
+    public function showBySlug(string $slug)
+    {
+        $accountService = new \App\Services\AccountService();
+        $partner = $accountService->getAccountBySlug($slug);
+
+        if (!$partner) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound('Parceiro não encontrado.');
+        }
+
+        return $this->renderShow($partner);
+    }
+
+    private function renderShow(\App\Entities\Account $partner)
+    {
+        helper('format');
+        $propertyService = new \App\Services\PropertyService();
+
+        $isPremium = \App\Services\PlanGate::has(
+            (int) $partner->id,
+            \App\Entities\PlanFeature::PAGINA_PREMIUM
+        );
+
+        if (!$isPremium) {
+            $propData = $propertyService->listPublicProperties([
+                'account_id' => $partner->id,
+                'status'     => 'ACTIVE'
+            ], 9);
+
+            return view('web/partners/show', [
+                'partner'    => $partner,
+                'properties' => $propData['properties'],
+                'pager'      => $propData['pager'],
+                'title'      => $partner->nome . ' - Perfil do Parceiro'
+            ]);
+        }
+
+        // Página premium (Diamante): abas Todos/Lançamentos/Destaques sobre o
+        // mesmo WHERE base (account_id + ACTIVE) — só o filtro extra muda.
+        $aba = $this->request->getGet('aba');
+        if (!in_array($aba, ['lancamentos', 'destaques'], true)) {
+            $aba = 'todos';
+        }
+
+        $filters = ['account_id' => $partner->id, 'status' => 'ACTIVE'];
+        if ($aba === 'lancamentos') {
+            $filters['is_novo'] = true;
+        } elseif ($aba === 'destaques') {
+            $filters['promoted_only'] = true;
+        }
+
+        $propData = $propertyService->listPublicProperties($filters, 9);
+
+        return view('web/partners/show_premium', [
             'partner'    => $partner,
             'properties' => $propData['properties'],
             'pager'      => $propData['pager'],
-            'title'      => $partner->nome . ' - Perfil do Parceiro'
+            'team'       => (new \App\Services\AccountService())->getPublicTeam((int) $partner->id),
+            'aba'        => $aba,
+            'title'      => $partner->nome . ' - ' . ($partner->tipo_conta === 'IMOBILIARIA' ? 'Imobiliária' : 'Corretor') . ' Parceiro'
         ]);
     }
 }

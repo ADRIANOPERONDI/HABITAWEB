@@ -162,10 +162,7 @@
                                     </div>
                                     
                                     <div class="mt-auto d-flex align-items-center justify-content-between">
-                                        <div class="fw-bold text-dark">R$ <?= number_format($property->preco, 2, ',', '.') ?></div>
-                                        <?php if($property->tipo_negocio === 'ALUGUEL'): ?>
-                                            <small class="text-muted x-small">Mês</small>
-                                        <?php endif; ?>
+                                        <div class="fw-bold text-dark"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></div>
                                     </div>
                                 </div>
                             </a>
@@ -193,7 +190,7 @@
             <?php else: ?>
                 <?php foreach($partners as $partner): ?>
                 <div class="col-6 col-md-3 col-lg-2">
-                    <a href="<?= site_url('anunciante/' . $partner->id) ?>" class="text-decoration-none">
+                    <a href="<?= partner_url($partner) ?>" class="text-decoration-none">
                         <div class="partner-card animate-fade-in bg-white shadow-sm h-100 p-3 rounded-4 position-relative">
                             <?php if($partner->is_verified): ?>
                                 <div class="position-absolute top-0 end-0 m-2 text-primary" title="Parceiro Verificado">

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Entities\PlanFeature;
+use App\Libraries\Metrics\DateRange;
 use App\Models\AccountModel;
 use App\Models\LeadModel;
 use App\Models\PlanModel;
@@ -95,13 +97,20 @@ class DashboardService
         $recentProperties = $this->propertyModel->getRecentWithFilters($accountId, 5, $filters, $brokerId);
         $opportunities    = $this->propertyModel->getOpportunities($accountId, $filters, $brokerId);
 
-        // 7. Gráfico de Leads (Últimos 7 dias)
-        $chartData = $this->formatChartData($this->leadModel->getLeadsLast7Days($accountId, $filters, $brokerId));
+        // 7. Gráfico de Leads (últimos 7 dias) — GROUP BY no banco (Fase 4),
+        // não mais um loop em PHP comparando data lead a lead.
+        $range = DateRange::lastDays(7);
+        $leadsPorDia = $this->leadModel->countsByDayWithFilters($accountId, $range->de, $range->ate, $filters, $brokerId);
+        $chartData = ['labels' => [], 'values' => []];
+        foreach ($range->dates() as $dia) {
+            $chartData['labels'][] = date('d/m', strtotime($dia));
+            $chartData['values'][] = $leadsPorDia[$dia] ?? 0;
+        }
 
         // 8. Taxas e Comparativos
         $avgPriceUser = $this->propertyModel->getAvgPrice($accountId, $filters, $brokerId);
         $avgPriceMarket = $this->getMarketAvgPriceCached($filters);
-        
+
         $cntLeadsTotal  = $this->leadModel->countTotalWithFilters($accountId, $filters, $brokerId);
         $conversionRate = ($stats['visitas_total'] > 0) ? ($cntLeadsTotal / $stats['visitas_total']) * 100 : 0;
 
@@ -109,16 +118,106 @@ class DashboardService
         $stats['avg_ticket'] = number_format($avgPriceUser, 2, ',', '.');
         $stats['market_avg_ticket'] = number_format($avgPriceMarket, 2, ',', '.');
         $stats['ticket_status'] = ($avgPriceUser > $avgPriceMarket) ? 'above' : 'below';
+        // Percentual real do ticket do usuário sobre a média de mercado, para
+        // a barra de progresso — antes era um `width: 60%` fixo no HTML,
+        // sempre 60% pra qualquer conta, qualquer dado.
+        $stats['ticket_pct'] = $avgPriceMarket > 0 ? min(100, (int) round($avgPriceUser / $avgPriceMarket * 100)) : 0;
+
+        // 9. Painel completo (Ouro/Diamante): PlanGate decide o que a view
+        // exibe, não a view sozinha — rota AJAX avançada também precisa
+        // desta checagem, não só a ocultação visual. Superadmin não é tenant
+        // de plano nenhum e sempre viu o painel inteiro; PlanGate de uma
+        // conta sem assinatura (o fallback account_id=1) devolveria false e
+        // esconderia o próprio bloco global do superadmin.
+        $painelCompleto      = $isSuperAdmin || PlanGate::has($accountId, PlanFeature::PAINEL_COMPLETO);
+        $comparativoMercado  = $isSuperAdmin || PlanGate::has($accountId, PlanFeature::COMPARATIVO_MERCADO);
+
+        $viewsComparado  = null;
+        $leadsComparado  = null;
+        $viewOrigins     = [];
+        $marketShare     = null;
+
+        if ($painelCompleto) {
+            $metricsQuery   = new MetricsQueryService();
+            $viewsComparado = $metricsQuery->viewsComparedForAccount($accountId, $range);
+            $leadsComparado = $metricsQuery->leadsComparedForAccount($accountId, $range);
+            $viewOrigins    = $metricsQuery->viewOriginsForAccount($accountId, $range);
+
+            if ($comparativoMercado) {
+                $cidade = $this->propertyModel->mostCommonCidade($accountId);
+
+                if ($cidade !== null) {
+                    $marketShare = $metricsQuery->marketShare($accountId, $cidade, $range);
+                }
+            }
+        }
 
         return [
-            'stats'            => $stats,
-            'recentProperties' => $recentProperties,
-            'chartData'        => $chartData,
-            'opportunities'    => $opportunities,
-            'subscriptionAlert' => $subscriptionAlert,
-            'userDisplayName'  => $account ? $account->nome : 'Usuário',
-            'neighborhoods'    => $neighborhoods,
-            'condos'           => $condos,
+            'stats'              => $stats,
+            'recentProperties'   => $recentProperties,
+            'chartData'          => $chartData,
+            'opportunities'      => $opportunities,
+            'subscriptionAlert'  => $subscriptionAlert,
+            'userDisplayName'    => $account ? $account->nome : 'Usuário',
+            'neighborhoods'      => $neighborhoods,
+            'condos'             => $condos,
+            'painelCompleto'     => $painelCompleto,
+            'comparativoMercado' => $comparativoMercado,
+            'viewsComparado'     => $viewsComparado,
+            'leadsComparado'     => $leadsComparado,
+            'viewOrigins'        => $viewOrigins,
+            'marketShare'        => $marketShare,
+            'nextPlanUpsell'     => $isSuperAdmin ? null : $this->buildNextPlanUpsell($plan),
+        ];
+    }
+
+    /**
+     * O que o próximo plano (por `exposure_weight`) entrega a mais do que o
+     * atual — usado pelo card de upsell do dashboard. Antes disso o card era
+     * texto fixo ("No plano Ouro ou Diamante...") pra qualquer conta, mesmo
+     * quem já estava no Ouro e só faltava o Diamante.
+     *
+     * @return array{plan_name: string, missing_features: string[], turbo_gain: int|string|null, credit_gain: float}|null
+     */
+    private function buildNextPlanUpsell(?\App\Entities\Plan $currentPlan): ?array
+    {
+        $pesoAtual = $currentPlan?->exposureWeight() ?? -1;
+
+        $proximo = null;
+        foreach ($this->planModel->comercializaveis() as $candidato) {
+            if ($candidato->exposureWeight() <= $pesoAtual) {
+                continue;
+            }
+            if ($proximo === null || $candidato->exposureWeight() < $proximo->exposureWeight()) {
+                $proximo = $candidato;
+            }
+        }
+
+        if ($proximo === null) {
+            return null;
+        }
+
+        $featuresAtuais = $currentPlan?->activeFeatures() ?? [];
+        $featuresFaltando = array_values(array_diff(
+            array_intersect($proximo->activeFeatures(), PlanFeature::visiveis()),
+            $featuresAtuais
+        ));
+
+        $turbosAtual  = $currentPlan?->turbosIncluidos();
+        $turbosProximo = $proximo->turbosIncluidos();
+        $turboGain = match (true) {
+            $turbosProximo === null => 'ilimitadas',
+            $turbosAtual === null   => null, // já tem ilimitado, próximo não pode dar "mais"
+            default                 => max(0, $turbosProximo - ($turbosAtual ?? 0)),
+        };
+
+        $creditoGain = $proximo->creditoLeadsMensal() - ($currentPlan?->creditoLeadsMensal() ?? 0.0);
+
+        return [
+            'plan_name'        => $proximo->nome,
+            'missing_features' => array_map(static fn (string $f) => PlanFeature::label($f), $featuresFaltando),
+            'turbo_gain'       => $turboGain,
+            'credit_gain'      => max(0.0, $creditoGain),
         ];
     }
 
@@ -141,28 +240,6 @@ class DashboardService
             ];
         }
         return null;
-    }
-
-    protected function formatChartData(array $leads): array
-    {
-        $chartData = ['labels' => [], 'values' => []];
-        $interval = new \DateInterval('P1D');
-        $period = new \DatePeriod(new \DateTime('-6 days'), $interval, new \DateTime('+1 day'));
-        
-        foreach ($period as $dt) {
-            $dateStr = $dt->format('Y-m-d');
-            $count = 0;
-            foreach ($leads as $lead) {
-                $leadDateRaw = is_object($lead->created_at) && method_exists($lead->created_at, 'format') 
-                    ? $lead->created_at->format('Y-m-d') 
-                    : substr((string)$lead->created_at, 0, 10);
-                
-                if ($leadDateRaw === $dateStr) $count++;
-            }
-            $chartData['labels'][] = $dt->format('d/m');
-            $chartData['values'][] = $count;
-        }
-        return $chartData;
     }
 
     protected function getMarketAvgPriceCached(array $filters): float

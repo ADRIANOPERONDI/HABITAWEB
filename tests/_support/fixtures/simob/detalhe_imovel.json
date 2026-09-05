@@ -1,0 +1,88 @@
+{
+  "success": true,
+  "result": [
+    {
+      "id": 3376,
+      "codigo": "3364",
+      "nome": "3364 - RUA A - N° 04 - PROGRESSO",
+      "descricao": "",
+      "imagens": [
+        {
+          "id": 34648,
+          "descricao": "Frente ",
+          "url": "/arquivos_imobiliaria/imobiliaria_1/imovel_3376/9f2bcfc4be1ee43c1b10304b1ac280e6883eb9c8.jpg",
+          "baseNomeImagem": "9f2bcfc4be1ee43c1b10304b1ac280e6883eb9c8",
+          "extensao": "jpg",
+          "nome": "9f2bcfc4be1ee43c1b10304b1ac280e6883eb9c8.jpg",
+          "posicao": 1
+        }
+      ],
+      "videos": [],
+      "imagem": "/arquivos_imobiliaria/imobiliaria_1/imovel_3376/9f2bcfc4be1ee43c1b10304b1ac280e6883eb9c8_miniatura_480x360.jpg",
+      "categoria": {
+        "id": 26,
+        "descricao": "LOTE URBANO"
+      },
+      "configVenda": {
+        "disponibilizarPortal": true,
+        "inativo": false,
+        "valor": "105000.00"
+      },
+      "configLocacao": null,
+      "caracteristicas": [
+        {
+          "id": 79,
+          "ordem": 63,
+          "descricao": "LOTEAMENTO",
+          "valor": "Santa Marta",
+          "tipo": 2
+        },
+        {
+          "id": 74,
+          "ordem": 68,
+          "descricao": "ÁREA DO TERRENO - m²",
+          "valor": "286,65 ",
+          "tipo": 2
+        },
+        {
+          "id": 73,
+          "ordem": 69,
+          "descricao": "DIMENSÕES TERRENO - (m)",
+          "valor": "Frente = 10 m²; Direita = 27,78 m²; Fundos= 10,23 m²; Esquerdo = 28,78 m²",
+          "tipo": 2
+        },
+        {
+          "id": 67,
+          "ordem": 75,
+          "descricao": "PROXIMIDADE",
+          "valor": "Cerâmica Wunsch",
+          "tipo": 2
+        }
+      ],
+      "bairro": "PROGRESSO",
+      "endereco": "RUA A",
+      "numero": "N° 04",
+      "complemento": null,
+      "uf": "SC",
+      "cidade": "SÃO MIGUEL DO OESTE",
+      "edificio": "",
+      "cep": "89900000",
+      "reservado": "",
+      "interesseImovel": {
+        "favoritos": [],
+        "descartados": []
+      },
+      "iptu": {
+        "ValorTotal": 0,
+        "valorMensal": 0
+      },
+      "dataPrevSaida": "",
+      "empreendimento": {
+        "id": 1,
+        "descricao": "",
+        "nome": "RESIDENCIAL LA SALLE"
+      },
+      "baseUrlImagem": "/arquivos_imobiliaria/imobiliaria_1/imovel_3376"
+    }
+  ]
+}

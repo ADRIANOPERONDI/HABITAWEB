@@ -220,22 +220,12 @@ class WebhookService
             }
         }
 
-        // 5. Activate Account
-        if ($accountId) {
-            $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
-        }
-
-        // 6. Handle Promotions (Turbo) if tagged
-        if (isset($transaction['metadata'])) {
-            $meta = is_string($transaction['metadata']) ? json_decode($transaction['metadata'], true) : (array) $transaction['metadata'];
-            $promoKey = $meta['promo_key'] ?? $meta['package_key'] ?? null;
-            if ($promoKey && isset($meta['property_id'])) {
-                $promotionService = service('promotionService'); // Assuming this service exists as per AsaasWebhook
-                if ($promotionService) {
-                    $promotionService->activatePaidPromotion($meta['property_id'], $promoKey);
-                }
-            }
-        }
+        // 5-7. Ativa a conta e aplica o efeito do tipo desta transação
+        // (turbinada comprada, ou fatura de leads fechada) — mesmo caminho
+        // usado por PaymentService::syncPendingPayments(), pra uma cobrança
+        // recuperada pelo sync (webhook que falhou em ser entregue) ter
+        // exatamente o mesmo efeito de quem chegou pelo webhook.
+        (new PaymentService())->settleTransaction($transaction);
 
         return true;
     }

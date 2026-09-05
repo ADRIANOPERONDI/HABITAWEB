@@ -8,8 +8,9 @@ class PropertyDetailsController extends BaseController
 {
     public function show($id)
     {
+        helper('format');
         $propertyService = service('propertyService');
-        
+
         $data = $propertyService->getPublicPropertyDetails((int) $id);
 
         if (!$data) {
@@ -17,6 +18,7 @@ class PropertyDetailsController extends BaseController
         }
 
         $propertyService->incrementVisit((int) $id);
+        $propertyService->recordView((int) $id);
 
         // isFavorited já vem de getPropertyDetails() (mesma checagem, mesmo
         // auth()->id()) — o bloco duplicado que existia aqui fazia uma segunda

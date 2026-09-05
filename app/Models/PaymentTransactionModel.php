@@ -20,6 +20,16 @@ class PaymentTransactionModel extends Model
         'pdf_url', 'invoice_url', 'paid_at'
     ];
 
+    /**
+     * Tipos de transação que representam a MENSALIDADE da assinatura (mais
+     * `type IS NULL`, o histórico anterior à coluna existir). Só estes
+     * bloqueiam o painel/catálogo por atraso e viram o alerta de "pagamento
+     * pendente" — uma fatura de TURBO ou de LEAD_INVOICE vencida não pode
+     * derrubar o site do tenant nem parecer que a assinatura está em risco:
+     * é uma cobrança à parte, não a mensalidade.
+     */
+    public const SUBSCRIPTION_TYPES = ['SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE'];
+
     protected bool $allowEmptyInserts = false;
     protected bool $updateOnlyChanged = true;
 
@@ -176,6 +186,10 @@ class PaymentTransactionModel extends Model
     {
         return $this->where('account_id', $accountId)
                     ->where('status', 'PENDING')
+                    ->groupStart()
+                        ->whereIn('type', self::SUBSCRIPTION_TYPES)
+                        ->orWhere('type', null)
+                    ->groupEnd()
                     ->orderBy('created_at', 'DESC')
                     ->first();
     }
@@ -191,6 +205,29 @@ class PaymentTransactionModel extends Model
     public function findPendingByAccount($accountId)
     {
         return $this->getLastPendingTransactionByAccount($accountId);
+    }
+
+    /**
+     * Fatura de cobrança de leads (`type=LEAD_INVOICE`) já gerada para uma
+     * conta/período, se houver. `LeadChargeService::closeCycleForAccount()`
+     * reaproveita em vez de criar outra — rodar `leads:fechar-ciclo` duas
+     * vezes pro mesmo período não pode gerar duas cobranças no gateway.
+     *
+     * O período fica só em `metadata` (JSONB), não numa coluna própria — daí
+     * o `->>'periodo'` em vez de um `where()` comum.
+     */
+    public function findLeadInvoice(int $accountId, string $periodo): ?array
+    {
+        return $this->db->query(
+            "SELECT * FROM payment_transactions
+             WHERE account_id = ?
+               AND type = 'LEAD_INVOICE'
+               AND metadata->>'periodo' = ?
+               AND status != 'CANCELLED'
+             ORDER BY id DESC
+             LIMIT 1",
+            [$accountId, $periodo]
+        )->getRowArray();
     }
     
     /**
@@ -209,6 +246,10 @@ class PaymentTransactionModel extends Model
         return $this->where('account_id', $accountId)
                     ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
                     ->where('due_date <=', date('Y-m-d', strtotime("-{$days} days")))
+                    ->groupStart()
+                        ->whereIn('type', self::SUBSCRIPTION_TYPES)
+                        ->orWhere('type', null)
+                    ->groupEnd()
                     ->countAllResults() > 0;
     }
 
@@ -223,6 +264,10 @@ class PaymentTransactionModel extends Model
                         ->distinct()
                         ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
                         ->where('due_date <=', date('Y-m-d', strtotime("-{$days} days")))
+                        ->groupStart()
+                            ->whereIn('type', self::SUBSCRIPTION_TYPES)
+                            ->orWhere('type', null)
+                        ->groupEnd()
                         ->findAll();
 
         // intval: o driver Postgres devolve bigint como string — o docblock
