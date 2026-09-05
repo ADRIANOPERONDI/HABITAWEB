@@ -93,11 +93,11 @@ class LeadChargeService
         $ref          = $propertyId > 0 ? $this->refModel->findByProperty($propertyId) : null;
         $providerCode = $ref?->provider_code;
 
-        // VENDA_ALUGUEL não tem preço definido na proposta comercial (ver
-        // premissa pendente de confirmação): trata como ALUGUEL para efeito
-        // de regra até o cliente decidir a intenção do visitante.
+        // VENDA_ALUGUEL é raro (imóvel anunciado pras duas modalidades ao
+        // mesmo tempo) — decisão do cliente: cobra como VENDA (R$80), não
+        // como ALUGUEL (R$40). "Se é raro, cobra os R$80 mesmo."
         $tipoNegocio = (string) ($lead->tipo_negocio ?? '');
-        $tipoNegocio = $tipoNegocio === 'VENDA_ALUGUEL' ? 'ALUGUEL' : ($tipoNegocio ?: null);
+        $tipoNegocio = $tipoNegocio === 'VENDA_ALUGUEL' ? 'VENDA' : ($tipoNegocio ?: null);
 
         // Checagem de qualidade ANTES de calcular quanto cobrar: um lead
         // reprovado nasce WAIVED e nunca chega perto de uma regra de preço.

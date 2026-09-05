@@ -89,6 +89,41 @@ final class LaunchRampServiceTest extends HabitawebTestCase
         $this->assertSame(100, $service->percentFor($sub, '2030-01-01'), 'muito depois: continua cheio (faixa aberta)');
     }
 
+    /**
+     * Decisão do cliente: a promoção tem prazo pra quem ENTRA ("quem entrar
+     * até dezembro de 2026 leva os 6 meses"), não um prazo que corta o
+     * benefício de quem já aderiu. `valid_from`/`valid_to` das faixas
+     * precisam ser checados contra `ramp_started_at` (adesão), não contra
+     * `$onDate` (hoje) — senão uma conta que aderiu em novembro/2026 (dentro
+     * do prazo) perderia o desconto assim que o calendário virasse 2027,
+     * mesmo com meses de rampa ainda por vir.
+     */
+    public function testValidToNaoCortaQuemJaAderiuDentroDoPrazo(): void
+    {
+        $db = \Config\Database::connect();
+        $db->table('plan_launch_ramps')->truncate();
+        model(PlanLaunchRampModel::class)->insertBatch([
+            ['mes_de' => 1, 'mes_ate' => 6, 'percentual' => 0, 'is_active' => true, 'valid_from' => '2026-01-01', 'valid_to' => '2026-12-31'],
+            ['mes_de' => 7, 'mes_ate' => 12, 'percentual' => 50, 'is_active' => true, 'valid_from' => '2026-01-01', 'valid_to' => '2026-12-31'],
+            ['mes_de' => 13, 'mes_ate' => null, 'percentual' => 100, 'is_active' => true, 'valid_from' => '2026-01-01', 'valid_to' => '2026-12-31'],
+        ]);
+
+        $service = new LaunchRampService();
+        // Aderiu em novembro/2026 — dentro do prazo da promoção.
+        $sub = new Subscription(['ramp_started_at' => '2026-11-01']);
+
+        // Em fevereiro/2027 (depois do valid_to de todas as faixas), a
+        // conta está no mes de vida 4 — ainda deveria estar na faixa
+        // gratuita (mes 1-6), não cair pro fallback de 100%.
+        $this->assertSame(4, $service->monthsAlive($sub, '2027-02-01'));
+        $this->assertSame(0, $service->percentFor($sub, '2027-02-01'), 'promocao fechou pra quem NAO aderiu, nao pra quem ja estava dentro dela');
+
+        $proxima = $service->nextTransition($sub, '2027-02-01');
+        $this->assertNotNull($proxima, 'ainda deveria prever a transicao pro mes 7 (maio/2027)');
+        $this->assertSame('2027-05-01', $proxima['date']);
+        $this->assertSame(50, $proxima['to_percent']);
+    }
+
     public function testAmountForAplicaOPercentualSobreOPrecoDoCiclo(): void
     {
         $planId = $this->plan(990.00);

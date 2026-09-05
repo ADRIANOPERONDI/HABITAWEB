@@ -114,18 +114,22 @@ final class LeadChargeReceivedTest extends HabitawebTestCase
         $this->assertSame(40.0, model(LeadChargeModel::class)->find($id)->commission_value);
     }
 
-    /** Premissa pendente de confirmação comercial: VENDA_ALUGUEL cai no preço de ALUGUEL. */
-    public function testVendaAluguelUsaFallbackDeAluguel(): void
+    /**
+     * Decisão do cliente: imóvel anunciado pras duas modalidades ao mesmo
+     * tempo (raro) cobra como VENDA (R$80), não como ALUGUEL (R$40).
+     */
+    public function testVendaAluguelUsaPrecoDeVenda(): void
     {
         $tenant = (new TenantFactory())->create();
         $this->regra(['tipo_negocio' => 'ALUGUEL', 'value' => 40]);
+        $this->regra(['tipo_negocio' => 'VENDA', 'value' => 80]);
 
         $propertyId = $this->property($tenant['account']->id, 'VENDA_ALUGUEL');
         $lead       = $this->lead($tenant['account']->id, $propertyId, 'VENDA_ALUGUEL');
 
         $id = (new LeadChargeService())->onLeadReceived($lead);
 
-        $this->assertSame(40.0, model(LeadChargeModel::class)->find($id)->commission_value);
+        $this->assertSame(80.0, model(LeadChargeModel::class)->find($id)->commission_value);
     }
 
     /** O gate de property_external_refs do motor antigo não existe mais aqui. */

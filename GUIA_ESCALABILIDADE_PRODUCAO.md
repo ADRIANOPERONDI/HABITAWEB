@@ -935,11 +935,21 @@ verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
    `valid_from` = data da migration — ajuste manualmente para a data real da
    virada antes de ir para produção (`UPDATE plan_launch_ramps SET
    valid_from = '2026-MM-DD'`). É a chave-mestra: nenhuma conta entra na
-   rampa antes dessa data, mesmo que o código já esteja rodando. Se a virada
-   tiver prazo de validade (a rampa é condição de lançamento de uma praça
-   específica, não vale para sempre), preencha também `valid_to` — sem ele
-   uma conta que assinar daqui a dois anos ainda ganharia os 6 meses grátis
-   do lançamento.
+   rampa antes dessa data, mesmo que o código já esteja rodando.
+
+   **Decisão do cliente (premissa P8 do plano): a promoção vale para quem
+   entrar até 31/12/2026** — `UPDATE plan_launch_ramps SET valid_to =
+   '2026-12-31'` nas três faixas. Importante: isso é um prazo de
+   **inscrição**, não um prazo que encurta a rampa de quem já entrou — uma
+   conta que aderiu em novembro/2026 continua os 6 meses inteiros mesmo
+   depois de o calendário virar 2027 (`LaunchRampService::percentFor()`
+   checa `valid_from`/`valid_to` contra a data de ADESÃO da conta, não
+   contra hoje — ver commit `fix/decisoes-comerciais-cliente`).
+
+   **Contas já existentes também entram na rampa** (decisão do cliente): a
+   migração comercial (passo 3 abaixo) roda com `--modo rampa`, não
+   `--modo cheio`, para a base toda — desde que a migração aconteça dentro
+   da mesma janela (até 31/12/2026).
 
    Mesmo deploy: rode `php spark db:seed LeadChargeRuleSeeder` (já entra em
    `MainSeeder`, então um `db:seed MainSeeder` completo também cobre). Sem
@@ -961,12 +971,13 @@ verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
    por conta (recomendado na primeira leva) ou em lote:
    ```bash
    php spark planos:migrar-comercial --confirmar --modo rampa --conta 123
-   # ou, decidido o modo para toda a base:
-   php spark planos:migrar-comercial --confirmar --modo cheio
+   # decidido para toda a base (é o combinado com o cliente — ver passo 1):
+   php spark planos:migrar-comercial --confirmar --modo rampa
    ```
-   `--modo rampa` x `--modo cheio` é decisão de caixa do cliente (ver
-   docblock de `App\Commands\MigrateCommercialPlans`), não tem default —
-   escolha explícita a cada execução.
+   `--modo rampa` x `--modo cheio` nunca tem default no comando (ver
+   docblock de `App\Commands\MigrateCommercialPlans`) — é sempre escolha
+   explícita a cada execução, mesmo já sabendo que o combinado é `rampa`
+   para toda a base.
 4. **A partir daqui, os crons já cobrem o resto** (ver seção 3.4):
    `assinaturas:aplicar-rampa` (diário) aplica as transições de faixa;
    `leads:aprovar-cobrancas` (diário) e `leads:fechar-ciclo` (dia 1) cobram

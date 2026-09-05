@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Database\Seeds\PlanSeeder;
 use App\Models\PaymentTransactionModel;
+use App\Models\PlanLaunchRampModel;
 use App\Models\SubscriptionModel;
 use Tests\Support\Factories\TenantFactory;
 use Tests\Support\HabitawebTestCase;
@@ -94,6 +95,19 @@ final class SubscriptionPageTest extends HabitawebTestCase
      */
     public function testMostraCotaDeTurbinadaEEstagioDaRampa(): void
     {
+        // valid_from precisa estar seguramente no passado — o valor semeado
+        // pela migration é a data em que `php spark migrate` rodou neste
+        // ambiente, que pode ser mais recente que o "-2 meses" abaixo
+        // (LaunchRampService checa valid_from/valid_to contra a data de
+        // ADESÃO da conta, não contra hoje — ver LaunchRampServiceTest).
+        $db = \Config\Database::connect();
+        $db->table('plan_launch_ramps')->truncate();
+        model(PlanLaunchRampModel::class)->insertBatch([
+            ['mes_de' => 1, 'mes_ate' => 6, 'percentual' => 0, 'is_active' => true, 'valid_from' => '2020-01-01'],
+            ['mes_de' => 7, 'mes_ate' => 12, 'percentual' => 50, 'is_active' => true, 'valid_from' => '2020-01-01'],
+            ['mes_de' => 13, 'mes_ate' => null, 'percentual' => 100, 'is_active' => true, 'valid_from' => '2020-01-01'],
+        ]);
+
         $tenant = (new TenantFactory())->create([], 'OURO');
 
         model(SubscriptionModel::class)->update($tenant['subscription']->id, [
