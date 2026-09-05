@@ -146,7 +146,22 @@ class IntegrationsController extends BaseController
         return $this->response->setJSON($result->toArray());
     }
 
-    /** POST (AJAX): sincroniza agora, com trava de intervalo. */
+    /**
+     * POST (AJAX): agenda "sincronizar agora" — não roda mais dentro do
+     * request web.
+     *
+     * Rodar a sincronização de verdade aqui dentro (chamando
+     * IntegrationSyncService::run() direto) travava o request web até o
+     * catálogo inteiro (imagens incluídas) terminar de baixar — contra um
+     * catálogo do tamanho normal de uma imobiliária isso estoura o
+     * max_execution_time do PHP com um Fatal Error, que não é capturável, e
+     * as travas de cache do serviço ficam presas até expirar sozinhas (até
+     * 30 min), sem nenhuma rota pra destravar. Quem processa de fato agora é
+     * o cron `integration:sync` (a cada 1 min), que trata esta integração
+     * antes das outras via `sync_priority_requested_at`
+     * (AccountIntegrationModel::dueForSync()) — sem o limite de tempo do PHP
+     * em CLI.
+     */
     public function syncNow(string $code)
     {
         $integration = $this->resolve($code);
@@ -163,30 +178,26 @@ class IntegrationsController extends BaseController
             ]);
         }
 
-        // Sync manual é caro: centenas de chamadas à origem e download de
-        // imagens. Sem trava, clicar repetido derruba o servidor do tenant.
+        // Trava só contra clique repetido — o trabalho pesado não roda mais
+        // aqui, mas nada impede o tenant de martelar o botão.
         $cacheKey = "integration_manual_sync_{$integration->id}";
 
         if (cache($cacheKey) !== null) {
             return $this->response->setJSON([
                 'success' => false,
-                'message' => 'Uma sincronização manual foi disparada há pouco. Aguarde alguns minutos.',
+                'message' => 'Uma sincronização já foi agendada há pouco. Aguarde alguns minutos.',
             ]);
         }
 
         cache()->save($cacheKey, time(), self::MANUAL_SYNC_COOLDOWN);
 
-        $result = (new \App\Services\IntegrationSyncService())->run(
-            $integration,
-            IntegrationSyncRunModel::TRIGGER_MANUAL
-        );
+        $this->service->markPriority($integration);
 
-        audit_log('integration.synced', ['provider' => $code, 'trigger' => 'manual']);
+        audit_log('integration.sync_requested', ['provider' => $code]);
 
         return $this->response->setJSON([
             'success' => true,
-            'message' => 'Sincronização concluída: ' . $result->humanSummary(),
-            'details' => $result->toCounters(),
+            'message' => 'Sincronização agendada. Deve rodar em até 1 minuto — atualize esta página daqui a pouco para ver o resultado.',
         ]);
     }
 

@@ -239,14 +239,26 @@
         Swal.fire({
             icon: 'question',
             title: 'Sincronizar agora?',
-            text: 'Pode levar alguns minutos em catálogos grandes.',
+            text: 'A sincronização roda em segundo plano — pode levar alguns minutos em catálogos grandes.',
             showCancelButton: true,
             confirmButtonText: 'Sincronizar',
             cancelButtonText: 'Cancelar',
         }).then(function (res) {
-            if (res.isConfirmed) {
-                executar(base + '/sincronizar', 'Sincronizando o catálogo...');
-            }
+            if (!res.isConfirmed) { return; }
+
+            // Não usa executar(): essa chamada só AGENDA (responde na hora,
+            // sem nada novo pra mostrar ainda), diferente de testar/toggle,
+            // que já terminam o trabalho antes de responder — recarregar a
+            // página aqui só mostraria o mesmo estado de antes.
+            Swal.fire({ title: 'Agendando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            $.post(base + '/sincronizar')
+                .done(function (r) {
+                    Swal.fire({ icon: r.success ? 'success' : 'error', title: r.success ? 'Agendado' : 'Não deu', text: r.message });
+                })
+                .fail(function () {
+                    Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível concluir. Tente novamente.' });
+                });
         });
     });
 

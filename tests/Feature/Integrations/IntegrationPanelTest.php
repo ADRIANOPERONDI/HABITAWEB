@@ -289,4 +289,55 @@ final class IntegrationPanelTest extends HabitawebTestCase
             'is_active'     => false,
         ]);
     }
+
+    // -------------------------------------------------- sincronizar agora
+
+    /**
+     * "Sincronizar agora" rodava a sincronização de verdade dentro deste
+     * mesmo request — download de imagens incluído — e estourava o
+     * max_execution_time do PHP em catálogos do tamanho normal de uma
+     * imobiliária (reproduzido contra a API real do Simob). Agora só marca
+     * sync_priority_requested_at pro cron `integration:sync` (a cada 1 min)
+     * consumir; o request responde na hora.
+     */
+    public function testSincronizarAgoraApenasAgendaEResponoDeImediato(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])
+                ->post('admin/integracoes/simob/sincronizar', $this->withCsrf())
+                ->getJSON(),
+            true
+        );
+
+        $this->assertTrue($body['success']);
+        $this->assertStringContainsString('agendada', $body['message']);
+
+        $reloaded = model(AccountIntegrationModel::class)->find($int->id);
+        $this->assertNotNull($reloaded->sync_priority_requested_at);
+        // Nada rodou de fato: nenhum imóvel foi criado dentro deste request.
+        $this->assertSame(0, model(\App\Models\PropertyModel::class)->where('account_id', $tenant['account']->id)->countAllResults());
+    }
+
+    public function testSincronizarAgoraRepetidoEmSeguidaERecusado(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $int    = (new IntegrationService())->findOrCreate((int) $tenant['account']->id, 'simob');
+        model(AccountIntegrationModel::class)->update($int->id, ['status' => AccountIntegrationModel::STATUS_CONNECTED]);
+
+        $this->actingAs($tenant['user'])->post('admin/integracoes/simob/sincronizar', $this->withCsrf());
+
+        $body = json_decode(
+            (string) $this->actingAs($tenant['user'])
+                ->post('admin/integracoes/simob/sincronizar', $this->withCsrf())
+                ->getJSON(),
+            true
+        );
+
+        $this->assertFalse($body['success']);
+        $this->assertStringContainsString('agendada há pouco', $body['message']);
+    }
 }
