@@ -54,7 +54,7 @@ final class PlanSeederTest extends HabitawebTestCase
 
         $this->assertSame(0, $this->plan('PRATA')->turbosIncluidos());
         $this->assertSame(5, $this->plan('OURO')->turbosIncluidos());
-        $this->assertSame(15, $this->plan('DIAMANTE')->turbosIncluidos());
+        $this->assertSame(10, $this->plan('DIAMANTE')->turbosIncluidos());
     }
 
     public function testBonusDeTurbinadaDoCicloAnual(): void
