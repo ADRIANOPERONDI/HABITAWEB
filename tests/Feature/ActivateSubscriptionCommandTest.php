@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccountModel;
 use App\Models\PlanModel;
 use App\Models\SubscriptionModel;
 use Tests\Support\Factories\TenantFactory;
@@ -57,6 +58,24 @@ final class ActivateSubscriptionCommandTest extends HabitawebTestCase
         $this->assertEquals(0.00, (float) $sub->valor);
         $this->assertNotNull($sub->ramp_started_at);
         $this->assertNull($sub->data_fim);
+    }
+
+    /**
+     * Regressão: `createFreeLocalSubscription` (usado por este comando e
+     * pelo checkout/upgrade gratuitos) precisa ativar `accounts.status`,
+     * não só `subscriptions.status` — senão o `AdminAuth` (que lê
+     * `accounts.status`, campo separado) bloqueia o painel mesmo com
+     * assinatura ACTIVE.
+     */
+    public function testAtivaContaAlemDaAssinatura(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        model(AccountModel::class)->update($tenant['account']->id, ['status' => 'PENDING']);
+
+        $this->runCommand('--conta ' . $tenant['user']->email . ' --plano PRATA_TESTE_ATIVAR');
+
+        $account = model(AccountModel::class)->find($tenant['account']->id);
+        $this->assertSame('ACTIVE', $account->status);
     }
 
     public function testAtivaPorIdDaConta(): void
