@@ -76,6 +76,11 @@
              com "Encrypter needs a starter key" — .env.testing não é lido pelo
              PHPUnit, mesmo motivo do ASAAS_WEBHOOK_TOKEN acima. -->
         <env name="encryption.key" value="hex2bin:40f71c4fe7f7381b05fa0f6ce1c7ebc2fb89c367f18932b5b8976de51785b78f"/>
+        <!-- Mesmo motivo das duas acima: PaymentGatewayConfigModel::recoverSensitiveValue()
+             lê ASAAS_ENV do ambiente pra reparar a config 'environment' quando a
+             descriptografia falha — sem .env local (CI), essa recuperação nunca
+             tem valor pra recuperar. -->
+        <env name="ASAAS_ENV" value="sandbox"/>
         <!-- Directory containing phpunit.xml -->
         <const name="HOMEPATH" value="./"/>
         <!-- Directory containing the Paths config file -->
