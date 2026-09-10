@@ -290,7 +290,9 @@
                         <?php if($property->account_email): ?>
                             <div class="mb-1"><i class="fa-solid fa-envelope me-2"></i> <?= esc($property->account_email) ?></div>
                         <?php endif; ?>
-                        <div class="mb-1"><i class="fa-solid fa-phone me-2"></i> <?= esc($property->account_phone ?? $property->account_whatsapp ?? '(11) 99999-9999') ?></div>
+                        <?php if($showContact ?? false): ?>
+                            <div class="mb-1"><i class="fa-solid fa-phone me-2"></i> <?= esc($property->account_phone ?? $property->account_whatsapp ?? '(11) 99999-9999') ?></div>
+                        <?php endif; ?>
                         <a href="<?= site_url('parceiro/' . $property->account_id) ?>" class="text-primary fw-bold text-decoration-none d-block mt-2">
                             Ver Perfil Completo <i class="fas fa-arrow-right ms-1"></i>
                         </a>
@@ -351,9 +353,11 @@
                     <div class="mb-3">
                         <textarea name="mensagem" class="form-control" rows="3" placeholder="Mensagem">Olá, gostaria de mais informações sobre este imóvel.</textarea>
                     </div>
-                    <button type="button" id="btnWhatsAppHub" class="btn btn-success w-100 btn-lg fw-bold rounded-pill mb-3 shadow-sm">
-                        <i class="fa-brands fa-whatsapp me-2"></i> Falar no WhatsApp
-                    </button>
+                    <?php if($showContact ?? false): ?>
+                        <button type="button" id="btnWhatsAppHub" class="btn btn-success w-100 btn-lg fw-bold rounded-pill mb-3 shadow-sm">
+                            <i class="fa-brands fa-whatsapp me-2"></i> Falar no WhatsApp
+                        </button>
+                    <?php endif; ?>
                     <button type="submit" id="btnLead" class="btn btn-outline-primary w-100 btn-md fw-bold rounded-pill">
                         <i class="fa-solid fa-envelope me-2"></i> Quero receber contato
                     </button>
@@ -472,6 +476,7 @@
 </div>
 </div>
 
+<?php if($showContact ?? false): ?>
 <!-- Modal WhatsApp Hub (Linktree Style) -->
 <div class="modal fade" id="whatsappModal" tabindex="-1" aria-labelledby="whatsappModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -493,7 +498,7 @@
                 <div class="d-grid gap-3" id="whatsappButtonsContainer">
                     <!-- Botões dinâmicos via JS -->
                 </div>
-                
+
                 <p class="mt-4 text-muted x-small">
                     Relatamos o clique para controle de qualidade e métricas do anunciante.
                 </p>
@@ -598,6 +603,7 @@ function handleWhatsAppClick(number, channelName) {
     .catch(error => console.warn('Lead WhatsApp tracking failed', error));
 }
 </script>
+<?php endif; ?>
 
 <!-- GLightbox: galeria em tela cheia com zoom/swipe (mobile) ao clicar nas fotos -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox@3.3.0/dist/css/glightbox.min.css">
