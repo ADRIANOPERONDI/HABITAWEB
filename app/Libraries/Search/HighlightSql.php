@@ -34,6 +34,41 @@ final class HighlightSql
     }
 
     /**
+     * Mesma regra de `effectiveLevel()`, em PHP — para quando a linha já foi
+     * lida do banco (pin do mapa, card de listagem) e não dá pra usar uma
+     * expressão SQL. `$expiresAt` aceita string (formato do Postgres) ou algo
+     * já convertido para timestamp.
+     */
+    public static function isEffectivelyActiveValue(?int $level, $expiresAt): bool
+    {
+        if (empty($level) || $level <= 0 || empty($expiresAt)) {
+            return false;
+        }
+
+        $expiresTimestamp = is_numeric($expiresAt) ? (int) $expiresAt : strtotime((string) $expiresAt);
+
+        return $expiresTimestamp !== false && $expiresTimestamp > time();
+    }
+
+    /**
+     * "Tem selo Patrocinado nesta própria exibição" — a mesma regra de
+     * elegibilidade (editorial OU turbo vigente), mas SEM o filtro de feature
+     * do plano: um Prata que comprou turbinada avulsa mostra o selo no seu
+     * próprio card (só não ocupa slot na busca de outra conta — isso é
+     * decidido à parte, em `SponsoredPlacementService`).
+     *
+     * Quando a linha já passou pelo merge de slots (`is_sponsored` presente,
+     * true ou false), o CHAMADOR deve usar aquele valor em vez deste método —
+     * é o que marca exatamente quem ocupa um dos 3 slots da página 1, e um
+     * item fora do slot não pode "recalcular" o selo por conta própria (era
+     * exatamente o bug que isto corrige).
+     */
+    public static function isSponsoredDisplay(bool $isDestaque, ?int $level, $expiresAt): bool
+    {
+        return $isDestaque || self::isEffectivelyActiveValue($level, $expiresAt);
+    }
+
+    /**
      * Predicado para "tem destaque pago vigente".
      */
     public static function isActive(string $alias = 'properties'): string
