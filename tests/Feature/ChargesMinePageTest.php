@@ -92,15 +92,19 @@ final class ChargesMinePageTest extends HabitawebTestCase
             'status'            => LeadChargeModel::STATUS_APPROVED,
         ]);
 
+        // Link real da linha ('admin/leads/{id}'), não o texto cru '#{id}' — com
+        // ID baixo (banco de teste recém-criado), '#2'/'#3' colide fácil com
+        // qualquer #hexadecimal de CSS inline na página (ex.: '#333', '#3b82f6'),
+        // dando falso positivo em assertDontSee que só aparece com IDs pequenos.
         $mesCorrente = $this->actingAs($tenant['user'])->get('admin/minhas-cobrancas');
         $mesCorrente->assertStatus(200);
-        $mesCorrente->assertSee('#' . $leadAtual->id);
-        $mesCorrente->assertDontSee('#' . $leadAntigo->id);
+        $mesCorrente->assertSee('admin/leads/' . $leadAtual->id);
+        $mesCorrente->assertDontSee('admin/leads/' . $leadAntigo->id);
 
         $mesAntigo = $this->actingAs($tenant['user'])->get('admin/minhas-cobrancas?periodo=' . substr($periodoAntigo, 0, 7));
         $mesAntigo->assertStatus(200);
-        $mesAntigo->assertSee('#' . $leadAntigo->id);
-        $mesAntigo->assertDontSee('#' . $leadAtual->id);
+        $mesAntigo->assertSee('admin/leads/' . $leadAntigo->id);
+        $mesAntigo->assertDontSee('admin/leads/' . $leadAtual->id);
     }
 
     public function testMostraAPagarLiquidoDoCredito(): void

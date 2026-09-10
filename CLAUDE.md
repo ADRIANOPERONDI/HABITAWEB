@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-**Habitaweb** is a multi-tenant real-estate listing SaaS built on **CodeIgniter 4** (PHP >= 8.1) with **CodeIgniter Shield** for auth. It has a public property-search portal, an admin panel (per-account), a versioned REST API, and integrations with three payment gateways (Asaas, Stripe, Mercado Pago) for subscription billing.
+**Habitaweb** is a multi-tenant real-estate listing SaaS built on **CodeIgniter 4** (PHP >= 8.2, matching production's 8.2.33 — `composer.json`'s `config.platform.php` pins dependency resolution to it) with **CodeIgniter Shield** for auth. It has a public property-search portal, an admin panel (per-account), a versioned REST API, and integrations with three payment gateways (Asaas, Stripe, Mercado Pago) for subscription billing.
 
 The working directory is `copia_zap` but the app/product name throughout code, DB, and docs is **Habitaweb**.
 

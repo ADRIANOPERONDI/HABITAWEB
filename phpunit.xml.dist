@@ -69,6 +69,13 @@
         <!-- Token FIXO só para testes de assinatura de webhook (não é segredo de
              produção — .env.testing não é lido pelo PHPUnit, ver run_tests.sh). -->
         <env name="ASAAS_WEBHOOK_TOKEN" value="phpunit-fixed-webhook-token"/>
+        <!-- Chave FIXA só para teste (não é segredo de produção), necessária para
+             Services::encrypter() (credenciais de gateway/integração cifradas).
+             Sem isto, um checkout novo sem .env local (CI, por exemplo) falha em
+             qualquer teste que toque PaymentGatewayConfigModel/IntegrationService
+             com "Encrypter needs a starter key" — .env.testing não é lido pelo
+             PHPUnit, mesmo motivo do ASAAS_WEBHOOK_TOKEN acima. -->
+        <env name="encryption.key" value="hex2bin:40f71c4fe7f7381b05fa0f6ce1c7ebc2fb89c367f18932b5b8976de51785b78f"/>
         <!-- Directory containing phpunit.xml -->
         <const name="HOMEPATH" value="./"/>
         <!-- Directory containing the Paths config file -->

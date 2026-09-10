@@ -45,6 +45,27 @@ abstract class HabitawebTestCase extends CIUnitTestCase
     protected $namespace = null;
 
     /**
+     * PRATA/OURO/DIAMANTE precisam existir pra TenantFactory funcionar — a
+     * maioria dos testes desta suíte usa TenantFactory, direta ou
+     * indiretamente. Em dev local isso passava despercebido porque o
+     * `habitaweb_test` de cada máquina já tinha os planos semeados há muito
+     * tempo (de um `db:seed` manual antigo) e nunca mais foi limpo — um
+     * `habitaweb_test` genuinamente novo (CI, ou "dropdb && createdb" local)
+     * não tem isso, e todo teste com TenantFactory falhava com "plano não
+     * encontrado". `$seedOnce` roda ANTES de HabitawebTestCase::setUp() abrir
+     * a transação de isolamento do teste (setUpDatabase() acontece dentro de
+     * parent::setUp(), antes do transStart() abaixo) — então o seed fica
+     * commitado de verdade, não é desfeito no rollback do primeiro teste, e
+     * fica disponível pro resto da execução inteira. PlanSeeder é upsert por
+     * chave, então rodar de novo num banco que já tem os planos (dev local)
+     * não duplica nada.
+     */
+    protected $seed = \App\Database\Seeds\PlanSeeder::class;
+
+    /** Semeia uma única vez para a execução inteira, mesmo raciocínio de $migrateOnce. */
+    protected $seedOnce = true;
+
+    /**
      * IMPORTANTE: ao contrário do que a documentação/senso comum sugere, o
      * DatabaseTestTrait do CI4 NÃO envolve cada teste numa transação com rollback —
      * ele só cuida de migrate/seed (ver CIUnitTestCase::setUp -> setUpDatabase()).
