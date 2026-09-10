@@ -601,6 +601,10 @@ class PaymentService
             'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
         ], true);
 
+        // Espelha settleTransaction(): sem isto, accounts.status fica PENDING
+        // e o AdminAuth bloqueia o painel mesmo com subscriptions.status ACTIVE.
+        $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
+
         return ['success' => true, 'local_id' => $localSubId];
     }
 
