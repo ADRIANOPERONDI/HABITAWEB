@@ -54,5 +54,6 @@ class PublicPropertyVisibilityService
         }
 
         $cache->deleteMatching('public_map_pins_*');
+        $cache->deleteMatching('search_filter_bairros_*');
     }
 }
