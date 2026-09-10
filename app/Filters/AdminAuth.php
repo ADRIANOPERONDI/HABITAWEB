@@ -72,17 +72,12 @@ class AdminAuth implements FilterInterface
 
                 // Non-admin precisa KYC aprovado. O status aprovado e a fonte de verdade;
                 // flags/arquivos podem ficar inconsistentes em dados antigos.
-                if (!$this->isKycVerified($accountId)) {
+                if (!(new \App\Models\AccountModel())->isKycApproved($accountId)) {
                     return redirect()->to('admin/profile')->with('error', 'Complete sua verificação de identidade (KYC) para acessar o painel.');
                 }
 
                 // Regra de produção espelhada dos E2E: non-admin precisa assinatura ativa.
-                $hasActiveSubscription = $db->table('subscriptions')
-                    ->where('account_id', $accountId)
-                    ->where('status', 'ACTIVE')
-                    ->countAllResults() > 0;
-
-                if (!$hasActiveSubscription) {
+                if (!(new \App\Models\SubscriptionModel())->hasActiveSubscription($accountId)) {
                     return redirect()->to('admin/subscription')->with('error', 'Você precisa de uma assinatura ativa para acessar o painel.');
                 }
 
@@ -139,22 +134,6 @@ class AdminAuth implements FilterInterface
             ->where('user_id', $userId)
             ->where('group', 'superadmin')
             ->countAllResults() > 0;
-    }
-
-    private function isKycVerified(int $accountId): bool
-    {
-        $db = \Config\Database::connect();
-        $account = $db->table('accounts')
-            ->select('is_verified, verification_status')
-            ->where('id', $accountId)
-            ->get()
-            ->getRow();
-
-        if (!$account) {
-            return false;
-        }
-
-        return in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true);
     }
 
     /**

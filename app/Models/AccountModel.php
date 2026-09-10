@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use CodeIgniter\Config\Factories;
 use CodeIgniter\Model;
 
 class AccountModel extends Model
@@ -113,11 +114,38 @@ class AccountModel extends Model
      */
     public function isFullyVerified(): bool
     {
-        return !empty($this->id_front) 
-               && !empty($this->id_back) 
-               && !empty($this->selfie) 
+        return !empty($this->id_front)
+               && !empty($this->id_back)
+               && !empty($this->selfie)
                && $this->is_verified === true
                && in_array($this->verification_status, ['APPROVED', 'VERIFIED'], true);
+    }
+
+    /**
+     * Mesma checagem de `AdminAuth::isKycVerified()` — status aprovado é a
+     * fonte de verdade, não os arquivos/flags (podem ficar inconsistentes em
+     * dados antigos). Ponto único pra o painel e o site público nunca
+     * divergirem sobre o que conta como "KYC aprovado".
+     */
+    public function isKycApproved(int $accountId): bool
+    {
+        $account = $this->find($accountId);
+
+        return $account !== null && in_array($account->verification_status, ['APPROVED', 'VERIFIED'], true);
+    }
+
+    /**
+     * Régua combinada usada pra decidir se o site público pode mostrar
+     * WhatsApp/telefone do anunciante — mesma régua que já libera o painel
+     * administrativo (`AdminAuth`): KYC aprovado E assinatura ativa.
+     */
+    public function isFullyOnboarded(int $accountId): bool
+    {
+        if (!$this->isKycApproved($accountId)) {
+            return false;
+        }
+
+        return Factories::models(SubscriptionModel::class)->hasActiveSubscription($accountId);
     }
 
     /**
