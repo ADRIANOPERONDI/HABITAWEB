@@ -129,17 +129,28 @@ class PaymentGatewayConfigModel extends Model
             return null;
         }
 
-        $envKey = match ($config->config_key) {
-            'api_key'        => 'ASAAS_API_KEY',
-            'webhook_secret' => 'ASAAS_WEBHOOK_SECRET',
-            'webhook_token'  => 'ASAAS_WEBHOOK_TOKEN',
+        // 'environment' guarda um literal ('sandbox'/'production'), não um
+        // segredo — nunca devia ter sido marcado is_sensitive (ver migration
+        // 2026-07-14-120000_FixEnvironmentGatewayConfigRow, que já corrigiu
+        // isso uma vez). Se a linha voltar a ficar is_sensitive=true por
+        // qualquer motivo (reseed, edição manual), a falha de descriptografia
+        // não pode virar spam de log permanente nem fazer o gateway cair
+        // silenciosamente pra sandbox pra sempre — por isso também recupera
+        // daqui, e regrava como is_sensitive=false (diferente das credenciais
+        // reais abaixo, que continuam cifradas).
+        $recovery = match ($config->config_key) {
+            'api_key'        => ['env' => 'ASAAS_API_KEY', 'sensitive' => true],
+            'webhook_secret' => ['env' => 'ASAAS_WEBHOOK_SECRET', 'sensitive' => true],
+            'webhook_token'  => ['env' => 'ASAAS_WEBHOOK_TOKEN', 'sensitive' => true],
+            'environment'    => ['env' => 'ASAAS_ENV', 'sensitive' => false],
             default          => null,
         };
 
-        if ($envKey === null) {
+        if ($recovery === null) {
             return null;
         }
 
+        $envKey = $recovery['env'];
         $fallback = trim((string) env($envKey, ''));
 
         if ($fallback === '' && $config->config_key === 'webhook_secret') {
@@ -151,13 +162,13 @@ class PaymentGatewayConfigModel extends Model
         // uma falha de descriptografia não pode destruir a única cópia válida.
         if ($fallback === '' || $this->isPlaceholderValue($fallback)) {
             if ($fallback !== '') {
-                log_message('critical', "Config sensível {$config->config_key} não recuperada: {$envKey} contém um placeholder.");
+                log_message('critical', "Config {$config->config_key} não recuperada: {$envKey} contém um placeholder.");
             }
             return null;
         }
 
-        log_message('warning', "Config sensível {$config->config_key} recuperada de {$envKey} após falha de descriptografia ({$reason}); recriptografando com a chave atual.");
-        $this->saveConfig((int) $config->gateway_id, (string) $config->config_key, $fallback, true);
+        log_message('warning', "Config {$config->config_key} recuperada de {$envKey} após falha de descriptografia ({$reason}).");
+        $this->saveConfig((int) $config->gateway_id, (string) $config->config_key, $fallback, $recovery['sensitive']);
 
         return $fallback;
     }
