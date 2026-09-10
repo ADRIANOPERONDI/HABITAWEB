@@ -16,7 +16,21 @@
     <div class="map-list-grid">
         <?php foreach($properties as $property): ?>
             <?php
-                $isSponsored = $property->is_destaque || (isset($property->highlight_level) && $property->highlight_level > 0);
+                // Quando a página passou pelo SponsoredPlacementService (slots
+                // da busca), is_sponsored já vem marcado — true só nos 3 slots
+                // vencedores, false em TODO o resto, mesmo que o imóvel também
+                // tenha turbo/destaque próprio. Recalcular aqui pelas colunas
+                // cruas (como este trecho fazia antes) mostrava "Patrocinado"
+                // em qualquer elegível fora do slot, furando a garantia da
+                // Fase 2. Só cai no cálculo cru quando is_sponsored nunca foi
+                // setado (pool da home, página 2+, ordenação explícita).
+                $isSponsored = isset($property->is_sponsored)
+                    ? (bool) $property->is_sponsored
+                    : \App\Libraries\Search\HighlightSql::isSponsoredDisplay(
+                        (bool) $property->is_destaque,
+                        $property->highlight_level ?? null,
+                        $property->highlight_expires_at ?? null
+                    );
             ?>
             <article class="premium-property-card map-property-card" id="property-card-<?= $property->id ?>" data-id="<?= $property->id ?>">
                 <a href="<?= site_url('imovel/' . $property->id) ?>" target="_blank" class="premium-property-link">

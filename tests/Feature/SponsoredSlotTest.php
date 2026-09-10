@@ -342,4 +342,66 @@ final class SponsoredSlotTest extends HabitawebTestCase
 
         $this->assertSame([], $this->service->getFeaturedProperties(10));
     }
+
+    // ---- selo "Patrocinado" no HTML respeita o slot, não só a elegibilidade ----
+
+    /**
+     * Regressão: `_property_map_list.php` recalculava "Patrocinado" a partir
+     * de `is_destaque`/`highlight_level` crus, ignorando o `is_sponsored` que
+     * `SponsoredPlacementService::merge()` já marca (true só nos slots
+     * vencedores, false em todo o resto). Resultado em produção: qualquer
+     * imóvel elegível fora dos 3 slots — havendo mais elegíveis do que slots —
+     * ainda mostrava o selo, o que é exatamente a garantia que a Fase 2
+     * existe para dar ("Diamante paga mais, mas nunca fura a fila de graça
+     * para todo mundo que também tem destaque").
+     */
+    public function testBadgePatrocinadoSoNosSlotsVencedoresNaoEmTodoElegivel(): void
+    {
+        $conta = $this->makeAccount($this->makePlan());
+
+        // 4 imóveis editorialmente elegíveis (is_destaque) — só os 3 melhores
+        // por score entram no slot (SponsoredPlacementService::SLOT_COUNT = 3).
+        $slot1 = $this->insertProperty($conta, ['score_qualidade' => 40, 'is_destaque' => true]);
+        $slot2 = $this->insertProperty($conta, ['score_qualidade' => 30, 'is_destaque' => true]);
+        $slot3 = $this->insertProperty($conta, ['score_qualidade' => 20, 'is_destaque' => true]);
+        $foraDoSlot = $this->insertProperty($conta, ['score_qualidade' => 10, 'is_destaque' => true]);
+
+        // Filler orgânico (não elegível): sem ele a página é curta demais para
+        // alcançar as posições 6 e 11, e o merge desiste dos slots 2 e 3 por
+        // falta de espaço (comportamento correto, mas não é o que este teste
+        // quer exercitar — aqui o objetivo é ter os 3 slots realmente ocupados).
+        for ($i = 0; $i < 12; $i++) {
+            $this->insertProperty($conta, ['score_qualidade' => 1]);
+        }
+
+        $result = $this->service->searchMapList(
+            ['bairro' => $this->bairro, 'cidade' => $this->cidade],
+            18,
+            1
+        );
+
+        helper('format');
+        $html = view('web/partials/_property_map_list', [
+            'properties' => $result['properties'],
+            'total'      => $result['total'],
+            'has_more'   => $result['has_more'],
+            'next_page'  => $result['next_page'],
+        ]);
+
+        preg_match_all('/Patrocinado/', $html, $matches);
+        $this->assertCount(
+            3,
+            $matches[0],
+            'Só os 3 slots vencedores podem exibir o selo Patrocinado, mesmo havendo mais imóveis elegíveis na página.'
+        );
+        $this->assertStringContainsString(
+            'id="property-card-' . $foraDoSlot . '"',
+            $html,
+            'O 4º elegível continua aparecendo na página — só não pode levar o selo.'
+        );
+
+        foreach ([$slot1, $slot2, $slot3] as $id) {
+            $this->assertNotSame(0, preg_match('/id="property-card-' . $id . '"/', $html));
+        }
+    }
 }

@@ -61,7 +61,14 @@ class MapSearchController extends BaseController
                     'lng' => $prop->longitude,
                     'price' => $this->formatShortPrice((float) $prop->preco),
                     'operation' => $prop->tipo_negocio,
-                    'is_sponsored' => (bool) ($prop->is_destaque || ((int) ($prop->highlight_level ?? 0) > 0)),
+                    // Pin próprio do mapa, sem passar por SponsoredPlacementService (não
+                    // é paginado nem tem slot) — precisa checar expiração na mão, senão
+                    // um highlight vencido ainda não limpo pelo cron continua marcado.
+                    'is_sponsored' => \App\Libraries\Search\HighlightSql::isSponsoredDisplay(
+                        (bool) $prop->is_destaque,
+                        $prop->highlight_level ?? null,
+                        $prop->highlight_expires_at ?? null
+                    ),
                     'url' => site_url('imovel/' . $prop->id),
                 ];
             }

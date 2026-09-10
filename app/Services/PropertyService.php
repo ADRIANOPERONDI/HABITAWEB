@@ -801,7 +801,7 @@ class PropertyService
         }
 
         $builder = $this->buildPublicMapSearchQuery($filters, false);
-        $builder->select('properties.id, properties.latitude, properties.longitude, properties.preco, properties.tipo_negocio, properties.is_destaque, properties.highlight_level');
+        $builder->select('properties.id, properties.latitude, properties.longitude, properties.preco, properties.tipo_negocio, properties.is_destaque, properties.highlight_level, properties.highlight_expires_at');
 
         $pins = $builder->limit($limit)->get()->getResult();
 
