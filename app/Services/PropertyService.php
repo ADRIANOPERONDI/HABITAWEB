@@ -974,6 +974,22 @@ class PropertyService
             return null;
         }
 
+        // Conta sem KYC aprovado + assinatura ativa não pode receber contato
+        // pelo site público — mesma régua que já libera o painel (AdminAuth).
+        // O anúncio em si continua visível; só o canal de contato some. Apagar
+        // os campos aqui (e não só escondê-los na view) evita que apareçam em
+        // qualquer outro consumidor deste array (JSON, cache, etc).
+        $showContact = true;
+        if ($publicOnly) {
+            $showContact = model('App\Models\AccountModel')->isFullyOnboarded((int) $property->account_id);
+            if (!$showContact) {
+                $property->account_phone = null;
+                $property->account_whatsapp = null;
+                $property->whatsapp_hub_config = null;
+                $property->whatsapp_messages_config = null;
+            }
+        }
+
         // Carrega mídias
         $mediaModel = Factories::models(\App\Models\PropertyMediaModel::class);
         $medias = $mediaModel->where('property_id', $id)->orderBy('principal', 'DESC')->orderBy('ordem', 'ASC')->findAll();
@@ -998,7 +1014,8 @@ class PropertyService
             'property' => $property,
             'medias'   => $medias,
             'features' => $features,
-            'isFavorited' => $isFavorited
+            'isFavorited' => $isFavorited,
+            'showContact' => $showContact,
         ];
     }
 

@@ -134,4 +134,79 @@ final class PublicPropertyVisibilityTest extends HabitawebTestCase
         $this->assertNotContains($id, $this->ids($service->getFeaturedProperties(50)));
         $this->assertNull($service->getPublicPropertyDetails($id));
     }
+
+    // ---- contato (WhatsApp/telefone) exige conta totalmente onboardada -----
+
+    /**
+     * Regressão: `PublicPropertyVisibilityService` nunca checou KYC/assinatura
+     * — só fatura vencida. Uma conta que perdesse a assinatura ativa depois de
+     * já ter cadastrado imóveis (ex.: via sync do Simob, que não passa pelo
+     * AdminAuth) continuava com WhatsApp/telefone funcionando no site público.
+     * O anúncio em si continua visível — só o canal de contato deve sumir.
+     */
+    public function testTelefoneEWhatsappOcultosParaContaSemAssinaturaAtiva(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $accountId = (int) $tenant['account']->id;
+        $id = $this->insertProperty($accountId, 'SemAssinatura_' . uniqid());
+
+        \Config\Database::connect()->table('subscriptions')
+            ->where('account_id', $accountId)
+            ->delete();
+
+        $response = $this->get("imovel/{$id}");
+        $response->assertOK();
+        $response->assertDontSee('11999990000');
+        $response->assertSee('Imóvel público');
+    }
+
+    public function testTelefoneEWhatsappOcultosParaContaComKycPendente(): void
+    {
+        $tenant = (new TenantFactory())->create(['verification_status' => 'PENDING', 'is_verified' => false]);
+        $accountId = (int) $tenant['account']->id;
+        $id = $this->insertProperty($accountId, 'KycPendente_' . uniqid());
+
+        $response = $this->get("imovel/{$id}");
+        $response->assertOK();
+        $response->assertDontSee('11999990000');
+        $response->assertSee('Imóvel público');
+    }
+
+    public function testTelefoneEWhatsappVisiveisParaContaTotalmenteOnboarded(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $accountId = (int) $tenant['account']->id;
+        $id = $this->insertProperty($accountId, 'Onboarded_' . uniqid());
+
+        $response = $this->get("imovel/{$id}");
+        $response->assertOK();
+        $response->assertSee('11999990000');
+    }
+
+    public function testGetPublicPropertyDetailsRetornaCamposDeContatoNulosQuandoNaoOnboarded(): void
+    {
+        $tenant = (new TenantFactory())->create(['verification_status' => 'PENDING', 'is_verified' => false]);
+        $accountId = (int) $tenant['account']->id;
+        $id = $this->insertProperty($accountId, 'ServiceNulo_' . uniqid());
+
+        $details = (new PropertyService())->getPublicPropertyDetails($id);
+
+        $this->assertNotNull($details);
+        $this->assertFalse($details['showContact']);
+        $this->assertNull($details['property']->account_phone);
+        $this->assertNull($details['property']->account_whatsapp);
+        $this->assertNull($details['property']->whatsapp_hub_config);
+    }
+
+    public function testGetPropertyDetailsInternoNaoOcultaContatoIndependenteDeOnboarding(): void
+    {
+        $tenant = (new TenantFactory())->create(['verification_status' => 'PENDING', 'is_verified' => false]);
+        $accountId = (int) $tenant['account']->id;
+        $id = $this->insertProperty($accountId, 'ServiceInterno_' . uniqid());
+
+        $details = (new PropertyService())->getPropertyDetails($id);
+
+        $this->assertNotNull($details);
+        $this->assertSame('11999990000', $details['property']->account_phone);
+    }
 }

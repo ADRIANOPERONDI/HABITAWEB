@@ -105,6 +105,15 @@ class SubscriptionModel extends Model
     }
 
     /**
+     * Mesma régua usada pelo AdminAuth pra liberar o painel — ponto único
+     * pra não duplicar "status = ACTIVE" em cada consumidor novo.
+     */
+    public function hasActiveSubscription(int $accountId): bool
+    {
+        return $this->getActiveSubscriptionByAccount($accountId) !== null;
+    }
+
+    /**
      * Estatísticas de subscriptions
      * @param int|null $accountId Se null, retorna stats globais
      */
