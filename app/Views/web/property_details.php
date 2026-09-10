@@ -18,7 +18,7 @@
 
     <div class="row g-5">
         <!-- Gallery & Main Info -->
-        <div class="col-lg-8">
+        <div class="col-12 col-lg-8">
             <div class="card border-0 overflow-hidden mb-4" style="border-radius: 12px; box-shadow: var(--premium-shadow-sm);">
                 <div id="propertyCarousel" class="carousel slide" data-bs-ride="carousel">
                     <div class="carousel-inner" style="aspect-ratio: 16 / 9; background: #f8f9fa;">
@@ -245,7 +245,7 @@
         </div>
 
         <!-- Sidebar Contact -->
-        <div class="col-lg-4">
+        <div class="col-12 col-lg-4">
             <div class="card border-0 p-4 sticky-top" style="top: 100px; border-radius: 12px; box-shadow: var(--premium-shadow);">
                 <div class="premium-eyebrow"><?= $property->tipo_negocio === 'VENDA' ? 'Compra' : 'Aluguel' ?></div>
                 <h3 class="fw-bold text-dark mb-1"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></h3>
