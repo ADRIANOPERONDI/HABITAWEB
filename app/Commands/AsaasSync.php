@@ -16,7 +16,11 @@ class AsaasSync extends BaseCommand
     {
         $limit = max(1, (int) ($params[0] ?? 200));
         $db = \Config\Database::connect();
-        $paymentService = new PaymentService();
+        // loadGateway:false — este comando sempre chama setGateway('asaas')
+        // na sequência, então carregar o gateway primário no construtor só
+        // pra descartar em seguida decifrava a config duas vezes por
+        // execução (e, com a decriptação falhando, duplicava o log de erro).
+        $paymentService = new PaymentService(loadGateway: false);
 
         try {
             $paymentService->setGateway('asaas');

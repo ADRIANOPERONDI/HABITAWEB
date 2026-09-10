@@ -21,7 +21,15 @@ class PaymentService
     protected $paymentProfileModel;
     protected $db;
 
-    public function __construct()
+    /**
+     * @param bool $loadGateway false pula o carregamento automático do gateway
+     *                          primário — usado por quem já vai chamar
+     *                          `setGateway()` na sequência (ex.: `AsaasSync`),
+     *                          pra não decifrar a config duas vezes seguidas
+     *                          (e, se a decriptação estiver falhando, não
+     *                          duplicar o log de erro a cada execução).
+     */
+    public function __construct(bool $loadGateway = true)
     {
         $this->gatewayModel = new PaymentGatewayModel();
         $this->configModel = new PaymentGatewayConfigModel();
@@ -30,7 +38,11 @@ class PaymentService
         $this->transactionModel = model('App\Models\PaymentTransactionModel');
         $this->paymentProfileModel = model('App\Models\PaymentProfileModel');
         $this->db = \Config\Database::connect();
-        
+
+        if (!$loadGateway) {
+            return;
+        }
+
         // Load the primary active gateway immediately
         try {
             $this->activeGateway = $this->loadActiveGateway();
