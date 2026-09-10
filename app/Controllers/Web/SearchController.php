@@ -83,11 +83,18 @@ class SearchController extends BaseController
             cache()->save('search_filter_options', $filterOptions, 3600);
         }
 
+        // Deep-link com cidade na URL (ex.: /imoveis/venda/sao-paulo) já chega
+        // renderizado sem passar pelo JS de cascata — escopar aqui também,
+        // senão o dropdown de bairro nasce listando bairro de outra cidade.
+        $bairros = !empty($filters['cidade'])
+            ? $propertyService->getBairrosByCidade($filters['cidade'])
+            : ($filterOptions['bairros'] ?? []);
+
         return view('web/search_map', [
             'filters'            => $filters,
             'tipos'              => $filterOptions['tipos'] ?? [],
             'cidades'            => $filterOptions['cidades'] ?? [],
-            'bairros'            => $filterOptions['bairros'] ?? []
+            'bairros'            => $bairros
         ]);
     }
 

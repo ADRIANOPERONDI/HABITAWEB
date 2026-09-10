@@ -9,6 +9,33 @@ class MapSearchController extends BaseController
 {
     use ResponseTrait;
 
+    /**
+     * Bairros de uma cidade, pro dropdown de bairro se atualizar quando o
+     * visitante troca de cidade (cascata) — sem isto o dropdown listava
+     * bairro de qualquer cidade do sistema, indistintamente.
+     */
+    public function getBairros()
+    {
+        $cidade = trim((string) $this->request->getGet('cidade'));
+        if ($cidade === '') {
+            return $this->respond(['bairros' => []]);
+        }
+
+        helper('url');
+        $cacheKey = 'search_filter_bairros_' . mb_url_title(mb_strtolower($cidade), '-');
+        $bairros = cache($cacheKey);
+
+        if ($bairros === null) {
+            $bairros = array_map(
+                static fn ($row) => $row->bairro,
+                service('propertyService')->getBairrosByCidade($cidade)
+            );
+            cache()->save($cacheKey, $bairros, 3600);
+        }
+
+        return $this->respond(['bairros' => $bairros]);
+    }
+
     public function getMapData()
     {
         helper('format');

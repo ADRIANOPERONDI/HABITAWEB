@@ -1286,6 +1286,30 @@ class PropertyService
     }
 
     /**
+     * Bairros existentes numa cidade — o dropdown de bairro da busca pública
+     * usava `getSearchFilterOptions()` sem nenhum escopo por cidade, então
+     * listava bairro de qualquer cidade do sistema (bug real: cliente
+     * selecionava "Guaraciaba" e via "AGOSTINI", que só existe em São Miguel
+     * do Oeste, entre as opções). Mesmo estilo de `getSearchFilterOptions()`:
+     * instância limpa de PropertyModel, sem cache interno — cache é
+     * responsabilidade de quem chama.
+     */
+    public function getBairrosByCidade(string $cidade): array
+    {
+        $cidade = trim($cidade);
+        if ($cidade === '') {
+            return [];
+        }
+
+        $resolved = $this->resolveLocationName($cidade, 'cidade') ?? $cidade;
+
+        $model = (new PropertyModel())->distinct()->select('bairro')->where('cidade', $resolved);
+        $this->publicVisibility->apply($model);
+
+        return $model->orderBy('bairro', 'ASC')->findAll();
+    }
+
+    /**
      * Filtros de busca de imóvel — o `WHERE` que define "o que corresponde à
      * pesquisa do visitante". Único ponto de montagem, usado por
      * `listProperties` (catálogo do parceiro/admin) e `buildPublicMapSearchQuery`

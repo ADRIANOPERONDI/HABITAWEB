@@ -218,6 +218,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const cidadeParam = new URLSearchParams(window.location.search).get('cidade');
     const mapApiUrl = new URL('<?= site_url('api/imoveis/mapa') ?>');
     const mapApiPath = mapApiUrl.pathname;
+    const bairrosApiUrl = new URL('<?= site_url('api/imoveis/bairros') ?>');
+    const bairrosApiPath = bairrosApiUrl.pathname;
     const mobileToggle = document.getElementById('btnMobileToggle');
 
     let activeFetchController = null;
@@ -557,6 +559,32 @@ document.addEventListener('DOMContentLoaded', function() {
     $('#mapFiltersForm').on('change', 'select', function() {
         inputPropertyIds.value = '';
         scheduleFetch();
+    });
+
+    // Cascata cidade -> bairro: sem isto o dropdown de bairro listava bairro
+    // de qualquer cidade do sistema, e escolher um bairro de outra cidade
+    // devolvia "0 imóveis" (combinação que genuinamente não existe, mas
+    // parecia busca quebrada). O reset do bairro é síncrono, antes do fetch
+    // de repopulação — o handler de 'change' delegado acima já dispara a
+    // busca com o bairro limpo, sem precisar esperar a lista nova chegar.
+    document.getElementById('filterCidade').addEventListener('change', function() {
+        const bairroSelect = document.getElementById('filterBairro');
+        bairroSelect.value = '';
+
+        fetch(bairrosApiPath + '?cidade=' + encodeURIComponent(this.value))
+            .then(response => response.json())
+            .then(data => {
+                bairroSelect.innerHTML = '<option value="">Todos os bairros</option>';
+                (data.bairros || []).forEach(function(bairro) {
+                    const opt = document.createElement('option');
+                    opt.value = bairro;
+                    opt.textContent = bairro;
+                    bairroSelect.appendChild(opt);
+                });
+            })
+            .catch(() => {
+                // Falha de rede: mantém a lista já renderizada (não pior que hoje).
+            });
     });
 
     form.addEventListener('submit', function(event) {
