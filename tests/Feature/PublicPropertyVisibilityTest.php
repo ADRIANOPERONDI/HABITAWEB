@@ -209,4 +209,27 @@ final class PublicPropertyVisibilityTest extends HabitawebTestCase
         $this->assertNotNull($details);
         $this->assertSame('11999990000', $details['property']->account_phone);
     }
+
+    /**
+     * Regressão: conta onboardada (KYC + assinatura ativa) mas SEM
+     * telefone/whatsapp preenchido (coluna com string vazia, não NULL —
+     * `??` não cai no fallback pra string vazia) mostrava o botão "Falar
+     * no WhatsApp" mesmo sem nenhum número pra abrir. Clicar não fazia
+     * nada — pior que não mostrar o botão, porque parecia quebrado.
+     */
+    public function testBotaoDeWhatsappNaoAparecePraContaSemTelefoneNemWhatsapp(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $accountId = (int) $tenant['account']->id;
+        model(AccountModel::class)->update($accountId, ['telefone' => '', 'whatsapp' => '']);
+        $id = $this->insertProperty($accountId, 'SemContato_' . uniqid());
+
+        $response = $this->get("imovel/{$id}");
+        $response->assertOK();
+        $response->assertDontSee('btnWhatsAppHub');
+        // 'fa-solid fa-phone' sozinho também existe no rodapé do layout público
+        // (contato institucional) — a classe 'fa-phone me-2' é exclusiva da
+        // linha de telefone do anunciante nesta página.
+        $response->assertDontSee('fa-solid fa-phone me-2');
+    }
 }
