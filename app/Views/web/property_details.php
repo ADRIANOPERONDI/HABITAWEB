@@ -290,8 +290,16 @@
                         <?php if($property->account_email): ?>
                             <div class="mb-1"><i class="fa-solid fa-envelope me-2"></i> <?= esc($property->account_email) ?></div>
                         <?php endif; ?>
-                        <?php if($showContact ?? false): ?>
-                            <div class="mb-1"><i class="fa-solid fa-phone me-2"></i> <?= esc($property->account_phone ?? $property->account_whatsapp ?? '(11) 99999-9999') ?></div>
+                        <?php
+                            // !empty(), não ?? — conta sem telefone/whatsapp preenchido
+                            // grava string vazia, não null, então ?? nunca cai no
+                            // fallback e mostrava a linha do telefone em branco (e o
+                            // botão do WhatsApp aparecia mas o clique não fazia nada,
+                            // já que não existe nenhum número pra abrir).
+                            $hasContactNumber = !empty($property->account_phone) || !empty($property->account_whatsapp);
+                        ?>
+                        <?php if(($showContact ?? false) && $hasContactNumber): ?>
+                            <div class="mb-1"><i class="fa-solid fa-phone me-2"></i> <?= esc($property->account_phone ?: $property->account_whatsapp) ?></div>
                         <?php endif; ?>
                         <a href="<?= site_url('parceiro/' . $property->account_id) ?>" class="text-primary fw-bold text-decoration-none d-block mt-2">
                             Ver Perfil Completo <i class="fas fa-arrow-right ms-1"></i>
@@ -353,7 +361,7 @@
                     <div class="mb-3">
                         <textarea name="mensagem" class="form-control" rows="3" placeholder="Mensagem">Olá, gostaria de mais informações sobre este imóvel.</textarea>
                     </div>
-                    <?php if($showContact ?? false): ?>
+                    <?php if(($showContact ?? false) && $hasContactNumber): ?>
                         <button type="button" id="btnWhatsAppHub" class="btn btn-success w-100 btn-lg fw-bold rounded-pill mb-3 shadow-sm">
                             <i class="fa-brands fa-whatsapp me-2"></i> Falar no WhatsApp
                         </button>
@@ -476,7 +484,7 @@
 </div>
 </div>
 
-<?php if($showContact ?? false): ?>
+<?php if(($showContact ?? false) && $hasContactNumber): ?>
 <!-- Modal WhatsApp Hub (Linktree Style) -->
 <div class="modal fade" id="whatsappModal" tabindex="-1" aria-labelledby="whatsappModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
