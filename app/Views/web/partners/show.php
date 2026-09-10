@@ -38,13 +38,13 @@
                 <?php endif; ?>
 
                 <div class="d-flex flex-wrap gap-3">
-                    <?php if(!empty($partner->whatsapp)): ?>
+                    <?php if(($showContact ?? false) && !empty($partner->whatsapp)): ?>
                         <a href="https://wa.me/<?= preg_replace('/[^0-9]/', '', $partner->whatsapp) ?>" target="_blank" class="btn btn-success rounded-pill px-4">
                             <i class="fab fa-whatsapp me-2"></i> WhatsApp
                         </a>
                     <?php endif; ?>
-                    
-                    <?php if(!empty($partner->telefone)): ?>
+
+                    <?php if(($showContact ?? false) && !empty($partner->telefone)): ?>
                         <a href="tel:<?= $partner->telefone ?>" class="btn btn-outline-dark rounded-pill px-4">
                             <i class="fas fa-phone me-2"></i> <?= esc($partner->telefone) ?>
                         </a>

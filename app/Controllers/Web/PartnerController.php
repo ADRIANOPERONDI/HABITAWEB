@@ -72,6 +72,12 @@ class PartnerController extends BaseController
         helper('format');
         $propertyService = new \App\Services\PropertyService();
 
+        // Mesma régua que esconde WhatsApp/telefone na página de detalhe do
+        // imóvel (KYC aprovado + assinatura ativa) — o anunciante tem que
+        // terminar o cadastro antes de receber contato pelo site público,
+        // independente de onde o visitante entrar em contato.
+        $showContact = model('App\Models\AccountModel')->isFullyOnboarded((int) $partner->id);
+
         $isPremium = \App\Services\PlanGate::has(
             (int) $partner->id,
             \App\Entities\PlanFeature::PAGINA_PREMIUM
@@ -87,6 +93,7 @@ class PartnerController extends BaseController
                 'partner'    => $partner,
                 'properties' => $propData['properties'],
                 'pager'      => $propData['pager'],
+                'showContact' => $showContact,
                 'title'      => $partner->nome . ' - Perfil do Parceiro'
             ]);
         }
@@ -113,6 +120,7 @@ class PartnerController extends BaseController
             'pager'      => $propData['pager'],
             'team'       => (new \App\Services\AccountService())->getPublicTeam((int) $partner->id),
             'aba'        => $aba,
+            'showContact' => $showContact,
             'title'      => $partner->nome . ' - ' . ($partner->tipo_conta === 'IMOBILIARIA' ? 'Imobiliária' : 'Corretor') . ' Parceiro'
         ]);
     }
