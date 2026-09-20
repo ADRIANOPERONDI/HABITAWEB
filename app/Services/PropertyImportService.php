@@ -386,6 +386,13 @@ class PropertyImportService
             $normalized['estado'] = strtoupper($normalized['estado']);
         }
 
+        // Mesma razao de estado/status/tipo_negocio acima: sem forma canonica,
+        // "SÃO MIGUEL DO OESTE" e "São Miguel do Oeste" viram duas cidades no
+        // DISTINCT do filtro de busca.
+        if (isset($normalized['cidade']) && is_string($normalized['cidade'])) {
+            $normalized['cidade'] = \App\Libraries\Text\CityName::normalize($normalized['cidade']);
+        }
+
         // Uma imagem só, enviada como string, também é aceita.
         if (isset($normalized['images']) && is_string($normalized['images'])) {
             $normalized['images'] = array_filter(array_map('trim', explode('|', $normalized['images'])));

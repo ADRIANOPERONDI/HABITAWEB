@@ -287,7 +287,10 @@ class SimobPropertyMapper
             'numero'      => $this->str($get('numero')),
             'complemento' => $this->str($get('complemento')),
             'bairro'      => $this->str($get('bairro')),
-            'cidade'      => $this->str($get('cidade')),
+            // A origem manda a cidade em caixa alta; o cadastro manual do
+            // painel (ViaCEP) manda em Title Case. Sem forma canonica, a mesma
+            // cidade vira duas opcoes no filtro da busca publica.
+            'cidade'      => \App\Libraries\Text\CityName::normalize($this->str($get('cidade'))),
             // validatePropertyData exige exatamente 2 caracteres.
             'estado'      => strlen($uf) === 2 ? $uf : null,
             'cep'         => $this->str($get('cep')),

@@ -243,6 +243,16 @@ class PropertyService
                 }
             }
 
+            // 2b. Forma canonica da cidade.
+            // `cidade` e texto livre e cada caminho de escrita gravava de um
+            // jeito: o sync do Simob em caixa alta, o ViaCEP do formulario em
+            // Title Case. Como DISTINCT e sensivel a caixa no Postgres, a
+            // mesma cidade virava duas opcoes no filtro da busca — e escolher
+            // uma escondia os imoveis da outra.
+            if (isset($data['cidade']) && is_string($data['cidade'])) {
+                $data['cidade'] = \App\Libraries\Text\CityName::normalize($data['cidade']);
+            }
+
             // 3. FILL ENTITY
             $property->fill($data);
 
@@ -1275,7 +1285,8 @@ class PropertyService
         $publicDistinct = function (string $field): array {
             $model = (new PropertyModel())->distinct()->select($field);
             $this->publicVisibility->apply($model);
-            return $model->orderBy($field, 'ASC')->findAll();
+
+            return $this->dedupPorCaixa($model->orderBy($field, 'ASC')->findAll(), $field);
         };
 
         return [
@@ -1283,6 +1294,49 @@ class PropertyService
             'bairros' => $publicDistinct('bairro'),
             'tipos'   => $publicDistinct('tipo_imovel'),
         ];
+    }
+
+    /**
+     * Colapsa variantes que so diferem na caixa — "SÃO MIGUEL DO OESTE" e
+     * "São Miguel do Oeste" sao a MESMA cidade, e o DISTINCT do Postgres as
+     * devolve como duas linhas.
+     *
+     * A normalizacao na escrita (CityName) e a migration ja deixam o banco
+     * consistente; isto e a rede de protecao pra que uma gravacao futura fora
+     * do padrao nao volte a rachar o dropdown. Entre duas variantes prefere a
+     * que NAO esta toda em caixa alta, que e a legivel na tela.
+     *
+     * @param list<object> $linhas
+     *
+     * @return list<object>
+     */
+    private function dedupPorCaixa(array $linhas, string $field): array
+    {
+        $porChave = [];
+
+        foreach ($linhas as $linha) {
+            $valor = $linha->{$field} ?? null;
+
+            if ($valor === null || trim((string) $valor) === '') {
+                continue;
+            }
+
+            $chave = mb_strtolower(trim((string) $valor));
+
+            if (! isset($porChave[$chave])) {
+                $porChave[$chave] = $linha;
+
+                continue;
+            }
+
+            $atual = (string) ($porChave[$chave]->{$field} ?? '');
+
+            if ($atual === mb_strtoupper($atual) && (string) $valor !== mb_strtoupper((string) $valor)) {
+                $porChave[$chave] = $linha;
+            }
+        }
+
+        return array_values($porChave);
     }
 
     /**
@@ -1422,10 +1476,16 @@ class PropertyService
     }
 
     /**
-     * Aplica o filtro de cidade/bairro num builder: resolve para o nome exato
-     * (usa o índice composto existente) ou, sem resolução, compara por
-     * LOWER() = (índice funcional). Compartilhado por listProperties e
-     * buildPublicMapSearchQuery.
+     * Aplica o filtro de cidade/bairro num builder. Compartilhado por
+     * listProperties e buildPublicMapSearchQuery.
+     *
+     * resolveLocationName() serve pra traduzir o slug SEO sem acento
+     * ("sao-miguel-do-oeste") de volta pro nome acentuado do banco — coisa que
+     * LOWER() sozinho nao faz. A COMPARACAO, porem, e sempre por LOWER(), nunca
+     * por igualdade exata: com "SÃO MIGUEL DO OESTE" e "São Miguel do Oeste"
+     * gravados lado a lado, o match exato devolvia so as linhas de UMA das
+     * grafias e escondia as da outra. O indice funcional
+     * idx_properties_status_lower_city_neighborhood cobre essa comparacao.
      */
     private function applyLocationFilter($builder, array $filters, string $field): void
     {
@@ -1433,14 +1493,10 @@ class PropertyService
             return;
         }
 
-        $input    = (string) $filters[$field];
-        $resolved = $this->resolveLocationName($input, $field);
+        $input = (string) $filters[$field];
+        $alvo  = $this->resolveLocationName($input, $field) ?? trim($input);
 
-        if ($resolved !== null) {
-            $builder->where("properties.{$field}", $resolved);
-        } else {
-            $builder->where("LOWER(properties.{$field})", mb_strtolower(trim($input)));
-        }
+        $builder->where("LOWER(properties.{$field})", mb_strtolower($alvo));
     }
 
     /**
