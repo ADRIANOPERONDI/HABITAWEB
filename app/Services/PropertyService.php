@@ -1282,16 +1282,30 @@ class PropertyService
         // chamado por resolveLocationName() no MEIO da montagem do builder de
         // listProperties — reusar o model compartilhado misturaria o estado do
         // builder em andamento com estas queries de distinct, corrompendo ambas.
-        $publicDistinct = function (string $field): array {
+        $publicDistinct = function (string $field, bool $dedup = false): array {
             $model = (new PropertyModel())->distinct()->select($field);
             $this->publicVisibility->apply($model);
 
-            return $this->dedupPorCaixa($model->orderBy($field, 'ASC')->findAll(), $field);
+            $linhas = $model->orderBy($field, 'ASC')->findAll();
+
+            return $dedup ? $this->dedupPorCaixa($linhas, $field) : $linhas;
         };
 
+        // Só cidade e bairro são deduplicados, e a razão é estrita: colapsar o
+        // dropdown só é seguro quando o FILTRO alcança as duas grafias, e
+        // applyLocationFilter compara por LOWER() apenas nesses dois campos.
+        //
+        // tipo_imovel fica de fora de propósito. applySearchFilters compara ele
+        // por igualdade exata, apoiado no índice idx_properties_tipo_imovel
+        // (btree simples, que LOWER() inutilizaria). Deduplicar aqui descartaria
+        // a variante em caixa alta do dropdown e os imóveis gravados com ela
+        // ficariam SEM NENHUMA opção que os alcance — some do portal um imóvel
+        // que existe. E as duas grafias convivem de verdade: o formulário do
+        // admin grava 'CASA', o import de parceiro aceita {"type":"Casa"} e
+        // PropertyImportService::normalizeItem não canoniza esse campo.
         return [
-            'cidades' => $publicDistinct('cidade'),
-            'bairros' => $publicDistinct('bairro'),
+            'cidades' => $publicDistinct('cidade', true),
+            'bairros' => $publicDistinct('bairro', true),
             'tipos'   => $publicDistinct('tipo_imovel'),
         ];
     }
@@ -1305,6 +1319,14 @@ class PropertyService
      * consistente; isto e a rede de protecao pra que uma gravacao futura fora
      * do padrao nao volte a rachar o dropdown. Entre duas variantes prefere a
      * que NAO esta toda em caixa alta, que e a legivel na tela.
+     *
+     * PRE-CONDICAO, e nao e detalhe: so use isto em campo cujo FILTRO compare
+     * sem diferenciar caixa. Descartar uma variante do dropdown sem que o
+     * filtro alcance as duas deixa os imoveis gravados na variante descartada
+     * sem nenhuma opcao que os encontre — eles somem do portal. Hoje isso vale
+     * para cidade e bairro (applyLocationFilter compara por LOWER()) e NAO
+     * vale para tipo_imovel, que applySearchFilters compara por igualdade
+     * exata.
      *
      * @param list<object> $linhas
      *
