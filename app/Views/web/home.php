@@ -254,9 +254,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const map = L.map('homeMap', { zoomControl: true, scrollWheelZoom: false })
         .setView([-14.235, -51.925], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+    L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
+        maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        attribution: <?= json_encode(config('Map')->tileAttribution) ?>
+
     }).addTo(map);
 
     const markers = L.markerClusterGroup({

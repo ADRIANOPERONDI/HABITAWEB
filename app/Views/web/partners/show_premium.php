@@ -240,8 +240,10 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const map = L.map('partnerMap').setView([<?= (float) $partner->latitude ?>, <?= (float) $partner->longitude ?>], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+    L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
+        maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        attribution: <?= json_encode(config('Map')->tileAttribution) ?>
+
     }).addTo(map);
     L.marker([<?= (float) $partner->latitude ?>, <?= (float) $partner->longitude ?>]).addTo(map);
 });
