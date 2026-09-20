@@ -28,7 +28,18 @@
     <div class="carousel-inner h-100">
         <?php foreach($images as $index => $image): ?>
             <div class="carousel-item h-100 <?= $index === 0 ? 'active' : '' ?>">
-                <img src="<?= esc($image) ?>" loading="<?= $index === 0 ? 'eager' : 'lazy' ?>" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
+                <?php
+                    // A foto 0 é a visível. A 1 vem junto, em prioridade baixa:
+                    // ela é o destino do primeiro toque em "próxima", e imagem
+                    // lazy dentro de .carousel-item (display:none) NUNCA é
+                    // pré-carregada pelo navegador — o slide aparecia em branco
+                    // até o download terminar. Da 2 em diante segue lazy; o
+                    // listener de slide.bs.carousel no layout promove o resto
+                    // na primeira interação com o carrossel.
+                    $loading  = $index <= 1 ? 'eager' : 'lazy';
+                    $priority = $index === 0 ? 'high' : 'low';
+                ?>
+                <img src="<?= esc($image) ?>" loading="<?= $loading ?>" fetchpriority="<?= $priority ?>" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
             </div>
         <?php endforeach; ?>
     </div>

@@ -81,3 +81,24 @@
         });
     });
 </script>
+
+<script>
+    // Fotos além da primeira ficam em .carousel-item sem .active, que o
+    // Bootstrap renderiza com display:none — e o navegador NUNCA pré-carrega
+    // uma imagem loading="lazy" dentro de container escondido. O resultado era
+    // o slide aparecer em branco no clique de "próxima foto" e só preencher
+    // segundos depois, num site onde as fotos estavam todas enviadas.
+    //
+    // A foto 2 já vem eager do partial (cobre o primeiro toque). Aqui, na
+    // primeira interação com um carrossel, promovemos o resto das fotos DELE a
+    // eager — o usuário demonstrou intenção, e são no máximo 5 por card.
+    // Delegado no document porque os cards da busca chegam por AJAX depois
+    // que esta página já carregou.
+    document.addEventListener('slide.bs.carousel', function (event) {
+        var pendentes = event.target.querySelectorAll('img[loading="lazy"]');
+
+        for (var i = 0; i < pendentes.length; i++) {
+            pendentes[i].setAttribute('loading', 'eager');
+        }
+    });
+</script>
