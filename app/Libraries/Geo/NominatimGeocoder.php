@@ -13,6 +13,15 @@ namespace App\Libraries\Geo;
  * Goiás, a 1.500 km do imóvel. Metade do catálogo de um cliente foi parar no
  * Centro-Oeste desse jeito.
  *
+ * O degrau do bairro só aceita resultado que SEJA um lugar (class place ou
+ * boundary). Sem esse filtro ele pegava o primeiro casamento de texto livre,
+ * que para "Centro, São Miguel do Oeste, SC" é a Epagri Cetresmo — um órgão
+ * público na SC-163, a 7 km do centro: 36 imóveis do catálogo de um cliente
+ * foram parar lá. Bairro que existe no OSM volta como class=place/type=suburb
+ * (Salete, por exemplo); quando não existe, o certo é descer pro degrau da
+ * cidade e usar o centro administrativo, e não fixar num ponto comercial
+ * qualquer que por acaso tem a palavra no nome.
+ *
  * Os degraus de rua e de cidade usam a consulta ESTRUTURADA do Nominatim
  * (street/city/state), não texto livre: ela casa a rua em endereços que o
  * texto livre devolvia vazio — e quem devolve vazio cai pro degrau seguinte e
@@ -42,7 +51,18 @@ class NominatimGeocoder implements GeocoderInterface
      * que ficariam 30 dias em cache respondendo pelo formato antigo de
      * consulta mesmo depois do conserto.
      */
-    private const CACHE_VERSION = 'v2';
+    private const CACHE_VERSION = 'v3';
+
+    /**
+     * O que conta como "lugar" no degrau do bairro. `place` cobre suburb,
+     * neighbourhood, quarter e village; `boundary` cobre bairro mapeado como
+     * área administrativa. Escola, posto de saúde e autoescola que tenham a
+     * palavra no nome vêm como `amenity`/`office` e ficam de fora.
+     */
+    private const CLASSES_DE_LUGAR = ['place', 'boundary'];
+
+    /** Quantos resultados pedir quando há filtro — o primeiro pode não servir. */
+    private const CANDIDATOS_COM_FILTRO = 5;
 
     /** Nominatim pede no máximo 1 req/s — aplicado só quando a consulta não veio do cache. */
     private const THROTTLE_MS = 1100;
@@ -55,8 +75,8 @@ class NominatimGeocoder implements GeocoderInterface
             return null;
         }
 
-        foreach ($this->queries($endereco, $cidade) as $params) {
-            $resultado = $this->lookup($params);
+        foreach ($this->queries($endereco, $cidade) as $candidato) {
+            $resultado = $this->lookup($candidato['params'], $candidato['aceita']);
 
             if ($resultado !== null) {
                 return $resultado;
@@ -69,7 +89,10 @@ class NominatimGeocoder implements GeocoderInterface
     /**
      * Os degraus, do mais específico pro mais genérico.
      *
-     * @return list<array<string, string>> cada item é o conjunto de parâmetros de uma consulta
+     * `aceita` restringe quais classes do Nominatim servem naquele degrau;
+     * null = qualquer resultado serve.
+     *
+     * @return list<array{params: array<string, string>, aceita: list<string>|null}>
      */
     private function queries(array $endereco, string $cidade): array
     {
@@ -88,27 +111,29 @@ class NominatimGeocoder implements GeocoderInterface
         $candidatas = [];
 
         if ($rua !== '' && $numero !== '') {
-            $candidatas[] = $local + ['street' => "{$rua} {$numero}"];
+            $candidatas[] = ['params' => $local + ['street' => "{$rua} {$numero}"], 'aceita' => null];
         }
 
         if ($rua !== '') {
-            $candidatas[] = $local + ['street' => $rua];
+            $candidatas[] = ['params' => $local + ['street' => $rua], 'aceita' => null];
         }
 
         if ($bairro !== '') {
             $cidadeUf     = $estado !== '' ? "{$cidade}, {$estado}" : $cidade;
-            $candidatas[] = ['q' => "{$bairro}, {$cidadeUf}, Brazil"];
+            // Só bairro de verdade: sem isto o texto livre casava com a
+            // primeira empresa que tivesse a palavra no nome.
+            $candidatas[] = ['params' => ['q' => "{$bairro}, {$cidadeUf}, Brazil"], 'aceita' => self::CLASSES_DE_LUGAR];
         }
 
-        $candidatas[] = $local;
+        $candidatas[] = ['params' => $local, 'aceita' => null];
 
         // Um endereço incompleto pode repetir o mesmo conjunto de parâmetros
         // entre degraus — sem isso, bateríamos o Nominatim duas vezes com a
         // consulta idêntica.
         $unicas = [];
 
-        foreach ($candidatas as $params) {
-            $unicas[$this->cacheSubject($params)] = $params;
+        foreach ($candidatas as $candidato) {
+            $unicas[$this->cacheSubject($candidato['params'])] = $candidato;
         }
 
         return array_values($unicas);
@@ -116,12 +141,16 @@ class NominatimGeocoder implements GeocoderInterface
 
     /**
      * @param array<string, string> $params
+     * @param list<string>|null     $aceita classes do Nominatim que servem; null = qualquer uma
      *
      * @return array{lat:float, lng:float}|null
      */
-    private function lookup(array $params): ?array
+    private function lookup(array $params, ?array $aceita = null): ?array
     {
-        $cacheKey = 'geocode_nominatim_' . self::CACHE_VERSION . '_' . md5($this->cacheSubject($params));
+        // O filtro entra na chave: a mesma consulta com e sem restricao de
+        // classe pode legitimamente dar respostas diferentes.
+        $assinatura = $this->cacheSubject($params) . '|' . implode(',', $aceita ?? []);
+        $cacheKey   = 'geocode_nominatim_' . self::CACHE_VERSION . '_' . md5($assinatura);
         $cached   = cache($cacheKey);
 
         if ($cached !== null) {
@@ -129,7 +158,7 @@ class NominatimGeocoder implements GeocoderInterface
             return $cached === false ? null : $cached;
         }
 
-        $resultado = $this->consultar($params);
+        $resultado = $this->consultar($params, $aceita);
 
         cache()->save($cacheKey, $resultado ?? false, self::CACHE_TTL_SECONDS);
 
@@ -160,10 +189,11 @@ class NominatimGeocoder implements GeocoderInterface
      * em socket (mesmo padrão de IntegrationHttpClient::dispatch()).
      *
      * @param array<string, string> $params
+     * @param list<string>|null     $aceita classes do Nominatim que servem; null = qualquer uma
      *
      * @return array{lat:float, lng:float}|null
      */
-    protected function consultar(array $params): ?array
+    protected function consultar(array $params, ?array $aceita = null): ?array
     {
         usleep(self::THROTTLE_MS * 1000);
 
@@ -176,7 +206,9 @@ class NominatimGeocoder implements GeocoderInterface
             $response = $client->get(self::ENDPOINT, [
                 'query' => $params + [
                     'format' => 'json',
-                    'limit'  => 1,
+                    // Com filtro o primeiro resultado pode nao servir; sem
+                    // filtro um so basta e a resposta e menor.
+                    'limit' => $aceita === null ? 1 : self::CANDIDATOS_COM_FILTRO,
                     // Trava o resultado no Brasil: sem isso um nome de cidade
                     // brasileiro casa com homônimo em Portugal.
                     'countrycodes' => 'br',
@@ -199,13 +231,40 @@ class NominatimGeocoder implements GeocoderInterface
             return null;
         }
 
-        if (! is_array($data) || ! isset($data[0]['lat'], $data[0]['lon'])) {
+        return $this->selecionar($data, $aceita);
+    }
+
+    /**
+     * Primeiro resultado que serve. Separado de consultar() pra poder ser
+     * testado sem rede — e porque a regra aqui é a que impede um órgão público
+     * de virar o centro de um bairro.
+     *
+     * @param mixed            $data   corpo já decodificado da resposta
+     * @param list<string>|null $aceita classes que servem; null = qualquer uma
+     *
+     * @return array{lat:float, lng:float}|null null faz quem chamou descer pro próximo degrau
+     */
+    protected function selecionar($data, ?array $aceita): ?array
+    {
+        if (! is_array($data)) {
             return null;
         }
 
-        return [
-            'lat' => (float) $data[0]['lat'],
-            'lng' => (float) $data[0]['lon'],
-        ];
+        foreach ($data as $item) {
+            if (! is_array($item) || ! isset($item['lat'], $item['lon'])) {
+                continue;
+            }
+
+            if ($aceita !== null && ! in_array($item['class'] ?? '', $aceita, true)) {
+                continue;
+            }
+
+            return [
+                'lat' => (float) $item['lat'],
+                'lng' => (float) $item['lon'],
+            ];
+        }
+
+        return null;
     }
 }

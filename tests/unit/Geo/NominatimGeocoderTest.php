@@ -197,6 +197,121 @@ final class NominatimGeocoderTest extends TestCase
         $this->assertSame(1, $geocoder->chamadas, '"não encontrado" também não pode bater a rede de novo');
     }
 
+    /**
+     * O degrau do bairro só aceita lugar de verdade. Sem isso, "Centro, São
+     * Miguel do Oeste, SC" casava com a Epagri Cetresmo — um órgão público na
+     * SC-163, a 7 km do centro — e 36 imóveis do catálogo de um cliente foram
+     * parar lá.
+     */
+    public function testDegrauDoBairroSoAceitaLugar(): void
+    {
+        $geocoder = new RespostaFixaNominatimGeocoder([]);
+
+        $geocoder->geocode([
+            'rua'    => 'Rua Teste',
+            'numero' => '100',
+            'bairro' => 'Centro',
+            'cidade' => 'São Miguel do Oeste',
+            'estado' => 'SC',
+        ]);
+
+        // rua+numero, rua, bairro, cidade — só o do bairro restringe a classe.
+        $this->assertSame(
+            [null, null, ['place', 'boundary'], null],
+            $geocoder->filtros,
+        );
+    }
+
+    /** Filtro diferente na mesma consulta não pode reaproveitar a entrada de cache. */
+    public function testFiltroDeClasseEntraNaChaveDoCache(): void
+    {
+        $geocoder = new RespostaFixaNominatimGeocoder([
+            'city=Chapecó&state=SC' => ['lat' => -27.0, 'lng' => -52.5],
+        ]);
+
+        $geocoder->geocode(['bairro' => 'Centro', 'cidade' => 'Chapecó', 'estado' => 'SC']);
+        $chamadasApos = $geocoder->chamadas;
+
+        $geocoder->geocode(['bairro' => 'Centro', 'cidade' => 'Chapecó', 'estado' => 'SC']);
+
+        $this->assertSame($chamadasApos, $geocoder->chamadas, 'a segunda rodada devia vir toda do cache');
+    }
+
+    /**
+     * A resposta real do Nominatim para "Centro, São Miguel do Oeste, SC":
+     * cinco casamentos de texto, NENHUM deles um bairro. O primeiro é a Epagri
+     * Cetresmo, e foi ele que levou 36 imóveis pra SC-163.
+     */
+    public function testSelecaoRecusaOrgaoPublicoEComercioNoDegrauDoBairro(): void
+    {
+        $geocoder = new SelecaoExposta();
+
+        $respostaReal = [
+            ['class' => 'office',  'type' => 'government',     'lat' => '-26.7867573', 'lon' => '-53.5057388'],
+            ['class' => 'amenity', 'type' => 'clinic',         'lat' => '-26.7379000', 'lon' => '-53.5190100'],
+            ['class' => 'amenity', 'type' => 'doctors',        'lat' => '-26.7312000', 'lon' => '-53.5147200'],
+            ['class' => 'amenity', 'type' => 'driving_school', 'lat' => '-26.7378400', 'lon' => '-53.5177800'],
+            ['class' => 'amenity', 'type' => 'school',         'lat' => '-26.7944300', 'lon' => '-53.5089100'],
+        ];
+
+        $this->assertNull(
+            $geocoder->escolher($respostaReal, ['place', 'boundary']),
+            'nenhum é bairro: tem de descer pro degrau da cidade',
+        );
+    }
+
+    /** Bairro que existe no OSM volta como place/suburb — esse serve. */
+    public function testSelecaoAceitaBairroDeVerdade(): void
+    {
+        $geocoder = new SelecaoExposta();
+
+        $resultado = $geocoder->escolher(
+            [['class' => 'place', 'type' => 'suburb', 'lat' => '-26.7301648', 'lon' => '-53.5395312']],
+            ['place', 'boundary'],
+        );
+
+        $this->assertSame(['lat' => -26.7301648, 'lng' => -53.5395312], $resultado);
+    }
+
+    /** Com o lugar depois do ruído, ele é encontrado em vez de virar "não achei". */
+    public function testSelecaoPulaORuidoEAchaOLugarMaisAbaixo(): void
+    {
+        $geocoder = new SelecaoExposta();
+
+        $resultado = $geocoder->escolher(
+            [
+                ['class' => 'amenity', 'type' => 'school',  'lat' => '-1.0', 'lon' => '-1.0'],
+                ['class' => 'place',   'type' => 'quarter', 'lat' => '-26.7', 'lon' => '-53.5'],
+            ],
+            ['place', 'boundary'],
+        );
+
+        $this->assertSame(['lat' => -26.7, 'lng' => -53.5], $resultado);
+    }
+
+    /** Sem filtro (degraus de rua e cidade) o primeiro resultado vale. */
+    public function testSelecaoSemFiltroPegaOPrimeiro(): void
+    {
+        $geocoder = new SelecaoExposta();
+
+        $resultado = $geocoder->escolher(
+            [['class' => 'office', 'type' => 'government', 'lat' => '-26.78', 'lon' => '-53.50']],
+            null,
+        );
+
+        $this->assertSame(['lat' => -26.78, 'lng' => -53.50], $resultado);
+    }
+
+    /** Resposta vazia ou malformada não pode explodir — o geocoder é fail-open. */
+    public function testSelecaoTolerraRespostaEstranha(): void
+    {
+        $geocoder = new SelecaoExposta();
+
+        $this->assertNull($geocoder->escolher([], null));
+        $this->assertNull($geocoder->escolher('nao e array', null));
+        $this->assertNull($geocoder->escolher([['sem' => 'coordenada']], null));
+    }
+
     /** A caixa do endereço não pode gerar duas entradas de cache pra mesma consulta. */
     public function testCacheIgnoraCaixaDoEndereco(): void
     {
@@ -224,9 +339,13 @@ final class RespostaFixaNominatimGeocoder extends NominatimGeocoder
     {
     }
 
-    protected function consultar(array $params): ?array
+    /** @var list<list<string>|null> o filtro de classe recebido em cada degrau */
+    public array $filtros = [];
+
+    protected function consultar(array $params, ?array $aceita = null): ?array
     {
         $this->chamadas++;
+        $this->filtros[] = $aceita;
 
         // Forma legível pros testes: "city=X&state=Y&street=Z", chaves em
         // ordem alfabética (mesma ordem que a chave de cache usa).
@@ -235,5 +354,14 @@ final class RespostaFixaNominatimGeocoder extends NominatimGeocoder
         $this->consultadas[] = $assinatura;
 
         return $this->respostas[$assinatura] ?? null;
+    }
+}
+
+/** Expõe selecionar() — é a regra que impede um órgão público de virar bairro. */
+final class SelecaoExposta extends NominatimGeocoder
+{
+    public function escolher($data, ?array $aceita): ?array
+    {
+        return $this->selecionar($data, $aceita);
     }
 }
