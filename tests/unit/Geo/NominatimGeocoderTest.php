@@ -312,6 +312,95 @@ final class NominatimGeocoderTest extends TestCase
         $this->assertNull($geocoder->escolher([['sem' => 'coordenada']], null));
     }
 
+    /**
+     * O Simob grava a esquina e o apartamento DENTRO do campo de rua. O
+     * Nominatim nao resolve nada disso: 54 imoveis desciam a escada inteira e
+     * paravam no centro da cidade, todos no mesmo pin. Os casos abaixo sao
+     * literais do catalogo em producao.
+     *
+     * @dataProvider enderecosDoSimob
+     */
+    public function testIsolaOLogradouroDaDescricao(string $cru, string $esperado): void
+    {
+        $geocoder = new SelecaoExposta();
+
+        $this->assertSame($esperado, $geocoder->isolar($cru));
+    }
+
+    public static function enderecosDoSimob(): array
+    {
+        return [
+            'esquina com virgula, apto e box' => [
+                'RUA LA SALLE, ESQUINA COM A RUA MARQUES DO HERVAL - APTO 2301 | BOX 41, 42 E 43',
+                'RUA LA SALLE',
+            ],
+            'esquina sem virgula' => [
+                'RUA LA SALLE ESQUINA COM RUA RUI BARBOSA - APTO 1001',
+                'RUA LA SALLE',
+            ],
+            'comeca com ESQUINA DAS RUAS' => [
+                'ESQUINA DAS RUAS MARCÍLIO DIAS COM RUA ALMIRANTE BARROSO - APTO 604',
+                'MARCÍLIO DIAS',
+            ],
+            'avenida com torre' => [
+                'AVENIDA SALGADO FILHO ESQUINA COM A RUA ALMIRANTE TAMANDARE E SETE DE SETEMBRO - APTO 502 | TORRE NORTE',
+                'AVENIDA SALGADO FILHO',
+            ],
+            'tipo e bairro colados' => ['Rua La Sale - Casa - Centro', 'Rua La Sale'],
+            'lote' => ['RUA PROJETADA A - LOTE 30', 'RUA PROJETADA A'],
+            'rua limpa fica intacta' => [
+                'RUA VEREADOR NERCI ZINO GRACIOLLI',
+                'RUA VEREADOR NERCI ZINO GRACIOLLI',
+            ],
+            'espaco repetido colapsa' => ['Rua  Rudolfo   Spier', 'Rua Rudolfo Spier'],
+            'vazio' => ['', ''],
+            'so pontuacao' => [' - | ', ''],
+        ];
+    }
+
+    /**
+     * O degrau limpo vem DEPOIS do texto original: quando o original resolve
+     * ele e mais especifico e o limpo nem chega a ser consultado.
+     */
+    public function testDegrauLimpoVemDepoisDoOriginal(): void
+    {
+        $geocoder = new RespostaFixaNominatimGeocoder([]);
+
+        $geocoder->geocode([
+            'rua'    => 'RUA LA SALLE ESQUINA COM RUA RUI BARBOSA - APTO 1001',
+            'numero' => '100',
+            'bairro' => 'Centro',
+            'cidade' => 'São Miguel do Oeste',
+            'estado' => 'SC',
+        ]);
+
+        $this->assertSame([
+            'city=São Miguel do Oeste&state=SC&street=RUA LA SALLE ESQUINA COM RUA RUI BARBOSA - APTO 1001 100',
+            'city=São Miguel do Oeste&state=SC&street=RUA LA SALLE ESQUINA COM RUA RUI BARBOSA - APTO 1001',
+            'city=São Miguel do Oeste&state=SC&street=RUA LA SALLE 100',
+            'city=São Miguel do Oeste&state=SC&street=RUA LA SALLE',
+            'q=Centro, São Miguel do Oeste, SC, Brazil',
+            'city=São Miguel do Oeste&state=SC',
+        ], $geocoder->consultadas);
+    }
+
+    /** Rua que ja esta limpa nao pode gerar degrau repetido e gastar rede a toa. */
+    public function testRuaLimpaNaoGeraDegrauDuplicado(): void
+    {
+        $geocoder = new RespostaFixaNominatimGeocoder([]);
+
+        $geocoder->geocode([
+            'rua'    => 'Rua Rudolfo Spier',
+            'cidade' => 'São Miguel do Oeste',
+            'estado' => 'SC',
+        ]);
+
+        $this->assertSame([
+            'city=São Miguel do Oeste&state=SC&street=Rua Rudolfo Spier',
+            'city=São Miguel do Oeste&state=SC',
+        ], $geocoder->consultadas);
+    }
+
     /** A caixa do endereço não pode gerar duas entradas de cache pra mesma consulta. */
     public function testCacheIgnoraCaixaDoEndereco(): void
     {
@@ -363,5 +452,10 @@ final class SelecaoExposta extends NominatimGeocoder
     public function escolher($data, ?array $aceita): ?array
     {
         return $this->selecionar($data, $aceita);
+    }
+
+    public function isolar(string $rua): string
+    {
+        return $this->isolarLogradouro($rua);
     }
 }

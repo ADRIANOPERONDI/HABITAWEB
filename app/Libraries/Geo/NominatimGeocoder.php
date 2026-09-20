@@ -64,6 +64,21 @@ class NominatimGeocoder implements GeocoderInterface
     /** Quantos resultados pedir quando há filtro — o primeiro pode não servir. */
     private const CANDIDATOS_COM_FILTRO = 5;
 
+    /**
+     * Onde o nome do logradouro acaba e começa a descrição livre. O Simob
+     * grava a esquina e o apartamento dentro do campo de rua — "RUA LA SALLE,
+     * ESQUINA COM A RUA MARQUES DO HERVAL - APTO 2301 | BOX 41, 42 E 43" —, e
+     * o Nominatim não resolve nada disso: 54 imóveis desciam a escada inteira
+     * e paravam no centro da cidade. Cortado em "RUA LA SALLE", resolve.
+     */
+    private const FIM_DO_LOGRADOURO = [
+        '/\bESQUINA\b/iu',
+        '/\bCOM\s+(?:A\s+)?(?:RUAS?|AVENIDAS?|AV\.?)\b/iu',
+        '/\s[-–—]\s/u',
+        '/\|/u',
+        '/\bN[º°]\b/iu',
+    ];
+
     /** Nominatim pede no máximo 1 req/s — aplicado só quando a consulta não veio do cache. */
     private const THROTTLE_MS = 1100;
 
@@ -118,6 +133,20 @@ class NominatimGeocoder implements GeocoderInterface
             $candidatas[] = ['params' => $local + ['street' => $rua], 'aceita' => null];
         }
 
+        // Os mesmos dois degraus com o logradouro isolado da descrição. Vêm
+        // DEPOIS do texto original de propósito: quando o original resolve,
+        // ele é mais específico e estes nem chegam a ser consultados; o dedupe
+        // abaixo descarta quando a limpeza não mudou nada.
+        $ruaLimpa = $this->isolarLogradouro($rua);
+
+        if ($ruaLimpa !== '' && $ruaLimpa !== $rua) {
+            if ($numero !== '') {
+                $candidatas[] = ['params' => $local + ['street' => "{$ruaLimpa} {$numero}"], 'aceita' => null];
+            }
+
+            $candidatas[] = ['params' => $local + ['street' => $ruaLimpa], 'aceita' => null];
+        }
+
         if ($bairro !== '') {
             $cidadeUf     = $estado !== '' ? "{$cidade}, {$estado}" : $cidade;
             // Só bairro de verdade: sem isto o texto livre casava com a
@@ -137,6 +166,41 @@ class NominatimGeocoder implements GeocoderInterface
         }
 
         return array_values($unicas);
+    }
+
+    /**
+     * Fica só com o nome do logradouro, jogando fora a descrição que o
+     * cadastro de origem enfia no mesmo campo (esquina, apartamento, box,
+     * torre, lote). "ESQUINA DAS RUAS MARCÍLIO DIAS COM RUA ALMIRANTE
+     * BARROSO - APTO 604" vira "MARCÍLIO DIAS", que o Nominatim resolve.
+     *
+     * Devolve string vazia quando não sobra nada — quem chama ignora.
+     */
+    protected function isolarLogradouro(string $rua): string
+    {
+        $rua = trim(preg_replace('/\s+/u', ' ', $rua) ?? '');
+
+        if ($rua === '') {
+            return '';
+        }
+
+        // "ESQUINA DAS RUAS X COM Y": o nome começa depois do prefixo.
+        $rua = preg_replace('/^ESQUINA\s+(?:D[AEO]S?\s+)?(?:RUAS?|AVENIDAS?|AV\.?)\s+/iu', '', $rua) ?? $rua;
+
+        $corte = mb_strlen($rua);
+
+        foreach (self::FIM_DO_LOGRADOURO as $padrao) {
+            if (preg_match($padrao, $rua, $m, PREG_OFFSET_CAPTURE)) {
+                // preg devolve offset em BYTES; mb_substr conta CARACTERES.
+                $pos = mb_strlen(substr($rua, 0, $m[0][1]));
+
+                if ($pos < $corte) {
+                    $corte = $pos;
+                }
+            }
+        }
+
+        return trim(mb_substr($rua, 0, $corte), " \t\n\r\0\x0B,.;-–—|");
     }
 
     /**
