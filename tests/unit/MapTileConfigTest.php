@@ -93,6 +93,27 @@ final class MapTileConfigTest extends TestCase
         $this->assertSame(0, $config->tileZoomOffset);
     }
 
+    /**
+     * Provedor com chave restrita por dominio precisa receber o Referer. Sem
+     * politica explicita o navegador nao manda nenhum, o provedor responde 401
+     * e o Chrome bloqueia como ORB — mapa em branco, zero erro no console.
+     */
+    public function testPoliticaDeReferrerTemDefaultQueMandaAOrigem(): void
+    {
+        $config = new Map();
+
+        $this->assertNotSame('', $config->tileReferrerPolicy);
+        $this->assertNotSame('no-referrer', $config->tileReferrerPolicy);
+        $this->assertSame('strict-origin-when-cross-origin', $config->tileReferrerPolicy);
+    }
+
+    public function testPoliticaDeReferrerVemDoAmbiente(): void
+    {
+        $this->definir('MAP_TILE_REFERRER_POLICY', 'origin');
+
+        $this->assertSame('origin', (new Map())->tileReferrerPolicy);
+    }
+
     /** O template precisa servir pro Leaflet: sem {z}/{x}/{y} não existe tile. */
     public function testDefaultEUmTemplateValidoDeTile(): void
     {

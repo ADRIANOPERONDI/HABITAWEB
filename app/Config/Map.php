@@ -52,6 +52,21 @@ class Map extends BaseConfig
      */
     public int $tileZoomOffset = 0;
 
+    /**
+     * Política de referrer das requisições de tile.
+     *
+     * Provedor com chave restrita por domínio (o caso do ArcGIS) precisa
+     * receber o Referer para autorizar. Sem declarar a política aqui, o
+     * navegador NÃO manda referrer nenhum nessas requisições e o provedor
+     * responde 401 — que o Chrome então bloqueia como ORB, sem escrever nada
+     * no console. O sintoma é mapa em branco sem erro nenhum.
+     *
+     * Medido: com a política ausente o tile falha; com qualquer valor
+     * explícito ele carrega. O default manda só a origem
+     * (https://dominio/), nunca o caminho da página.
+     */
+    public string $tileReferrerPolicy = 'strict-origin-when-cross-origin';
+
     public function __construct()
     {
         parent::__construct();
@@ -61,6 +76,7 @@ class Map extends BaseConfig
         $this->tileMaxZoom     = (int) $this->doEnv('MAP_TILE_MAX_ZOOM', (string) $this->tileMaxZoom);
         $this->tileSize        = (int) $this->doEnv('MAP_TILE_SIZE', (string) $this->tileSize);
         $this->tileZoomOffset  = (int) $this->doEnv('MAP_TILE_ZOOM_OFFSET', (string) $this->tileZoomOffset);
+        $this->tileReferrerPolicy = $this->doEnv('MAP_TILE_REFERRER_POLICY', $this->tileReferrerPolicy);
     }
 
     /**
