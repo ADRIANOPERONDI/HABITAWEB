@@ -244,6 +244,7 @@ document.addEventListener('DOMContentLoaded', function () {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
         tileSize: <?= (int) config('Map')->tileSize ?>,
         zoomOffset: <?= (int) config('Map')->tileZoomOffset ?>,
+        referrerPolicy: <?= json_encode(config('Map')->tileReferrerPolicy) ?>,
         attribution: <?= json_encode(config('Map')->tileAttribution) ?>
 
     }).addTo(map);
