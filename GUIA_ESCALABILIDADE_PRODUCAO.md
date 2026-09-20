@@ -1014,3 +1014,169 @@ verdade é o dia em que as contas existentes migram e a cobrança liga, e isso
   ativa, seja ele qual for; uma conta esquecida em `_LEGADO` não quebra,
   só fica congelada na estrutura comercial antiga (turbo, limites, features)
   até alguém rodar a migração para ela.
+
+## 14. Runbook: servidor de tiles do mapa (auto-hospedado)
+
+O portal já queimou dois provedores de mapa de terceiros, os dois pelo mesmo
+motivo — consumir de graça infraestrutura alheia fora dos termos dela:
+
+- **`tile.openstreetmap.org`** bloqueou o domínio. A política proíbe uso
+  comercial no servidor voluntário deles.
+- **`basemaps.cartocdn.com`**, testado como alternativa, passou a carimbar
+  "API KEY REQUIRED" no tile.
+- **`server.arcgisonline.com`** (Esri) funciona sem chave, mas os termos
+  atuais exigem token: *"you are required to pass access token authentication
+  with all ArcGIS location services used by your application, including
+  basemaps"*. É a mesma situação da OSM, só que ainda não cortaram.
+
+> ⚠️ **Os dois primeiros respondem HTTP 200 servindo uma imagem de aviso.**
+> Monitoramento por status code diz que está tudo certo enquanto o visitante vê
+> o mapa quebrado. Para tile, o teste que vale é abrir e olhar o pixel.
+
+Os dados do OpenStreetMap são livres sob ODbL e **permitem uso comercial** — o
+que a licença exige é atribuição, não pagamento. O que não é permitido é usar o
+servidor *deles*. Servindo os tiles aqui, o problema acaba de vez: sem chave,
+sem mensalidade e sem terceiro que possa bloquear.
+
+Como o tileserver entrega **PNG**, nada muda no frontend: Leaflet,
+markercluster e os pins de preço continuam como estão. Só a `MAP_TILE_URL` muda.
+
+### 14.1 Gerar o `.mbtiles` (na máquina do dev, NÃO no servidor)
+
+A geração é o passo pesado e não precisa rodar em produção. Ferramenta:
+**planetiler** — um JAR só, sem PostGIS e sem pipeline de importação, saída no
+schema OpenMapTiles que o tileserver-gl consome.
+
+```bash
+mkdir -p ~/habitaweb-tiles/data && cd ~/habitaweb-tiles
+curl -sL -o planetiler.jar \
+  https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+
+# Sul do Brasil (SC+PR+RS). O nome de área "brazil/sul" NÃO é reconhecido —
+# aponte para o arquivo do Geofabrik direto.
+java -Xmx4g -jar planetiler.jar \
+  --osm-url=https://download.geofabrik.de/south-america/brazil/sul-latest.osm.pbf \
+  --download --output=data/habitaweb-sul.mbtiles --force
+```
+
+Requisitos: Java 21+, RAM ≥ 0,5× o `.osm.pbf`, disco 5 a 10× o `.osm.pbf`.
+
+| | Sul (SC+PR+RS) | Brasil inteiro |
+|---|---|---|
+| `.osm.pbf` de entrada | 405 MB | 1.989 MB |
+| Disco durante a geração | 2 a 4 GB | 10 a 19 GB |
+| `.mbtiles` final | ~0,3 a 0,8 GB | ~2 a 4 GB |
+
+O catálogo é todo em Santa Catarina, então **Sul basta** e ainda cobre
+expansão regional. Trocar de região é trocar a URL do `--osm-url`.
+
+### 14.2 Servir no servidor
+
+```bash
+scp data/habitaweb-sul.mbtiles root@SERVIDOR:/home/habitaweb/tiles/
+```
+
+Rodar o **tileserver-gl** escutando **só em localhost** — quem expõe é o nginx,
+mesmo princípio do Redis na §2:
+
+```bash
+docker run -d --restart unless-stopped \
+  -v /home/habitaweb/tiles:/data \
+  -p 127.0.0.1:8081:8080 \
+  --name habitaweb-tiles \
+  maptiler/tileserver-gl:latest --mbtiles habitaweb-sul.mbtiles
+```
+
+O endpoint raster é `/styles/{id}/{z}/{x}/{y}.png` (aceita `/{tileSize}` e
+`@2x`). Confira o `{id}` disponível em `http://127.0.0.1:8081/styles.json`.
+
+### 14.3 nginx: proxy e cache
+
+O cache **não é opcional**: sem ele cada tile custa renderização de CPU a cada
+acesso; com ele, só no primeiro. Tile de mapa só muda quando o `.mbtiles` é
+regerado, então a validade pode ser longa.
+
+```nginx
+# fora do server{} — no http{}
+proxy_cache_path /var/cache/nginx/tiles levels=1:2 keys_zone=tiles:50m
+                 max_size=5g inactive=30d use_temp_path=off;
+
+# dentro do server{} do habitaweb.com.br
+location /tiles/ {
+    proxy_pass         http://127.0.0.1:8081/;
+    proxy_cache        tiles;
+    proxy_cache_valid  200 30d;
+    proxy_cache_key    $uri;
+    add_header         X-Tile-Cache $upstream_cache_status;
+    expires            30d;
+}
+```
+
+O `X-Tile-Cache` é o que permite verificar se o cache está pegando.
+
+### 14.4 Apontar a aplicação
+
+Só o `.env` do servidor muda — nenhum arquivo PHP, nenhum JS:
+
+```
+MAP_TILE_URL = https://habitaweb.com.br/tiles/styles/basic/{z}/{x}/{y}.png
+MAP_TILE_ATTRIBUTION = '&copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+MAP_TILE_MAX_ZOOM = 19
+```
+
+Três detalhes que derrubam se passarem batido:
+
+1. **As aspas da atribuição são obrigatórias.** Valor com espaço sem aspas faz
+   o `DotEnv` do CodeIgniter lançar `InvalidArgumentException` no boot e a
+   aplicação inteira responde 500 — não é aviso, é fatal.
+2. **A atribuição credita DOIS projetos, não um.** O próprio planetiler avisa
+   no fim da geração: *"Maps made with these vector tiles must display a
+   visible credit: © OpenMapTiles © OpenStreetMap contributors"*. O dado é
+   OSM sob ODbL e o esquema de tiles é OpenMapTiles sob CC-BY — creditar só um
+   descumpre a licença do outro. A string exigida está gravada no próprio
+   `.mbtiles`: `sqlite3 arquivo.mbtiles "SELECT value FROM metadata WHERE
+   name='attribution';"`.
+3. **A ordem aqui é `{z}/{x}/{y}` normal** — quem inverte para `{z}/{y}/{x}` é
+   o Esri, não o tileserver.
+
+O `.mbtiles` do OpenMapTiles vai até **zoom 14**; o tileserver renderiza os
+zooms acima disso por overzoom, então `MAP_TILE_MAX_ZOOM = 19` funciona — o
+traço fica mais grosso a partir de z15, mas não falta tile.
+
+### 14.5 Verificar
+
+```bash
+# 1. o tile chega e é imagem
+curl -s -o /tmp/t.png https://habitaweb.com.br/tiles/styles/basic/13/2878/4727.png
+file /tmp/t.png     # PNG image data, 256 x 256
+```
+
+`13/2878/4727` é São Miguel do Oeste. **Abra a imagem e olhe**: tem de aparecer
+a malha de ruas da cidade. É exatamente o passo que OSM e Carto reprovariam
+respondendo 200 — status HTTP não prova nada.
+
+```bash
+# 2. o cache está pegando (a segunda chamada tem de dizer HIT)
+curl -sI https://habitaweb.com.br/tiles/styles/basic/13/2878/4727.png | grep -i x-tile-cache
+curl -sI https://habitaweb.com.br/tiles/styles/basic/13/2878/4727.png | grep -i x-tile-cache
+```
+
+Depois, abrir `/imoveis` no navegador: os tiles têm de pintar, os pins de preço
+e os clusters continuarem funcionando, o rodapé creditar o OpenStreetMap, e
+**nenhuma requisição sair para `arcgisonline.com`**.
+
+### 14.6 Regerar
+
+O mapa envelhece. Rua de loteamento novo — e o catálogo tem várias, como a
+`RUA PROJETADA C` — só aparece depois de regerar. Repetir a §14.1, substituir o
+arquivo e reiniciar o container:
+
+```bash
+docker restart habitaweb-tiles
+# o cache do nginx guarda 30 dias; limpe para ver o mapa novo na hora
+rm -rf /var/cache/nginx/tiles/* && systemctl reload nginx
+```
+
+Regerar também melhora a geocodificação: `spark imoveis:geocodificar` continua
+usando o Nominatim público, que lê do OSM — então rua que entrar no mapa passa
+a ser encontrada por ele também.
