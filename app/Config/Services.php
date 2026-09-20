@@ -130,6 +130,25 @@ class Services extends BaseService
         return static::buildStorage(false, WRITEPATH);
     }
 
+    /**
+     * Geocoder de endereço.
+     *
+     * Ao contrário de IntegrationSyncService — que recebe o geocoder por
+     * construtor e assume NullGeocoder quando ninguém injeta, pra nenhum
+     * teste bater em rede por descuido — quem pede ESTE service está pedindo
+     * o geocoder de verdade e sabe disso. Hoje só `spark imoveis:geocodificar`
+     * usa; existe como service pra poder ser trocado por dublê no teste do
+     * comando, que roda via command() e não tem construtor onde injetar.
+     */
+    public static function geocoder($getShared = true): \App\Libraries\Geo\GeocoderInterface
+    {
+        if ($getShared) {
+            return static::getSharedInstance('geocoder');
+        }
+
+        return new \App\Libraries\Geo\NominatimGeocoder();
+    }
+
     private static function buildStorage(bool $public, string $localBaseDir): \App\Libraries\Storage\StorageInterface
     {
         $local = new \App\Libraries\Storage\LocalStorage($localBaseDir, $public);
