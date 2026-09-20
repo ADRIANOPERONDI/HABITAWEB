@@ -260,6 +260,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .setView([-14.235, -51.925], 4);
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        tileSize: <?= (int) config('Map')->tileSize ?>,
+        zoomOffset: <?= (int) config('Map')->tileZoomOffset ?>,
         attribution: <?= json_encode(config('Map')->tileAttribution) ?>
 
     }).addTo(map);

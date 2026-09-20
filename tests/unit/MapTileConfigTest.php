@@ -68,6 +68,31 @@ final class MapTileConfigTest extends TestCase
         $this->assertNotSame('', trim($config->tileAttribution));
     }
 
+    /**
+     * Provedor de 512 px precisa dizer isso ao Leaflet. Sem `tileSize`, cada
+     * tile ocupa metade do espaço e o mapa mostra o dobro da área no mesmo
+     * zoom — não quebra, fica silenciosamente na escala errada.
+     */
+    public function testTamanhoDoTileEDeslocamentoDeZoomVemDoAmbiente(): void
+    {
+        $this->definir('MAP_TILE_SIZE', '512');
+        $this->definir('MAP_TILE_ZOOM_OFFSET', '-1');
+
+        $config = new Map();
+
+        $this->assertSame(512, $config->tileSize);
+        $this->assertSame(-1, $config->tileZoomOffset);
+    }
+
+    /** O default tem de ser o que o Leaflet já assume, pra não mexer em quem não configurou. */
+    public function testDefaultEeOComportamentoPadraoDoLeaflet(): void
+    {
+        $config = new Map();
+
+        $this->assertSame(256, $config->tileSize);
+        $this->assertSame(0, $config->tileZoomOffset);
+    }
+
     /** O template precisa servir pro Leaflet: sem {z}/{x}/{y} não existe tile. */
     public function testDefaultEUmTemplateValidoDeTile(): void
     {

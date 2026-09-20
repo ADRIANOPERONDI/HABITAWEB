@@ -35,6 +35,23 @@ class Map extends BaseConfig
     /** Zoom máximo que o provedor entrega. */
     public int $tileMaxZoom = 19;
 
+    /**
+     * Lado do tile em pixels, como o provedor entrega.
+     *
+     * O Leaflet assume 256 e encaixa a imagem nesse espaço: com um provedor
+     * que serve 512 (o caso do ArcGIS Static Basemap Tiles), cada tile ocupa
+     * metade do espaço que deveria e o mapa mostra o DOBRO da área no mesmo
+     * nível de zoom. Não quebra — fica silenciosamente na escala errada.
+     */
+    public int $tileSize = 256;
+
+    /**
+     * Compensação de zoom. Um provedor de 512 px precisa de -1: o Leaflet pede
+     * um nível a mais para o detalhe bater com a escala. Sem isso, `tileSize`
+     * sozinho corrige o tamanho mas não o nível de detalhe.
+     */
+    public int $tileZoomOffset = 0;
+
     public function __construct()
     {
         parent::__construct();
@@ -42,6 +59,8 @@ class Map extends BaseConfig
         $this->tileUrl         = $this->doEnv('MAP_TILE_URL', $this->tileUrl);
         $this->tileAttribution = $this->doEnv('MAP_TILE_ATTRIBUTION', $this->tileAttribution);
         $this->tileMaxZoom     = (int) $this->doEnv('MAP_TILE_MAX_ZOOM', (string) $this->tileMaxZoom);
+        $this->tileSize        = (int) $this->doEnv('MAP_TILE_SIZE', (string) $this->tileSize);
+        $this->tileZoomOffset  = (int) $this->doEnv('MAP_TILE_ZOOM_OFFSET', (string) $this->tileZoomOffset);
     }
 
     /**

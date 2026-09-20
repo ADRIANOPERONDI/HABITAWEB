@@ -242,6 +242,8 @@ document.addEventListener('DOMContentLoaded', function() {
     L.control.zoom({ position: 'topright' }).addTo(map);
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        tileSize: <?= (int) config('Map')->tileSize ?>,
+        zoomOffset: <?= (int) config('Map')->tileZoomOffset ?>,
         attribution: <?= json_encode(config('Map')->tileAttribution) ?>
 
     }).addTo(map);
