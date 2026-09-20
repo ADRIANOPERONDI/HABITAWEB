@@ -242,6 +242,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const map = L.map('partnerMap').setView([<?= (float) $partner->latitude ?>, <?= (float) $partner->longitude ?>], 15);
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        tileSize: <?= (int) config('Map')->tileSize ?>,
+        zoomOffset: <?= (int) config('Map')->tileZoomOffset ?>,
         attribution: <?= json_encode(config('Map')->tileAttribution) ?>
 
     }).addTo(map);
