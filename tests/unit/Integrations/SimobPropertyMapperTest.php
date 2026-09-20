@@ -78,7 +78,11 @@ final class SimobPropertyMapperTest extends TestCase
         $this->assertSame('VENDA', $p->fields['tipo_negocio']);
         $this->assertSame(105000.0, $p->fields['preco']);
 
-        $this->assertSame('SÃO MIGUEL DO OESTE', $p->fields['cidade']);
+        // A origem manda "SÃO MIGUEL DO OESTE"; o mapper grava a forma
+        // canônica. Sem isso a cidade aparecia duas vezes no filtro da busca,
+        // porque o cadastro manual (ViaCEP) grava em Title Case e o DISTINCT
+        // do Postgres é sensível a caixa.
+        $this->assertSame('São Miguel do Oeste', $p->fields['cidade']);
         $this->assertSame('PROGRESSO', $p->fields['bairro']);
         $this->assertSame('SC', $p->fields['estado']);
         $this->assertSame('RUA A', $p->fields['rua']);

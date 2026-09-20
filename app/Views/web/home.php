@@ -111,7 +111,11 @@
                 <div class="col-md-6 col-lg-3 mb-4">
                     <div class="card property-card h-100 animate-fade-in shadow-sm border-0 d-flex flex-column">
                         <a href="<?= site_url('imovel/' . $property->id) ?>" class="text-decoration-none h-100 d-flex flex-column">
-                            <div class="card-img-top-wrapper position-relative" style="height: 220px; overflow: hidden;">
+                            <?php // Sem height inline: .property-card .card-img-top-wrapper ja define a
+                                  // proporcao por padding-top:75% (public.css). O height nao
+                                  // cancela o padding, ele SOMA - o card saia com quase o dobro
+                                  // da altura pretendida. ?>
+                            <div class="card-img-top-wrapper position-relative" style="overflow: hidden;">
                                      <div class="position-absolute top-0 start-0 m-3 z-3 d-flex flex-column gap-2">
                                         <span class="badge bg-white text-dark shadow-sm rounded-pill px-3 py-2 fw-bold">
                                             <?= $property->tipo_negocio === 'VENDA' ? 'Venda' : 'Aluguel' ?>
@@ -254,9 +258,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const map = L.map('homeMap', { zoomControl: true, scrollWheelZoom: false })
         .setView([-14.235, -51.925], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+    L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
+        maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        attribution: <?= json_encode(config('Map')->tileAttribution) ?>
+
     }).addTo(map);
 
     const markers = L.markerClusterGroup({

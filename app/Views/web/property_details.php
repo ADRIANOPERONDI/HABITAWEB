@@ -21,7 +21,10 @@
         <div class="col-12 col-lg-8">
             <div class="card border-0 overflow-hidden mb-4" style="border-radius: 12px; box-shadow: var(--premium-shadow-sm);">
                 <div id="propertyCarousel" class="carousel slide" data-bs-ride="carousel">
-                    <div class="carousel-inner" style="aspect-ratio: 16 / 9; background: #f8f9fa;">
+                    <?php // 4/3, nao 16/9: as fotos das imobiliarias vem do celular, em retrato
+      // 9:16. Numa caixa 16:9 com object-fit:contain a foto virava uma tira
+      // estreita no meio da tela, cercada de barra borrada dos dois lados. ?>
+                    <div class="carousel-inner" style="aspect-ratio: 4 / 3; background: #f8f9fa;">
                         <?php if(empty($medias)): ?>
                              <div class="carousel-item active">
                                 <img src="https://placehold.co/1200x600?text=Sem+Foto" class="d-block w-100 object-fit-cover" alt="Sem foto">
@@ -76,6 +79,8 @@
             </div>
 
             <div class="row g-4 mb-5">
+                <?php // Sem a guarda, imovel sem area cadastrada mostrava um " m²" solto. ?>
+                <?php if($property->area_total): ?>
                 <div class="col-6 col-md-2 text-center">
                     <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-ruler-combined fa-2x text-primary mb-2"></i>
@@ -83,6 +88,7 @@
                         <small class="text-muted">Área</small>
                     </div>
                 </div>
+                <?php endif; ?>
                 <div class="col-6 col-md-2 text-center">
                     <div class="p-3 bg-white border" style="border-radius: 8px;">
                         <i class="fa-solid fa-bed fa-2x text-primary mb-2"></i>

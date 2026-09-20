@@ -4,9 +4,14 @@
 
 <?= $this->section('styles') ?>
 <link rel="preconnect" href="https://unpkg.com">
-<link rel="preconnect" href="https://a.tile.openstreetmap.org">
-<link rel="preconnect" href="https://b.tile.openstreetmap.org">
-<link rel="preconnect" href="https://c.tile.openstreetmap.org">
+<?php
+    // Host do provedor configurado. Um template com {s} (subdomínios a/b/c,
+    // padrão legado do OSM) não tem host fixo pra pré-conectar — pula.
+    $tileHost = parse_url(config('Map')->tileUrl, PHP_URL_HOST);
+?>
+<?php if ($tileHost && ! str_contains($tileHost, '{')): ?>
+<link rel="preconnect" href="https://<?= esc($tileHost, 'attr') ?>" crossorigin>
+<?php endif; ?>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
@@ -235,9 +240,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const map = L.map('map', { zoomControl: false }).setView([-14.235, -51.925], 4);
     L.control.zoom({ position: 'topright' }).addTo(map);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+    L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
+        maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        attribution: <?= json_encode(config('Map')->tileAttribution) ?>
+
     }).addTo(map);
     requestAnimationFrame(() => map.invalidateSize());
 

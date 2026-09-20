@@ -1381,8 +1381,10 @@ $(document).ready(function() {
     
     var map = L.map('map').setView([defaultLat, defaultLng], 15);
     
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+    L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
+        maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
+        attribution: <?= json_encode(config('Map')->tileAttribution) ?>
+
     }).addTo(map);
 
     var marker = L.marker([defaultLat, defaultLng], {
