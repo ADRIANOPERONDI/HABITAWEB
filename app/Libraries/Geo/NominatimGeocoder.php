@@ -5,9 +5,21 @@ namespace App\Libraries\Geo;
 /**
  * Geocoder via Nominatim (OpenStreetMap), com a mesma escada de fallback que
  * o formulário de imóvel já usa no navegador (Properties/form.php,
- * função geocodeAddress): rua+número+bairro+cidade, depois rua+bairro+cidade,
- * depois bairro+cidade, e por fim só cidade+UF — cada consulta mais barata é a
- * rede de segurança da anterior.
+ * função geocodeAddress): rua+número, depois rua, depois bairro, e por fim só
+ * cidade — cada consulta mais barata é a rede de segurança da anterior.
+ *
+ * A UF entra em TODOS os degraus, e isso não é detalhe: sem ela o Nominatim
+ * resolvia "Centro, São Miguel do Oeste" como São Miguel do Araguaia, em
+ * Goiás, a 1.500 km do imóvel. Metade do catálogo de um cliente foi parar no
+ * Centro-Oeste desse jeito.
+ *
+ * Os degraus de rua e de cidade usam a consulta ESTRUTURADA do Nominatim
+ * (street/city/state), não texto livre: ela casa a rua em endereços que o
+ * texto livre devolvia vazio — e quem devolve vazio cai pro degrau seguinte e
+ * acaba no centro da cidade, que é justamente o que empilha dezenas de pins no
+ * mesmo ponto. O degrau de bairro fica em texto livre porque o Nominatim não
+ * tem parâmetro estruturado de bairro (street/city/county/state/postalcode) e
+ * enfiar o bairro em `street` não acha nada.
  *
  * Fail-open de propósito: uma imobiliária com endereço mal formatado, ou o
  * Nominatim fora do ar, não pode derrubar o sync inteiro por causa de
@@ -24,6 +36,14 @@ class NominatimGeocoder implements GeocoderInterface
 
     private const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 
+    /**
+     * Entra na chave do cache. Mudar de versão aposenta de uma vez todas as
+     * respostas já gravadas — foi o que aposentou as coordenadas de Goiás,
+     * que ficariam 30 dias em cache respondendo pelo formato antigo de
+     * consulta mesmo depois do conserto.
+     */
+    private const CACHE_VERSION = 'v2';
+
     /** Nominatim pede no máximo 1 req/s — aplicado só quando a consulta não veio do cache. */
     private const THROTTLE_MS = 1100;
 
@@ -35,8 +55,8 @@ class NominatimGeocoder implements GeocoderInterface
             return null;
         }
 
-        foreach ($this->queries($endereco, $cidade) as $query) {
-            $resultado = $this->lookup($query);
+        foreach ($this->queries($endereco, $cidade) as $params) {
+            $resultado = $this->lookup($params);
 
             if ($resultado !== null) {
                 return $resultado;
@@ -46,40 +66,62 @@ class NominatimGeocoder implements GeocoderInterface
         return null;
     }
 
-    /** @return list<string> */
+    /**
+     * Os degraus, do mais específico pro mais genérico.
+     *
+     * @return list<array<string, string>> cada item é o conjunto de parâmetros de uma consulta
+     */
     private function queries(array $endereco, string $cidade): array
     {
         $rua    = trim((string) ($endereco['rua'] ?? ''));
         $numero = trim((string) ($endereco['numero'] ?? ''));
         $bairro = trim((string) ($endereco['bairro'] ?? ''));
+        $estado = trim((string) ($endereco['estado'] ?? ''));
+
+        // Cidade + UF, o par que amarra todos os degraus no município certo.
+        $local = ['city' => $cidade];
+
+        if ($estado !== '') {
+            $local['state'] = $estado;
+        }
 
         $candidatas = [];
 
-        if ($rua !== '' && $numero !== '' && $bairro !== '') {
-            $candidatas[] = "{$rua} {$numero}, {$bairro}, {$cidade}, Brazil";
+        if ($rua !== '' && $numero !== '') {
+            $candidatas[] = $local + ['street' => "{$rua} {$numero}"];
         }
 
-        if ($rua !== '' && $bairro !== '') {
-            $candidatas[] = "{$rua}, {$bairro}, {$cidade}, Brazil";
+        if ($rua !== '') {
+            $candidatas[] = $local + ['street' => $rua];
         }
 
         if ($bairro !== '') {
-            $candidatas[] = "{$bairro}, {$cidade}, Brazil";
+            $cidadeUf     = $estado !== '' ? "{$cidade}, {$estado}" : $cidade;
+            $candidatas[] = ['q' => "{$bairro}, {$cidadeUf}, Brazil"];
         }
 
-        $candidatas[] = "{$cidade}, Brazil";
+        $candidatas[] = $local;
 
-        // A mesma consulta pode se repetir entre os degraus (ex.: sem rua nem
-        // bairro, os dois primeiros ficam vazios e sobra só a última) — sem
-        // isso, um endereço incompleto bateria o Nominatim duas vezes com a
-        // mesma string.
-        return array_values(array_unique($candidatas));
+        // Um endereço incompleto pode repetir o mesmo conjunto de parâmetros
+        // entre degraus — sem isso, bateríamos o Nominatim duas vezes com a
+        // consulta idêntica.
+        $unicas = [];
+
+        foreach ($candidatas as $params) {
+            $unicas[$this->cacheSubject($params)] = $params;
+        }
+
+        return array_values($unicas);
     }
 
-    /** @return array{lat:float, lng:float}|null */
-    private function lookup(string $query): ?array
+    /**
+     * @param array<string, string> $params
+     *
+     * @return array{lat:float, lng:float}|null
+     */
+    private function lookup(array $params): ?array
     {
-        $cacheKey = 'geocode_nominatim_' . md5(mb_strtolower($query));
+        $cacheKey = 'geocode_nominatim_' . self::CACHE_VERSION . '_' . md5($this->cacheSubject($params));
         $cached   = cache($cacheKey);
 
         if ($cached !== null) {
@@ -87,7 +129,7 @@ class NominatimGeocoder implements GeocoderInterface
             return $cached === false ? null : $cached;
         }
 
-        $resultado = $this->consultar($query);
+        $resultado = $this->consultar($params);
 
         cache()->save($cacheKey, $resultado ?? false, self::CACHE_TTL_SECONDS);
 
@@ -95,13 +137,33 @@ class NominatimGeocoder implements GeocoderInterface
     }
 
     /**
+     * Forma canônica de um conjunto de parâmetros: ordem de chave e caixa não
+     * podem gerar duas entradas de cache para a mesma consulta.
+     *
+     * @param array<string, string> $params
+     */
+    private function cacheSubject(array $params): string
+    {
+        $normalizados = array_map(
+            static fn (string $valor): string => mb_strtolower(trim($valor)),
+            $params
+        );
+
+        ksort($normalizados);
+
+        return json_encode($normalizados, JSON_UNESCAPED_UNICODE) ?: '';
+    }
+
+    /**
      * Faz a chamada de verdade. Protected e isolado numa função só pra
      * poder ser trocado por uma dublê roteirizada nos testes, sem tocar
      * em socket (mesmo padrão de IntegrationHttpClient::dispatch()).
      *
+     * @param array<string, string> $params
+     *
      * @return array{lat:float, lng:float}|null
      */
-    protected function consultar(string $query): ?array
+    protected function consultar(array $params): ?array
     {
         usleep(self::THROTTLE_MS * 1000);
 
@@ -112,7 +174,13 @@ class NominatimGeocoder implements GeocoderInterface
             ]);
 
             $response = $client->get(self::ENDPOINT, [
-                'query'   => ['format' => 'json', 'q' => $query, 'limit' => 1],
+                'query' => $params + [
+                    'format' => 'json',
+                    'limit'  => 1,
+                    // Trava o resultado no Brasil: sem isso um nome de cidade
+                    // brasileiro casa com homônimo em Portugal.
+                    'countrycodes' => 'br',
+                ],
                 'headers' => [
                     // A política de uso do Nominatim exige um User-Agent que
                     // identifique a aplicação — IP sem identificação é banido.
