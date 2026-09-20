@@ -1120,18 +1120,28 @@ Só o `.env` do servidor muda — nenhum arquivo PHP, nenhum JS:
 
 ```
 MAP_TILE_URL = https://habitaweb.com.br/tiles/styles/basic/{z}/{x}/{y}.png
-MAP_TILE_ATTRIBUTION = '&copy; OpenStreetMap contributors'
+MAP_TILE_ATTRIBUTION = '&copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
 MAP_TILE_MAX_ZOOM = 19
 ```
 
-Dois detalhes que derrubam se passarem batido:
+Três detalhes que derrubam se passarem batido:
 
 1. **As aspas da atribuição são obrigatórias.** Valor com espaço sem aspas faz
    o `DotEnv` do CodeIgniter lançar `InvalidArgumentException` no boot e a
    aplicação inteira responde 500 — não é aviso, é fatal.
-2. **A atribuição tem de trocar junto com a URL.** Creditar a Esri servindo
-   dado do OpenStreetMap descumpre a ODbL. Aqui a ordem é `{z}/{x}/{y}`
-   normal — quem inverte para `{z}/{y}/{x}` é o Esri, não o tileserver.
+2. **A atribuição credita DOIS projetos, não um.** O próprio planetiler avisa
+   no fim da geração: *"Maps made with these vector tiles must display a
+   visible credit: © OpenMapTiles © OpenStreetMap contributors"*. O dado é
+   OSM sob ODbL e o esquema de tiles é OpenMapTiles sob CC-BY — creditar só um
+   descumpre a licença do outro. A string exigida está gravada no próprio
+   `.mbtiles`: `sqlite3 arquivo.mbtiles "SELECT value FROM metadata WHERE
+   name='attribution';"`.
+3. **A ordem aqui é `{z}/{x}/{y}` normal** — quem inverte para `{z}/{y}/{x}` é
+   o Esri, não o tileserver.
+
+O `.mbtiles` do OpenMapTiles vai até **zoom 14**; o tileserver renderiza os
+zooms acima disso por overzoom, então `MAP_TILE_MAX_ZOOM = 19` funciona — o
+traço fica mais grosso a partir de z15, mas não falta tile.
 
 ### 14.5 Verificar
 
