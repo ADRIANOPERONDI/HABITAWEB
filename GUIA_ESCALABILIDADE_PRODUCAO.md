@@ -1073,6 +1073,7 @@ expansão regional. Trocar de região é trocar a URL do `--osm-url`.
 ### 14.2 Servir no servidor
 
 ```bash
+ssh root@SERVIDOR mkdir -p /home/habitaweb/tiles
 scp data/habitaweb-sul.mbtiles root@SERVIDOR:/home/habitaweb/tiles/
 ```
 
@@ -1088,7 +1089,10 @@ docker run -d --restart unless-stopped \
 ```
 
 O endpoint raster é `/styles/{id}/{z}/{x}/{y}.png` (aceita `/{tileSize}` e
-`@2x`). Confira o `{id}` disponível em `http://127.0.0.1:8081/styles.json`.
+`@2x`). Com `--mbtiles` e sem `config.json`, o id que essa imagem expõe é
+**`basic-preview`**, não `basic` — `/styles/basic/...` responde **404**.
+Confirme com `curl -s http://127.0.0.1:8081/styles.json` antes de montar a URL
+do `.env`; se a imagem mudar o id numa versão futura, é aqui que se descobre.
 
 ### 14.3 nginx: proxy e cache
 
@@ -1119,7 +1123,7 @@ O `X-Tile-Cache` é o que permite verificar se o cache está pegando.
 Só o `.env` do servidor muda — nenhum arquivo PHP, nenhum JS:
 
 ```
-MAP_TILE_URL = https://habitaweb.com.br/tiles/styles/basic/{z}/{x}/{y}.png
+MAP_TILE_URL = https://habitaweb.com.br/tiles/styles/basic-preview/{z}/{x}/{y}.png
 MAP_TILE_ATTRIBUTION = '&copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
 MAP_TILE_MAX_ZOOM = 19
 ```
@@ -1147,7 +1151,7 @@ traço fica mais grosso a partir de z15, mas não falta tile.
 
 ```bash
 # 1. o tile chega e é imagem
-curl -s -o /tmp/t.png https://habitaweb.com.br/tiles/styles/basic/13/2878/4727.png
+curl -s -o /tmp/t.png https://habitaweb.com.br/tiles/styles/basic-preview/13/2878/4727.png
 file /tmp/t.png     # PNG image data, 256 x 256
 ```
 
@@ -1157,8 +1161,8 @@ respondendo 200 — status HTTP não prova nada.
 
 ```bash
 # 2. o cache está pegando (a segunda chamada tem de dizer HIT)
-curl -sI https://habitaweb.com.br/tiles/styles/basic/13/2878/4727.png | grep -i x-tile-cache
-curl -sI https://habitaweb.com.br/tiles/styles/basic/13/2878/4727.png | grep -i x-tile-cache
+curl -sI https://habitaweb.com.br/tiles/styles/basic-preview/13/2878/4727.png | grep -i x-tile-cache
+curl -sI https://habitaweb.com.br/tiles/styles/basic-preview/13/2878/4727.png | grep -i x-tile-cache
 ```
 
 Depois, abrir `/imoveis` no navegador: os tiles têm de pintar, os pins de preço
@@ -1168,14 +1172,44 @@ e os clusters continuarem funcionando, o rodapé creditar o OpenStreetMap, e
 ### 14.6 Regerar
 
 O mapa envelhece. Rua de loteamento novo — e o catálogo tem várias, como a
-`RUA PROJETADA C` — só aparece depois de regerar. Repetir a §14.1, substituir o
-arquivo e reiniciar o container:
+`RUA PROJETADA C` — só aparece depois de regerar.
+
+**O `--download` da §14.1 não rebaixa o extrato.** Ele só busca a fonte quando o
+arquivo ainda NÃO existe no disco; repetir o comando tal e qual reaproveita o
+`.osm.pbf` da primeira vez e regera um mapa **idêntico** — a rua nova continua
+faltando. O `--force` não cobre isso: ele só autoriza sobrescrever a saída.
+Para regerar de verdade, acrescente o refresh:
 
 ```bash
+java -Xmx4g -jar planetiler.jar \
+  --osm-url=https://download.geofabrik.de/south-america/brazil/sul-latest.osm.pbf \
+  --download --refresh-osm \
+  --output=data/habitaweb-sul.mbtiles --force
+```
+
+`--refresh-osm` rebaixa só o OSM; `--refresh-sources` rebaixa tudo, inclusive
+os ~1,45 GB de Natural Earth e water polygons que não mudam.
+
+**Nunca sobrescreva o `.mbtiles` em uso.** O tileserver mantém o arquivo aberto,
+e um `scp` por cima trunca antes de reescrever: durante os minutos do upload o
+servidor passa a devolver **PNG em branco com HTTP 200** — falha silenciosa, que
+o `proxy_cache_valid 200 30d` da §14.3 ainda cacheia. Suba com outro nome e
+troque com `mv`, que é atômico:
+
+```bash
+# na máquina do dev
+scp data/habitaweb-sul.mbtiles root@SERVIDOR:/home/habitaweb/tiles/habitaweb-sul.mbtiles.novo
+
+# no servidor
+mv /home/habitaweb/tiles/habitaweb-sul.mbtiles.novo \
+   /home/habitaweb/tiles/habitaweb-sul.mbtiles
 docker restart habitaweb-tiles
+
 # o cache do nginx guarda 30 dias; limpe para ver o mapa novo na hora
 rm -rf /var/cache/nginx/tiles/* && systemctl reload nginx
 ```
+
+`docker restart` basta — não precisa recriar o container.
 
 Regerar também melhora a geocodificação: `spark imoveis:geocodificar` continua
 usando o Nominatim público, que lê do OSM — então rua que entrar no mapa passa
