@@ -119,7 +119,16 @@ class GeocodeProperties extends BaseCommand
         $imoveis = $builder->orderBy('id', 'ASC')->get()->getResult();
 
         if ($imoveis === []) {
-            CLI::write('Nenhum imóvel com cidade cadastrada.', 'yellow');
+            // A mensagem muda com o modo, e isso importa: no cron, lista vazia
+            // é o resultado ESPERADO (todo imóvel já tem coordenada). Dizer
+            // "nenhum imóvel com cidade cadastrada" ali faria quem lê o log
+            // achar que o catálogo sumiu ou que o comando quebrou.
+            CLI::write(
+                $apenasNovos
+                    ? 'Nada a fazer: todos os imóveis já têm coordenada.'
+                    : 'Nenhum imóvel com cidade cadastrada.',
+                'green',
+            );
 
             return;
         }

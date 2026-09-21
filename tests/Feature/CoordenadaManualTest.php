@@ -155,6 +155,27 @@ final class CoordenadaManualTest extends HabitawebTestCase
         $this->assertSame([-26.72, -53.51], $this->coordenada($b));
     }
 
+    /**
+     * No cron, lista vazia é o resultado ESPERADO. A mensagem tem de dizer
+     * isso: "nenhum imóvel com cidade cadastrada" num log de minuto em minuto
+     * faria qualquer um achar que o catálogo sumiu.
+     */
+    public function testCronSemNadaAFazerDizQueEstaTudoGeocodificado(): void
+    {
+        (new PropertyModel())->insert($this->base(['latitude' => -26.72, 'longitude' => -53.51]), true);
+
+        // CLI::write escreve direto no STDOUT, então command() devolve string
+        // vazia; o filtro do framework é o que captura.
+        \CodeIgniter\Test\Filters\CITestStreamFilter::registration();
+        \CodeIgniter\Test\Filters\CITestStreamFilter::addOutputFilter();
+        command('imoveis:geocodificar --apenas-novos --force');
+        $saida = \CodeIgniter\Test\Filters\CITestStreamFilter::$buffer;
+        \CodeIgniter\Test\Filters\CITestStreamFilter::removeOutputFilter();
+
+        $this->assertStringContainsString('já têm coordenada', $saida);
+        $this->assertStringNotContainsString('Nenhum imóvel com cidade cadastrada', $saida);
+    }
+
     /** A marca é derivada — aceitar do payload congelaria o imóvel de graça. */
     public function testMarcaNaoPodeVirDoPayloadDaApi(): void
     {
