@@ -16,7 +16,7 @@ class PropertyModel extends Model
         'account_id', 'client_id', 'user_id_responsavel', 'tipo_negocio', 'tipo_imovel', 'titulo', 'descricao',
         'preco', 'valor_condominio', 'iptu', 'area_total', 'area_construida', 'area_privativa', 'quartos', 'banheiros',
         'vagas', 'cep', 'estado', 'cidade', 'bairro', 'rua', 'numero', 'complemento', 'latitude',
-        'longitude', 'status', 'visitas_count', 'leads_count', 'score_qualidade', 'publicado_em', 'atualizado_em',
+        'longitude', 'coordenadas_manuais', 'status', 'visitas_count', 'leads_count', 'score_qualidade', 'publicado_em', 'atualizado_em',
         'last_validated_at', 'quality_warnings', 'moderation_status', 'auto_paused', 'auto_paused_reason',
         'duplicate_signature',
         'highlight_level', 'highlight_expires_at',
@@ -53,6 +53,11 @@ class PropertyModel extends Model
         // web/property_details.php e web/home.php exibiam o selo de "verificado"
         // em imóveis que nunca foram verificados.
         'is_verified'              => 'boolean',
+        // Mesmo motivo do is_verified acima, e aqui o estrago seria pior: sem o
+        // cast NO MODEL, o 'f' do Postgres (truthy em PHP) faria TODO imovel ser
+        // lido como coordenada manual e o `imoveis:geocodificar` nunca mais
+        // tocaria em nada — falhando em silencio, achando que pulou de proposito.
+        'coordenadas_manuais'      => 'boolean',
     ];
     protected array $castHandlers = [];
 

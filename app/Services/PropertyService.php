@@ -27,6 +27,10 @@ class PropertyService
         'leads_count',
         'score_qualidade',
         'moderation_status',
+        // Derivado, nunca lido do payload: um POST /api/v1/properties com
+        // {"coordenadas_manuais": true} congelaria o imovel contra o lote de
+        // graca. Quem seta e o trySaveProperty, ao ver a coordenada mudar.
+        'coordenadas_manuais',
     ];
 
     protected PropertyModel $propertyModel;
@@ -251,6 +255,16 @@ class PropertyService
             // uma escondia os imoveis da outra.
             if (isset($data['cidade']) && is_string($data['cidade'])) {
                 $data['cidade'] = \App\Libraries\Text\CityName::normalize($data['cidade']);
+            }
+
+            // 2c. Coordenada posta a mao.
+            // Quem arrastou o pino sabe onde o imovel fica melhor que o
+            // Nominatim — e para endereco rural ou de loteamento novo, que o
+            // OpenStreetMap nao conhece, esse ajuste e a UNICA forma de o
+            // imovel aparecer no lugar certo. A marca faz o
+            // `imoveis:geocodificar` pular a linha em vez de sobrescrever.
+            if (! $fromSync && $this->coordenadaMudou($data, $property)) {
+                $data['coordenadas_manuais'] = true;
             }
 
             // 3. FILL ENTITY
@@ -1271,6 +1285,34 @@ class PropertyService
         return $leadModel->where('property_id', $propertyId)
                          ->orderBy('created_at', 'DESC')
                          ->findAll();
+    }
+
+    /**
+     * A gravacao traz coordenada diferente da que esta salva?
+     *
+     * Comparacao com tolerancia porque lat/lng trafegam como string e voltam
+     * do Postgres como NUMERIC: igualdade exata marcaria como "manual" um save
+     * que nao mexeu no pino.
+     */
+    private function coordenadaMudou(array $data, $property): bool
+    {
+        if (! isset($data['latitude'], $data['longitude'])) {
+            return false;
+        }
+
+        if ($data['latitude'] === null || $data['longitude'] === null) {
+            return false;
+        }
+
+        $atualLat = $property->latitude ?? null;
+        $atualLng = $property->longitude ?? null;
+
+        if ($atualLat === null || $atualLng === null) {
+            return true;
+        }
+
+        return abs((float) $data['latitude'] - (float) $atualLat) > 0.000001
+            || abs((float) $data['longitude'] - (float) $atualLng) > 0.000001;
     }
 
     /**

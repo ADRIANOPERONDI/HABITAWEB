@@ -200,6 +200,9 @@ $routes->group('admin', ['namespace' => 'App\Controllers\Admin', 'filter' => 'ad
     // Antes do resource: 'properties/bulk-status' casaria com o
     // 'properties/(:segment)' de update/show do resource (first-match-wins).
     $routes->post('properties/bulk-status', 'PropertyController::bulkStatus');
+    // Também antes do resource: 'properties/geocode' casaria com o
+    // 'properties/(:segment)' do resource (first-match-wins).
+    $routes->post('properties/geocode', 'PropertyController::geocode');
     $routes->resource('properties', ['controller' => 'PropertyController']);
     $routes->post('properties/(:num)/restore', 'PropertyController::restore/$1');
     $routes->get('properties/(:num)/closure-leads', 'PropertyController::getLeadsForClosure/$1');

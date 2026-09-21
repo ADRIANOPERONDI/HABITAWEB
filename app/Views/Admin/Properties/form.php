@@ -597,9 +597,27 @@
                                     <label class="form-label-premium">Rua / Logradouro</label>
                                     <input type="text" name="rua" class="form-control input-premium" value="<?= old('rua', $property->rua ?? '') ?>" placeholder="Av. Paulista...">
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label-premium">Cidade</label>
                                     <input type="text" name="cidade" class="form-control input-premium" value="<?= old('cidade', $property->cidade ?? '') ?>">
+                                </div>
+                                <?php
+                                    // A UF nao e enfeite: e ela que separa Sao Miguel do Oeste/SC
+                                    // de Sao Miguel do Araguaia/GO na geocodificacao. Enquanto este
+                                    // campo nao existia, todo imovel cadastrado a mao nascia com
+                                    // estado NULL e o `imoveis:geocodificar` perdia a checagem de
+                                    // coordenada fora do estado.
+                                    $ufs = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+                                    $ufAtual = old('estado', $property->estado ?? '');
+                                ?>
+                                <div class="col-md-2">
+                                    <label class="form-label-premium">UF</label>
+                                    <select name="estado" class="form-select input-premium">
+                                        <option value="">--</option>
+                                        <?php foreach ($ufs as $uf): ?>
+                                            <option value="<?= $uf ?>" <?= $ufAtual === $uf ? 'selected' : '' ?>><?= $uf ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label-premium">Bairro</label>
@@ -615,7 +633,8 @@
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label-premium">Localização Exata</label>
-                                    <p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i> Arraste o marcador para ajustar a posição precisa no mapa.</p>
+                                    <p class="text-muted small mb-1"><i class="fa-solid fa-circle-info me-1"></i> O endereço é localizado sozinho. Confira e arraste o marcador se precisar ajustar.</p>
+                                    <p id="geocode-status" class="small mb-2 text-muted"></p>
                                     <div id="map" class="rounded-4 mb-3"></div>
                                     <div class="row g-3">
                                         <div class="col-md-6">
@@ -1355,6 +1374,8 @@ $(document).ready(function() {
                         $('input[name="rua"]').val(dados.logradouro);
                         $('input[name="bairro"]').val(dados.bairro);
                         $('input[name="cidade"]').val(dados.localidade);
+                        // O ViaCEP sempre mandou a UF; ela era simplesmente jogada fora.
+                        if (dados.uf) { $('[name="estado"]').val(dados.uf); }
                         
                         // Cidades com CEP único não retornam rua/bairro.
                         // Nesses casos, focamos na rua para o usuário completar.
@@ -1365,7 +1386,7 @@ $(document).ready(function() {
                         }
                         
                         // Atualiza o mapa se tivermos rua/cidade
-                        geocodeAddress();
+                        geocodeAddressDebounced();
                     } else {
                         fields.forEach(f => $(`input[name="${f}"]`).val(''));
                         Toast.fire({ icon: 'error', title: 'CEP não encontrado.' });
@@ -1376,10 +1397,17 @@ $(document).ready(function() {
     });
 
     // --- Leaflet Map Logic ---
-    var defaultLat = <?= $property->latitude ?? -23.55052 ?>;
-    var defaultLng = <?= $property->longitude ?? -46.633308 ?>;
-    
-    var map = L.map('map').setView([defaultLat, defaultLng], 15);
+    //
+    // Imovel SEM coordenada nao abre com o marcador na Praca da Se. O default
+    // antigo era Sao Paulo, entao um arraste acidental antes de digitar o
+    // endereco gravava a Se como posicao do imovel — e nada revalidava depois.
+    // Sem coordenada: mapa aberto no Brasil inteiro e NENHUM marcador ate a
+    // geocodificacao responder ou o usuario clicar no mapa.
+    var temCoordenada = <?= ($property->latitude ?? null) !== null && ($property->longitude ?? null) !== null ? 'true' : 'false' ?>;
+    var defaultLat = <?= $property->latitude ?? -14.235 ?>;
+    var defaultLng = <?= $property->longitude ?? -51.925 ?>;
+
+    var map = L.map('map').setView([defaultLat, defaultLng], temCoordenada ? 15 : 4);
     
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
@@ -1390,14 +1418,41 @@ $(document).ready(function() {
 
     }).addTo(map);
 
-    var marker = L.marker([defaultLat, defaultLng], {
-        draggable: true
-    }).addTo(markerGroup = L.layerGroup().addTo(map));
+    var markerGroup = L.layerGroup().addTo(map);
+    var marker = null;
 
-    marker.on('dragend', function(event) {
-        var pos = marker.getLatLng();
-        $('#lat').val(pos.lat);
-        $('#lng').val(pos.lng);
+    function marcarPosicao(lat, lng) {
+        if (marker === null) {
+            marker = L.marker([lat, lng], { draggable: true }).addTo(markerGroup);
+            marker.on('dragend', function () {
+                var pos = marker.getLatLng();
+                $('#lat').val(pos.lat);
+                $('#lng').val(pos.lng);
+                // A partir daqui o geocoder nao mexe mais: quem arrastou sabe
+                // onde o imovel fica melhor que o Nominatim. E o que permite
+                // cadastrar endereco rural ou de loteamento novo, que o
+                // OpenStreetMap nao conhece.
+                $('#lat').data('manual', true);
+                geocodeStatus('manual');
+                calculateScore();
+            });
+            return;
+        }
+
+        marker.setLatLng([lat, lng]);
+    }
+
+    if (temCoordenada) {
+        marcarPosicao(defaultLat, defaultLng);
+    }
+
+    // Sem endereco localizavel, clicar no mapa tambem serve pra marcar.
+    map.on('click', function (e) {
+        marcarPosicao(e.latlng.lat, e.latlng.lng);
+        $('#lat').val(e.latlng.lat);
+        $('#lng').val(e.latlng.lng);
+        $('#lat').data('manual', true);
+        geocodeStatus('manual');
         calculateScore();
     });
 
@@ -1409,7 +1464,8 @@ $(document).ready(function() {
     function updateMap(lat, lng, updateInputs = true) {
         if (!lat || !lng) return;
         var newPos = new L.LatLng(lat, lng);
-        marker.setLatLng(newPos);
+        marcarPosicao(newPos.lat, newPos.lng);
+        if (map.getZoom() < 15) { map.setZoom(15); }
         map.panTo(newPos);
         if (updateInputs) {
             $('#lat').val(lat);
@@ -1418,36 +1474,85 @@ $(document).ready(function() {
         calculateScore();
     }
 
-    // Nominatim Geocoding with Fallbacks
+    // Geocodificação pelo servidor.
+    //
+    // Antes daqui saía uma escada de consultas própria, direto pro Nominatim.
+    // Eram duas implementações da mesma lógica e esta era a antiga: sem UF em
+    // nenhum degrau (o bug que mandou 52 imóveis pra Goiás), sem filtro de
+    // classe no degrau de bairro (36 foram parar num órgão público na
+    // rodovia), sem consulta estruturada e sem cache. Consertar o servidor não
+    // consertava o cadastro manual.
+    var geocodeTimer = null;
+    var geocodeUltimoPedido = 0;
+
     function geocodeAddress() {
-        var rua = $('input[name="rua"]').val();
-        var num = $('input[name="numero"]').val();
-        var bairro = $('input[name="bairro"]').val();
-        var cidade = $('input[name="cidade"]').val();
-        
-        if (!cidade) return;
+        var cidade = ($('input[name="cidade"]').val() || '').trim();
 
-        // Estratégia de busca em cascata (Fallbacks)
-        const queries = [
-            `${rua} ${num}, ${bairro}, ${cidade}, Brazil`, // Busca exata
-            `${rua}, ${bairro}, ${cidade}, Brazil`,       // Rua e Bairro
-            `${bairro}, ${cidade}, Brazil`,              // Apenas Bairro
-            `${cidade}, Brazil`                          // Apenas Cidade
-        ];
+        if (!cidade) { return; }
 
-        function tryGeocode(index) {
-            if (index >= queries.length) return;
-            
-            $.get(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queries[index])}&limit=1`, function(data) {
-                if (data.length > 0) {
-                    updateMap(data[0].lat, data[0].lon);
+        var payload = {
+            rua:    ($('input[name="rua"]').val() || '').trim(),
+            numero: ($('input[name="numero"]').val() || '').trim(),
+            bairro: ($('input[name="bairro"]').val() || '').trim(),
+            cidade: cidade,
+            estado: ($('[name="estado"]').val() || '').trim()
+        };
+
+        // Coordenada posta à mão não é recalculada por causa de um blur: quem
+        // arrastou o pino sabe onde o imóvel fica melhor que o geocoder.
+        if ($('#lat').data('manual') === true) { return; }
+
+        var pedido = ++geocodeUltimoPedido;
+        geocodeStatus('buscando');
+
+        $.post('<?= site_url('admin/properties/geocode') ?>', payload)
+            .done(function (r) {
+                // Resposta atrasada de um blur anterior não pode sobrescrever
+                // o resultado de um endereço mais novo.
+                if (pedido !== geocodeUltimoPedido) { return; }
+
+                if (r && r.success) {
+                    updateMap(r.latitude, r.longitude);
+                    geocodeStatus('ok');
                 } else {
-                    tryGeocode(index + 1);
+                    geocodeStatus('nao-encontrado', r && r.message);
                 }
+            })
+            .fail(function () {
+                if (pedido !== geocodeUltimoPedido) { return; }
+                geocodeStatus('erro');
             });
+    }
+
+    // O antigo disparava no blur de quatro campos: tabular pelo endereço virava
+    // uma rajada contra um serviço que permite 1 requisição por segundo.
+    function geocodeAddressDebounced() {
+        clearTimeout(geocodeTimer);
+        geocodeTimer = setTimeout(geocodeAddress, 600);
+    }
+
+    // Silêncio é o pior resultado possível: era o que fazia o corretor salvar
+    // sem coordenada sem saber.
+    function geocodeStatus(estado, mensagem) {
+        var el = $('#geocode-status');
+
+        if (estado === 'buscando') {
+            el.html('<span class="spinner-border spinner-border-sm me-1"></span> Localizando endereço no mapa...').removeClass('text-danger text-success').addClass('text-muted');
+            return;
         }
 
-        tryGeocode(0);
+        if (estado === 'manual') {
+            el.html('<i class="fa-solid fa-thumbtack me-1"></i> Posição marcada à mão. Não será recalculada automaticamente.').removeClass('text-danger text-muted').addClass('text-success');
+            return;
+        }
+
+        if (estado === 'ok') {
+            el.html('<i class="fa-solid fa-location-dot me-1"></i> Posição encontrada. Confira e arraste o pino se precisar ajustar.').removeClass('text-danger text-muted').addClass('text-success');
+            return;
+        }
+
+        el.html('<i class="fa-solid fa-triangle-exclamation me-1"></i> ' + (mensagem || 'Não foi possível localizar. Arraste o pino no mapa para marcar a posição.'))
+          .removeClass('text-muted text-success').addClass('text-danger');
     }
 
     // Sincronização manual (Inputs -> Mapa)
@@ -1459,7 +1564,7 @@ $(document).ready(function() {
         }
     });
 
-    $('input[name="rua"], input[name="numero"], input[name="bairro"], input[name="cidade"]').on('blur', geocodeAddress);
+    $('input[name="rua"], input[name="numero"], input[name="bairro"], input[name="cidade"], [name="estado"]').on('blur change', geocodeAddressDebounced);
 
     // --- Controle de Limite de Selos de Destaque ---
     function checkDestaqueLimit() {

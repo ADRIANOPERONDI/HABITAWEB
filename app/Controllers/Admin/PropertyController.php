@@ -17,6 +17,56 @@ class PropertyController extends BaseController
     }
 
     /**
+     * Converte um endereço em lat/lng para o formulário de imóvel.
+     *
+     * Existe para que o navegador PARE de ter a sua própria escada de
+     * consultas. Havia duas implementações da mesma lógica e a do navegador
+     * era a antiga: sem UF em nenhum degrau (o bug que mandou 52 imóveis para
+     * Goiás), sem o filtro de classe no degrau de bairro (o que levou 36 para
+     * um órgão público na rodovia), sem consulta estruturada e sem cache.
+     * Consertar o servidor não consertava o cadastro manual.
+     *
+     * Agora os dois caminhos passam por NominatimGeocoder. De quebra o
+     * formulário herda o cache de 30 dias — o antigo disparava no blur de
+     * quatro campos contra um serviço que permite 1 requisição por segundo.
+     */
+    public function geocode()
+    {
+        $endereco = [
+            'rua'    => trim((string) $this->request->getPost('rua')),
+            'numero' => trim((string) $this->request->getPost('numero')),
+            'bairro' => trim((string) $this->request->getPost('bairro')),
+            'cidade' => trim((string) $this->request->getPost('cidade')),
+            'estado' => trim((string) $this->request->getPost('estado')),
+        ];
+
+        if ($endereco['cidade'] === '') {
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Informe ao menos a cidade para localizar no mapa.',
+            ]);
+        }
+
+        $coordenadas = service('geocoder')->geocode($endereco);
+
+        if ($coordenadas === null) {
+            // Não é erro: endereço rural ou de loteamento novo simplesmente
+            // não existe no OpenStreetMap. O formulário avisa e o usuário
+            // posiciona o pino à mão — que é o caminho previsto, não a exceção.
+            return $this->response->setJSON([
+                'success' => false,
+                'message' => 'Não foi possível localizar este endereço. Arraste o pino no mapa para marcar a posição.',
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'success'   => true,
+            'latitude'  => $coordenadas['lat'],
+            'longitude' => $coordenadas['lng'],
+        ]);
+    }
+
+    /**
      * Lista imóveis com filtros
      */
     public function index()

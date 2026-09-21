@@ -263,6 +263,36 @@ instância worker:
 ```cron
 * * * * * cd /var/www/habitaweb && php spark integration:sync >> writable/logs/integration-sync.log 2>&1
 * * * * * cd /var/www/habitaweb && php spark integration:outbox --max-time=55 >> writable/logs/integration-outbox.log 2>&1
+* * * * * cd /var/www/habitaweb && php spark imoveis:geocodificar --apenas-novos --force --limit 30 >> writable/logs/geocode.log 2>&1
+```
+
+`imoveis:geocodificar --apenas-novos` é a rede de segurança da geocodificação:
+pega imóvel que ficou **sem coordenada** e resolve o endereço. Cobre o que o
+navegador não conseguiu no cadastro manual (JS falhou, o Nominatim recusou, o
+usuário salvou sem passar pela aba de localização) e, principalmente, cobre a
+**API de parceiro** — `POST /api/v1/properties` e o import CSV/JSON nunca
+geocodificaram no caminho da requisição.
+
+Três detalhes que fazem esse cron ser seguro de rodar de minuto em minuto:
+
+- **`--apenas-novos` é obrigatório aqui.** Sem ele o comando pega também
+  coordenada "empilhada", que continua empilhada porque a rua não existe no
+  OpenStreetMap — ficaria regeocodificando os mesmos imóveis para sempre e
+  queimando a cota do Nominatim. Com a flag, converge: cada imóvel entra uma
+  vez só.
+- **`--limit 30` casa com o throttle.** O Nominatim permite 1 req/s e
+  `NominatimGeocoder` aplica 1,1 s por degrau; 30 imóveis cabem folgados na
+  janela de um minuto sem duas execuções se atropelarem.
+- **Coordenada posta à mão é pulada**, e o comando **relata quantas**. Pino
+  arrastado pelo corretor é a única forma de posicionar endereço rural ou de
+  loteamento novo — sobrescrever seria perder a informação de vez.
+
+Para o conserto em lote (o modo completo, que também mexe em coordenada fora do
+estado e empilhada) continua sendo à mão, com `--dry-run` antes:
+
+```bash
+php spark imoveis:geocodificar --dry-run
+php spark imoveis:geocodificar --force
 ```
 
 `integration:sync` percorre as integrações ativas e vencidas (mais de 25 min

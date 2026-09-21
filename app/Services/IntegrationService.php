@@ -46,7 +46,14 @@ class IntegrationService
     public const MANAGED_FIELDS = [
         'titulo', 'descricao', 'tipo_negocio', 'tipo_imovel', 'preco',
         'rua', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep',
-        'latitude', 'longitude',
+        // latitude/longitude NAO entram aqui de proposito: coordenada nunca vem
+        // da origem. O SimobPropertyMapper so tenta extrair de linkGoogleMaps e
+        // a Giusti nunca fornece — o valor e sempre produzido pelo NOSSO
+        // geocoder, entao nao e dado espelhado. Mante-las na lista fazia o
+        // painel descartar em silencio o pino que o corretor arrastou, que e a
+        // unica forma de posicionar endereco rural ou de loteamento novo.
+        // O sync nao sobrescreve: fillMissingCoordinates() sai cedo quando o
+        // imovel ja tem lat/lng.
         'quartos', 'suites', 'banheiros', 'vagas',
         'area_total', 'area_construida', 'area_privativa',
         'valor_condominio', 'iptu',
