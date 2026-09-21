@@ -41,6 +41,7 @@ class GeocodeProperties extends BaseCommand
         '--conta'   => 'Restringe a uma conta (account_id).',
         '--limit'   => 'Máximo de imóveis por execução (default 200).',
         '--todos'   => 'Considera todos os imóveis, não só os de coordenada suspeita.',
+        '--apenas-novos' => 'Só imóveis SEM coordenada. É o modo seguro para cron: converge, cada imóvel entra uma vez.',
         '--force'   => 'Não pede confirmação antes de gravar.',
     ];
 
@@ -86,6 +87,7 @@ class GeocodeProperties extends BaseCommand
     {
         $dryRun = $this->flag($params, 'dry-run');
         $todos  = $this->flag($params, 'todos');
+        $apenasNovos = $this->flag($params, 'apenas-novos');
         $force  = $this->flag($params, 'force');
         $conta  = $this->valor($params, 'conta');
         $limit  = (int) ($this->valor($params, 'limit') ?? 200);
@@ -94,10 +96,21 @@ class GeocodeProperties extends BaseCommand
         CLI::write('Conectado em: ' . $db->getDatabase(), 'yellow');
 
         $builder = $db->table('properties')
-                      ->select('id, account_id, rua, numero, bairro, cidade, estado, latitude, longitude')
+                      ->select('id, account_id, rua, numero, bairro, cidade, estado, latitude, longitude, coordenadas_manuais')
                       ->where('deleted_at', null)
                       ->where('cidade IS NOT NULL')
                       ->where("TRIM(cidade) <>", '');
+
+        // Modo cron: só quem nunca foi geocodificado. Sem isto, rodar de minuto
+        // em minuto ficaria regeocodificando para sempre os imóveis
+        // "empilhados" — que continuam empilhados, porque a rua deles não
+        // existe no OpenStreetMap — e queimando a cota do Nominatim à toa.
+        if ($apenasNovos) {
+            $builder->groupStart()
+                    ->where('latitude IS NULL')
+                    ->orWhere('longitude IS NULL')
+                    ->groupEnd();
+        }
 
         if ($conta !== null) {
             $builder->where('account_id', (int) $conta);
@@ -113,8 +126,18 @@ class GeocodeProperties extends BaseCommand
 
         $empilhadas = $this->coordenadasRepetidas($db, $conta);
         $candidatos = [];
+        $manuais    = 0;
 
         foreach ($imoveis as $imovel) {
+            // Pino posto à mão é a única forma de posicionar endereço rural ou
+            // de loteamento novo, que o OpenStreetMap não conhece. Sobrescrever
+            // seria perder a informação de vez.
+            if (! empty($imovel->coordenadas_manuais) && $imovel->coordenadas_manuais !== 'f') {
+                $manuais++;
+
+                continue;
+            }
+
             $motivo = $todos ? 'todos' : $this->motivoSuspeita($imovel, $empilhadas);
 
             if ($motivo === null) {
@@ -126,6 +149,10 @@ class GeocodeProperties extends BaseCommand
             if (count($candidatos) >= $limit) {
                 break;
             }
+        }
+
+        if ($manuais > 0) {
+            CLI::write($manuais . ' imóvel(is) pulado(s): coordenada posta à mão.', 'yellow');
         }
 
         if ($candidatos === []) {
