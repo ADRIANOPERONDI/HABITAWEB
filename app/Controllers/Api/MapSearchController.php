@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Controllers\BaseController;
+use App\Libraries\Search\PolygonFilter;
 use CodeIgniter\API\ResponseTrait;
 
 class MapSearchController extends BaseController
@@ -136,7 +137,7 @@ class MapSearchController extends BaseController
             'min_price'    => $this->request->getGet('min_price'),
             'max_price'    => $this->request->getGet('max_price'),
             'bounds'       => $this->request->getGet('bounds'), // SW_LNG,SW_LAT,NE_LNG,NE_LAT
-            'polygon'      => $this->request->getGet('polygon'), // JSON string [[lng,lat],...]
+            'polygon'      => PolygonFilter::normalize($this->request->getGet('polygon')), // JSON [[lng,lat],...] ou null
             'property_ids' => $this->request->getGet('property_ids'), // for filtering list by cluster
             'sort'         => $this->request->getGet('sort'),
         ];

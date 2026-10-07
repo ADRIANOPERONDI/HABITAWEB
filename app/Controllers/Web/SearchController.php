@@ -3,6 +3,7 @@
 namespace App\Controllers\Web;
 
 use App\Controllers\BaseController;
+use App\Libraries\Search\PolygonFilter;
 
 class SearchController extends BaseController
 {
@@ -133,6 +134,9 @@ class SearchController extends BaseController
             'tipo_imovel'  => $this->request->getGet('tipo_imovel'),
             'min_price'    => $this->request->getGet('min_price'),
             'max_price'    => $this->request->getGet('max_price'),
+            // Deep link vindo do mapa da home (ou de URL compartilhada). O valor
+            // volta para a página no input oculto, então só passa normalizado.
+            'polygon'      => PolygonFilter::normalize($this->request->getGet('polygon')),
         ];
     }
 

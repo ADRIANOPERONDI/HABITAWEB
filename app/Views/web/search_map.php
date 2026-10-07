@@ -82,7 +82,7 @@
                 <input type="hidden" name="max_price" id="inputMaxPrice" value="<?= esc($filters['max_price'] ?? '') ?>">
                 <input type="hidden" name="sort" id="inputSort" value="<?= esc($selectedSort) ?>">
                 <input type="hidden" name="bounds" id="inputBounds" value="">
-                <input type="hidden" name="polygon" id="inputPolygon" value="">
+                <input type="hidden" name="polygon" id="inputPolygon" value="<?= esc($filters['polygon'] ?? '') ?>">
                 <input type="hidden" name="property_ids" id="inputPropertyIds" value="">
                 <input type="hidden" name="page" id="inputPage" value="1">
                 <input type="hidden" name="per_page" value="12">
