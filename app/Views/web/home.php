@@ -70,7 +70,7 @@
             </div>
             <div>
                 <h2 class="section-title mb-0">Imóveis no mapa</h2>
-                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista</p>
+                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista ou desenhe uma área para buscar</p>
             </div>
         </div>
 
@@ -255,6 +255,7 @@
 <?= $this->section('scripts') ?>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<script src="<?= base_url('assets/js/map-draw-toolbar.js') ?>?v=<?= filemtime(FCPATH . 'assets/js/map-draw-toolbar.js') ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const el = document.getElementById('homeMap');
@@ -328,6 +329,22 @@ document.addEventListener('DOMContentLoaded', function() {
         map.fitBounds(bounds.pad(0.2), { maxZoom: 14 });
     }
     requestAnimationFrame(() => map.invalidateSize());
+
+    // Perímetro: desenhar uma área aqui leva para a busca com o polígono já
+    // aplicado — lá existem o filtro por polígono, os demais filtros, paginação
+    // e a lista do celular; a home segue sendo só a vitrine de destaques.
+    // Controle no canto superior direito: o zoom fica à esquerda e a atribuição
+    // embaixo à direita, então nada se sobrepõe (também no celular).
+    if (window.HabitawebMapDraw) {
+        HabitawebMapDraw.attach(map, {
+            position: 'topright',
+            assetsBase: <?= json_encode(base_url('assets/js/leaflet-draw'), JSON_UNESCAPED_SLASHES) ?>,
+            onCreated: function (layer, coords) {
+                window.location.href = <?= json_encode(site_url('imoveis/mapa'), JSON_UNESCAPED_SLASHES) ?>
+                    + '?polygon=' + encodeURIComponent(JSON.stringify(coords));
+            }
+        });
+    }
 
     // Passar o mouse sobre uma ficha destaca o pin correspondente no mapa.
     document.querySelectorAll('#homeMapList .map-property-card').forEach(function(card) {

@@ -851,6 +851,14 @@ body {
     gap: 8px;
 }
 
+/* Barra de desenho (assets/js/map-draw-toolbar.js): "Concluir" só habilita
+   com três vértices — precisa parecer desabilitado enquanto isso. */
+.map-draw-toolbar .map-floating-btn:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
 .price-marker-pill {
     background: #ffffff;
     border: 1px solid rgba(15, 23, 42, .14);
