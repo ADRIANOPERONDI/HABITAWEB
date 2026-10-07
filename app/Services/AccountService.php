@@ -10,6 +10,9 @@ use CodeIgniter\Shield\Models\UserModel;
 
 class AccountService
 {
+    /** Chave do cache da vitrine "Imobiliárias em destaque" da home (Home::index). */
+    public const FEATURED_PARTNERS_CACHE_KEY = 'home_partners';
+
     protected AccountModel $accountModel;
 
     public function __construct()
@@ -194,6 +197,22 @@ class AccountService
                 ->paginate($perPage),
             'pager' => $this->accountModel->pager
         ];
+    }
+
+    /**
+     * Derruba o cache da vitrine da home.
+     *
+     * A vitrine depende de quatro coisas que mudam fora da home — status da
+     * conta, assinatura vigente, feature do plano e inadimplência — e o
+     * resultado fica em cache por 1 h. Sem este método ninguém apagava a
+     * chave: o tenant fazia upgrade para Ouro e continuava fora da home por
+     * até uma hora. Chamado pelos callbacks de AccountModel e
+     * PaymentTransactionModel (via PublicPropertyVisibilityService),
+     * SubscriptionModel e PlanModel.
+     */
+    public static function forgetFeaturedPartnersCache(): void
+    {
+        cache()->delete(self::FEATURED_PARTNERS_CACHE_KEY);
     }
 
     /**
