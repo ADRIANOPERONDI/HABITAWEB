@@ -77,8 +77,16 @@ h4,
     width: 100% !important;
 }
 
+/* O tema bootstrap-5 desenha a seta como background da seleção e reserva
+   padding à direita para ela; o reset de padding do layout (Layouts/public.php)
+   zerava isso e, em campo estreito (tablet), a seta caía em cima do texto. */
+.search-container-floating .select2-container--bootstrap-5 .select2-selection {
+    padding-right: 1.75rem !important;
+}
+
 .search-item {
     flex: 1;
+    min-width: 0; /* deixa o campo encolher abaixo do conteúdo; o Select2 corta com reticências */
     height: 90px;
     padding: 10px 20px;
     display: flex;
@@ -150,6 +158,83 @@ h4,
     color: #fff;
     transform: scale(1.05);
     box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.4);
+}
+
+/* Até o tablet a barra deixa de ser uma linha única. Quatro campos + botão
+   numa linha precisam de ~560px; em 375px isso alargava o documento inteiro e
+   a página parecia "deslocada", porque só o navbar (fixed) ficava alinhado à
+   tela. Abaixo de 992px a barra vira um cartão: botão de busca em largura
+   total, dois campos por linha no tablet, um por linha no celular. */
+@media (max-width: 991.98px) {
+    .search-container-floating {
+        flex-wrap: wrap;
+        border-radius: 24px;
+        padding: 8px;
+    }
+
+    .search-item,
+    .search-item.flex-large {
+        height: auto;
+        padding: 8px 16px;
+    }
+
+    .search-item + .search-item {
+        border-left: 0;
+    }
+
+    .search-submit {
+        flex: 1 1 100%;
+        padding: 8px 0 0;
+    }
+
+    .btn-search-round {
+        width: 100%;
+        height: 52px;
+        border-radius: 999px;
+        font-size: 18px;
+    }
+
+    .btn-search-round:hover {
+        transform: none;
+    }
+}
+
+/* Tablet: dois campos por linha (QUERO | CIDADE / CATEGORIA | BAIRRO). */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .search-item,
+    .search-item.flex-large {
+        flex: 1 1 50%;
+        max-width: 50%;
+    }
+
+    .search-item:nth-child(even) {
+        border-left: 1px solid #f0f0f0;
+    }
+
+    .search-item:nth-child(n+3) {
+        border-top: 1px solid #f0f0f0;
+    }
+}
+
+/* Celular: um campo por linha e títulos de seção menores. */
+@media (max-width: 767.98px) {
+    .search-item,
+    .search-item.flex-large {
+        flex: 1 1 100%;
+    }
+
+    .search-item + .search-item {
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .section-title {
+        font-size: 26px;
+    }
+
+    .section-subtitle {
+        font-size: 16px;
+        margin-bottom: 24px;
+    }
 }
 
 /* Partners Section */

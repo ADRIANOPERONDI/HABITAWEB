@@ -65,7 +65,7 @@
 <section class="py-4 mt-4">
     <div class="container">
         <div class="d-flex align-items-center mb-3 px-2">
-            <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+            <div class="bg-primary rounded-circle d-flex flex-shrink-0 align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
                 <i class="fa-solid fa-map-location-dot text-white fs-5"></i>
             </div>
             <div>
@@ -91,12 +91,12 @@
 <!-- Featured Properties Section -->
 <section class="py-5 bg-white">
     <div class="container py-4">
-        <div class="d-flex justify-content-between align-items-end mb-4 px-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4 px-2">
             <div>
                 <h2 class="section-title">Destaques Recomendados</h2>
                 <p class="section-subtitle mb-0">Imóveis verificados com alta qualidade visual.</p>
             </div>
-            <a href="<?= site_url('imoveis') ?>" class="btn btn-link text-dark fw-bold text-decoration-none">
+            <a href="<?= site_url('imoveis') ?>" class="btn btn-link text-dark fw-bold text-decoration-none text-nowrap">
                 Ver todos <i class="fa-solid fa-chevron-right ms-1"></i>
             </a>
         </div>
