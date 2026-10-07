@@ -218,6 +218,13 @@ h4,
 
 /* Celular: um campo por linha e títulos de seção menores. */
 @media (max-width: 767.98px) {
+    /* A lista do Select2 é anexada ao body e, com dropdownAutoWidth, cresce
+       até o nome mais longo; mesmo com o autoWidth desligado no celular
+       (Scripts/public_layout.php), a largura nunca pode passar da tela. */
+    .select2-container--open .select2-dropdown {
+        max-width: calc(100vw - 32px);
+    }
+
     .search-item,
     .search-item.flex-large {
         flex: 1 1 100%;
