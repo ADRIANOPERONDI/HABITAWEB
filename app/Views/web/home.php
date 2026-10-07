@@ -201,7 +201,14 @@
                                     <i class="fa-solid fa-circle-check fs-6"></i>
                                 </div>
                             <?php endif; ?>
-                            <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
+                            <?php if (!empty($partner->logo)): ?>
+                                <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
+                            <?php else: ?>
+                                <?php // Logo não é obrigatório no cadastro. Sem ele, saía <img src=""> (ícone de
+                                      // imagem quebrada); a inicial do nome no mesmo círculo de 80px mantém a grade
+                                      // alinhada — padrão de web/partners/index.php. ?>
+                                <div class="partner-logo partner-logo-fallback mb-2 d-inline-flex align-items-center justify-content-center text-primary fw-bold fs-3" aria-hidden="true"><?= esc(mb_strtoupper(mb_substr(trim((string) $partner->nome), 0, 1))) ?></div>
+                            <?php endif; ?>
                             <div class="small fw-bold text-dark text-truncate d-block"><?= esc($partner->nome) ?></div>
                             <span class="xsmall text-muted text-uppercase" style="font-size: 10px;"><?= esc($partner->tipo_conta) ?></span>
                         </div>
