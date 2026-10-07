@@ -52,7 +52,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="px-3">
+        <div class="search-submit">
             <button type="submit" class="btn-search-round">
                 <i class="fa-solid fa-magnifying-glass"></i>
             </button>
@@ -65,12 +65,12 @@
 <section class="py-4 mt-4">
     <div class="container">
         <div class="d-flex align-items-center mb-3 px-2">
-            <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+            <div class="bg-primary rounded-circle d-flex flex-shrink-0 align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
                 <i class="fa-solid fa-map-location-dot text-white fs-5"></i>
             </div>
             <div>
                 <h2 class="section-title mb-0">Imóveis no mapa</h2>
-                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista</p>
+                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista ou desenhe uma área para buscar</p>
             </div>
         </div>
 
@@ -91,12 +91,12 @@
 <!-- Featured Properties Section -->
 <section class="py-5 bg-white">
     <div class="container py-4">
-        <div class="d-flex justify-content-between align-items-end mb-4 px-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4 px-2">
             <div>
                 <h2 class="section-title">Destaques Recomendados</h2>
                 <p class="section-subtitle mb-0">Imóveis verificados com alta qualidade visual.</p>
             </div>
-            <a href="<?= site_url('imoveis') ?>" class="btn btn-link text-dark fw-bold text-decoration-none">
+            <a href="<?= site_url('imoveis') ?>" class="btn btn-link text-dark fw-bold text-decoration-none text-nowrap">
                 Ver todos <i class="fa-solid fa-chevron-right ms-1"></i>
             </a>
         </div>
@@ -201,7 +201,14 @@
                                     <i class="fa-solid fa-circle-check fs-6"></i>
                                 </div>
                             <?php endif; ?>
-                            <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
+                            <?php if (!empty($partner->logo)): ?>
+                                <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
+                            <?php else: ?>
+                                <?php // Logo não é obrigatório no cadastro. Sem ele, saía <img src=""> (ícone de
+                                      // imagem quebrada); a inicial do nome no mesmo círculo de 80px mantém a grade
+                                      // alinhada — padrão de web/partners/index.php. ?>
+                                <div class="partner-logo partner-logo-fallback mb-2 d-inline-flex align-items-center justify-content-center text-primary fw-bold fs-3" aria-hidden="true"><?= esc(mb_strtoupper(mb_substr(trim((string) $partner->nome), 0, 1))) ?></div>
+                            <?php endif; ?>
                             <div class="small fw-bold text-dark text-truncate d-block"><?= esc($partner->nome) ?></div>
                             <span class="xsmall text-muted text-uppercase" style="font-size: 10px;"><?= esc($partner->tipo_conta) ?></span>
                         </div>
@@ -248,6 +255,7 @@
 <?= $this->section('scripts') ?>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<script src="<?= base_url('assets/js/map-draw-toolbar.js') ?>?v=<?= filemtime(FCPATH . 'assets/js/map-draw-toolbar.js') ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const el = document.getElementById('homeMap');
@@ -321,6 +329,22 @@ document.addEventListener('DOMContentLoaded', function() {
         map.fitBounds(bounds.pad(0.2), { maxZoom: 14 });
     }
     requestAnimationFrame(() => map.invalidateSize());
+
+    // Perímetro: desenhar uma área aqui leva para a busca com o polígono já
+    // aplicado — lá existem o filtro por polígono, os demais filtros, paginação
+    // e a lista do celular; a home segue sendo só a vitrine de destaques.
+    // Controle no canto superior direito: o zoom fica à esquerda e a atribuição
+    // embaixo à direita, então nada se sobrepõe (também no celular).
+    if (window.HabitawebMapDraw) {
+        HabitawebMapDraw.attach(map, {
+            position: 'topright',
+            assetsBase: <?= json_encode(base_url('assets/js/leaflet-draw'), JSON_UNESCAPED_SLASHES) ?>,
+            onCreated: function (layer, coords) {
+                window.location.href = <?= json_encode(site_url('imoveis/mapa'), JSON_UNESCAPED_SLASHES) ?>
+                    + '?polygon=' + encodeURIComponent(JSON.stringify(coords));
+            }
+        });
+    }
 
     // Passar o mouse sobre uma ficha destaca o pin correspondente no mapa.
     document.querySelectorAll('#homeMapList .map-property-card').forEach(function(card) {

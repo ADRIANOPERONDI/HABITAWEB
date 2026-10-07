@@ -55,5 +55,8 @@ class PublicPropertyVisibilityService
 
         $cache->deleteMatching('public_map_pins_*');
         $cache->deleteMatching('search_filter_bairros_*');
+
+        // Conta e fatura também decidem quem está na vitrine de parceiros da home.
+        AccountService::forgetFeaturedPartnersCache();
     }
 }

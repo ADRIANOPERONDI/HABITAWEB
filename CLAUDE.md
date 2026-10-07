@@ -78,6 +78,18 @@ Image fixtures live in `tests/_support/fixtures/images/` — including a JPEG wi
 
 Composer also exposes `composer test` (plain `phpunit`).
 
+> The Playwright suite and PHPUnit share `habitaweb_test`. `php spark e2e:setup` (run by the
+> Playwright `globalSetup`) persists a global `lead_charge_rules` row (VENDA) and a `lead_charges`
+> row; after any Playwright run, five PHPUnit tests that assume "no rule exists"
+> (`LeadChargeLegacyTest`, `LeadChargeReceivedTest`, `ChargesRulesFormTest`) fail until the test
+> database is recreated (`./run_tests.sh setup`) or those two rows are deleted. Also note the
+> Playwright `webServer` has `reuseExistingServer` on: if anything else already listens on the
+> chosen `E2E_PORT`, the tests silently run against it.
+
+> `TestResponse::getBody()` has no own implementation and falls through to the DOMParser, which
+> returns the body re-serialized as HTML (accents become entities, JSON becomes `<p>…</p>`). Use
+> `getJSON()` for API responses and `->response()->getBody()` for the raw HTML.
+
 ### Custom spark commands
 `app/Commands/` contains only operational commands: Asaas sync, expiry
 checks, curation, the email worker, metrics flushing/pruning, media
@@ -99,6 +111,17 @@ Auth groups (`app/Config/AuthGroups.php`, Shield-based): `superadmin`, `admin`, 
 
 ### Request surfaces
 - **Public web** (`App\Controllers\Web\*`, `App\Controllers\Home`): property search/detail, lead capture, checkout, partner marketplace, favorites. Routes are SEO-friendly path segments (`imoveis/(:segment)/(:segment)/(:segment)`).
+  **Map perimeter search.** The search page (`web/search_map.php`) and the home map share one
+  drawing toolbar, `public/assets/js/map-draw-toolbar.js` (`HabitawebMapDraw.attach(map, {...})`):
+  it lazy-loads the vendored Leaflet.draw 1.0.4 from `public/assets/js/leaflet-draw/` and offers
+  Desenhar área → Concluir / Desfazer / Cancelar → Apagar área. "Concluir" exists because on touch
+  the native way to close a polygon is tapping within 10px of the first vertex, and Leaflet.draw's
+  own touch handler never runs here (its `L.Map.TouchExtend` init hook registers after the map was
+  created). Drawing on the home redirects to `/imoveis/mapa?polygon=[[lng,lat],...]`; both
+  `Web\SearchController` and `Api\MapSearchController` pass the value through
+  `App\Libraries\Search\PolygonFilter::normalize()` before echoing it back (hidden input, URL
+  sync) — the Postgres `point <@ polygon` filter lives in `PropertyService::applySearchFilters()`.
+
 - **Admin panel** (`App\Controllers\Admin\*`, prefix `/admin`): protected by the `admin_auth` filter (`App\Filters\AdminAuth`). This filter does more than login-check — it also enforces, per non-superadmin account: KYC verification approved, an ACTIVE subscription, and no invoice overdue >3 days (with a proactive gateway re-sync via `PaymentService::syncPendingPayments` before hard-blocking). A small allowlist of paths (checkout, logout, profile, subscription, api-keys, activation) stays reachable even when blocked, so the user can fix billing/KYC.
 - **REST API** (`App\Controllers\Api\V1\*`, prefix `/api/v1`): protected by `api_auth` filter (`App\Filters\ApiAuth`), which accepts **three** credentials via `Authorization: Bearer ...` — a custom API key (`pk_...`, bcrypt-verified through `ApiKeyModel`), a **JWT** (3 dot-separated segments, verified by `App\Libraries\Auth\JwtManager`), or a Shield token. It injects `auth_user_id` / `auth_account_id` / `auth_account_type` / `auth_type` / `auth_api_key_id` onto the request. Rate-limited per-key via `api_rate_limit`; a JWT inherits the quota of the API key that minted it (claim `key_id`). Documented at `/api/docs` (Swagger UI, assets self-hosted in `public/assets/swagger/`).
 

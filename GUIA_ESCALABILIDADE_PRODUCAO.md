@@ -1244,3 +1244,61 @@ rm -rf /var/cache/nginx/tiles/* && systemctl reload nginx
 Regerar também melhora a geocodificação: `spark imoveis:geocodificar` continua
 usando o Nominatim público, que lê do OSM — então rua que entrar no mapa passa
 a ser encontrada por ele também.
+
+## 15. Runbook: por que uma imobiliária não aparece em "Nossos Parceiros"
+
+A seção "Nossos Parceiros" da home **não** é a lista de todos os parceiros —
+essa é a página `/parceiros`. A home mostra a vitrine **"Imobiliárias em
+destaque"**, benefício vendido dos planos Ouro e Diamante
+(`AccountService::getFeaturedPartners()`). Uma conta só entra quando as quatro
+condições valem ao mesmo tempo:
+
+1. `accounts.status = 'ACTIVE'` (e a conta não foi excluída);
+2. existe assinatura com `status IN ('ACTIVE', 'TRIAL')`;
+3. o plano dessa assinatura tem a feature `exposicao.vitrine` — a caixa
+   "Imobiliárias em destaque" no formulário de planos do superadmin. No seed
+   atual PRATA **não** tem; OURO e DIAMANTE têm; dos legados só
+   `DIAMANTE_LEGADO`;
+4. nenhuma mensalidade (`type` em `SUBSCRIPTION`, `UPGRADE_PRORATA`,
+   `TOKENIZATION_CHARGE` ou `NULL`) em `PENDING`/`AWAITING_PAYMENT`/`OVERDUE`
+   vencida há mais de 3 dias — a mesma régua que tira os imóveis da conta da
+   busca pública.
+
+KYC, logo e quantidade de imóveis **não** entram na conta: uma conta sem logo
+aparece com a inicial do nome; o selo de verificada é só o ícone.
+
+O resultado fica em cache (`home_partners`, 1 h). Desde outubro/2026 a chave é
+apagada na hora em qualquer alteração de conta, assinatura, plano ou fatura
+(`AccountService::forgetFeaturedPartnersCache()`); antes disso uma troca de
+plano levava até 1 h para aparecer na home.
+
+### 15.1 Diagnóstico (somente leitura)
+
+```sql
+-- 1. a conta
+SELECT id, nome, status, deleted_at, is_verified, verification_status, logo
+  FROM accounts WHERE nome ILIKE '%<parte do nome>%';
+
+-- 2. assinaturas e plano (troque :id)
+SELECT s.id, s.status, s.deleted_at, p.chave, p.ativo,
+       (p.features->>'exposicao.vitrine')::boolean AS vitrine
+  FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+ WHERE s.account_id = :id ORDER BY s.id DESC;
+
+-- 3. mensalidade vencida que bloqueia (a mesma lista bloqueia a busca)
+SELECT id, type, status, due_date, amount
+  FROM payment_transactions
+ WHERE account_id = :id
+   AND status IN ('PENDING', 'AWAITING_PAYMENT', 'OVERDUE')
+   AND due_date <= CURRENT_DATE - 3
+   AND (type IN ('SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE') OR type IS NULL);
+```
+
+### 15.2 Como ler o resultado
+
+| Sintoma | Causa provável | Correção |
+|---|---|---|
+| Aparece em `/parceiros`, some na home | plano sem `exposicao.vitrine` (ex.: PRATA) | upgrade da assinatura, ou marcar a feature no plano em `/admin/plans` (vale para todas as contas do plano) |
+| Aparece em `/parceiros`, some na home, consulta 3 devolve linhas | mensalidade vencida > 3 dias | regularizar/reconciliar a fatura (`spark asaas:sync` adianta a baixa) |
+| Some das duas páginas | `accounts.status` ≠ ACTIVE, assinatura não ACTIVE/TRIAL ou conta excluída | ativar a assinatura / conta pelo painel do superadmin |
+| Tudo correto no banco e ainda assim não aparece | cache `home_partners` de uma versão anterior à invalidação automática | esperar a expiração (≤ 1 h) ou `redis-cli -n <db> DEL home_partners` |

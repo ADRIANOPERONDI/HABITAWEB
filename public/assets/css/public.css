@@ -53,37 +53,68 @@ h4,
     object-fit: cover;
 }
 
-/* Floating Search Bar */
+/* Floating Search Bar
+   Os ajustes que viviam inline em Layouts/public.php (com !important) moram
+   aqui. Com tudo na mesma folha e na mesma especificidade, a media query do
+   celular (abaixo) sobrescreve sem precisar de !important. */
 .search-container-floating {
     background: #fff;
-    border-radius: var(--border-radius-xl);
-    box-shadow: var(--shadow-soft);
-    padding: 8px;
+    border-radius: 50px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+    padding: 0 10px;
     display: flex;
     align-items: center;
-    max-width: 850px;
+    width: 95%;
+    max-width: 1050px;
     margin: -40px auto 0;
     position: relative;
     z-index: 10;
     border: 1px solid #ebebeb;
 }
 
-.search-item {
-    flex: 1;
-    padding: 12px 24px;
-    border-right: 1px solid #ebebeb;
+/* O Select2 grava width inline no container; só !important passa por cima. */
+.search-container-floating .select2-container {
+    width: 100% !important;
 }
 
-.search-item:last-of-type {
-    border-right: none;
+/* O tema bootstrap-5 desenha a seta como background da seleção e reserva
+   padding à direita para ela; o reset de padding do layout (Layouts/public.php)
+   zerava isso e, em campo estreito (tablet), a seta caía em cima do texto. */
+.search-container-floating .select2-container--bootstrap-5 .select2-selection {
+    padding-right: 1.75rem !important;
+}
+
+.search-item {
+    flex: 1;
+    min-width: 0; /* deixa o campo encolher abaixo do conteúdo; o Select2 corta com reticências */
+    height: 90px;
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* Divisória só ENTRE campos. O wrapper do botão não é .search-item, então
+   o último campo não ganha risco sobrando à direita (o antigo
+   :last-of-type nunca casava com ele, porque o último div é o do botão). */
+.search-item + .search-item {
+    border-left: 1px solid #f0f0f0;
+}
+
+.search-item.flex-large {
+    flex: 1.4;
 }
 
 .search-item label {
     display: block;
-    font-size: 12px;
-    font-weight: 800;
+    font-size: 11px;
+    font-weight: 700;
     color: #000;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.5;
     margin-bottom: 2px;
+    white-space: nowrap;
 }
 
 .search-item input,
@@ -102,22 +133,115 @@ h4,
     color: #000;
 }
 
+.search-submit {
+    padding: 0 16px;
+}
+
 .btn-search-round {
-    background: var(--primary-color);
+    width: 58px;
+    height: 58px;
+    font-size: 20px;
+    flex-shrink: 0;
+    background: var(--primary-gradient);
     color: #fff;
-    width: 48px;
-    height: 48px;
+    border: none;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: none;
-    transition: opacity 0.3s;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.3);
 }
 
 .btn-search-round:hover {
     opacity: 0.9;
     color: #fff;
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.4);
+}
+
+/* Até o tablet a barra deixa de ser uma linha única. Quatro campos + botão
+   numa linha precisam de ~560px; em 375px isso alargava o documento inteiro e
+   a página parecia "deslocada", porque só o navbar (fixed) ficava alinhado à
+   tela. Abaixo de 992px a barra vira um cartão: botão de busca em largura
+   total, dois campos por linha no tablet, um por linha no celular. */
+@media (max-width: 991.98px) {
+    .search-container-floating {
+        flex-wrap: wrap;
+        border-radius: 24px;
+        padding: 8px;
+    }
+
+    .search-item,
+    .search-item.flex-large {
+        height: auto;
+        padding: 8px 16px;
+    }
+
+    .search-item + .search-item {
+        border-left: 0;
+    }
+
+    .search-submit {
+        flex: 1 1 100%;
+        padding: 8px 0 0;
+    }
+
+    .btn-search-round {
+        width: 100%;
+        height: 52px;
+        border-radius: 999px;
+        font-size: 18px;
+    }
+
+    .btn-search-round:hover {
+        transform: none;
+    }
+}
+
+/* Tablet: dois campos por linha (QUERO | CIDADE / CATEGORIA | BAIRRO). */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .search-item,
+    .search-item.flex-large {
+        flex: 1 1 50%;
+        max-width: 50%;
+    }
+
+    .search-item:nth-child(even) {
+        border-left: 1px solid #f0f0f0;
+    }
+
+    .search-item:nth-child(n+3) {
+        border-top: 1px solid #f0f0f0;
+    }
+}
+
+/* Celular: um campo por linha e títulos de seção menores. */
+@media (max-width: 767.98px) {
+    /* A lista do Select2 é anexada ao body e, com dropdownAutoWidth, cresce
+       até o nome mais longo; mesmo com o autoWidth desligado no celular
+       (Scripts/public_layout.php), a largura nunca pode passar da tela. */
+    .select2-container--open .select2-dropdown {
+        max-width: calc(100vw - 32px);
+    }
+
+    .search-item,
+    .search-item.flex-large {
+        flex: 1 1 100%;
+    }
+
+    .search-item + .search-item {
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .section-title {
+        font-size: 26px;
+    }
+
+    .section-subtitle {
+        font-size: 16px;
+        margin-bottom: 24px;
+    }
 }
 
 /* Partners Section */
@@ -725,6 +849,14 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+
+/* Barra de desenho (assets/js/map-draw-toolbar.js): "Concluir" só habilita
+   com três vértices — precisa parecer desabilitado enquanto isso. */
+.map-draw-toolbar .map-floating-btn:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    box-shadow: none;
 }
 
 .price-marker-pill {

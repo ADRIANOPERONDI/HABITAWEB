@@ -41,8 +41,8 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Custom Public CSS -->
-    <link rel="stylesheet" href="<?= base_url('assets/css/public.css') ?>">
+    <!-- Custom Public CSS (?v= pelo mtime: sem isso o celular segura o CSS antigo depois do deploy) -->
+    <link rel="stylesheet" href="<?= base_url('assets/css/public.css') ?>?v=<?= filemtime(FCPATH . 'assets/css/public.css') ?>">
     
     <!-- Select2 -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -179,62 +179,6 @@
             font-weight: 700 !important;
         }
         
-        /* Specific adjustments for the floating search bar */
-        .search-container-floating .select2-container {
-            width: 100% !important;
-        }
-        .search-container-floating .search-item {
-            height: 90px; /* Standardize height */
-            padding: 10px 20px !important;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            border-right: 1px solid #f0f0f0; /* Subtle divider */
-        }
-        .search-container-floating .search-item:last-of-type {
-            border-right: none;
-        }
-        .search-container-floating .search-item.flex-large {
-            flex: 1.4 !important;
-        }
-        .search-container-floating .search-item label {
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            opacity: 0.5;
-            margin-bottom: 2px;
-            white-space: nowrap;
-        }
-        .btn-search-round {
-            width: 58px !important;
-            height: 58px !important;
-            font-size: 20px !important;
-            flex-shrink: 0;
-            background: var(--primary-gradient);
-            border: none;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.3);
-        }
-        .btn-search-round:hover {
-            transform: scale(1.05);
-            box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.4);
-        }
-        .search-container-floating {
-            max-width: 1050px !important;
-            border-radius: 50px !important;
-            width: 95% !important;
-            background: #fff;
-            padding: 0 10px;
-            display: flex;
-            align-items: center;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.05);
-        }
     </style>
     <?= $this->renderSection('styles') ?>
 </head>

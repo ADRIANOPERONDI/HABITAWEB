@@ -153,4 +153,26 @@ final class PartnerPageTest extends HabitawebTestCase
         $this->assertStringNotContainsString('placehold.co', $html);
         $this->assertStringContainsString('assets/img/placeholder-house.png', $html);
     }
+
+    public function testHomeMostraAInicialQuandoOParceiroNaoTemLogo(): void
+    {
+        $planId = (int) model(PlanModel::class)->insert([
+            'chave'           => 'VITRINE_' . bin2hex(random_bytes(4)),
+            'nome'            => 'Plano Vitrine ' . bin2hex(random_bytes(4)),
+            'preco_mensal'    => 990.00,
+            'exposure_weight' => 0,
+            'ativo'           => true,
+            'features'        => [PlanFeature::EXPOSICAO_VITRINE => true],
+        ], true);
+        // Logo não é obrigatório no cadastro: a conta entra na vitrine sem ele.
+        $accountId = (int) (new TenantFactory())->create(['nome' => 'Zebra Imoveis Sem Logo', 'logo' => null])['account']->id;
+        model(SubscriptionModel::class)->where('account_id', $accountId)->set(['plan_id' => $planId, 'status' => 'ACTIVE'])->update();
+        PlanGate::forget($accountId);
+
+        $html = $this->get('/')->getBody();
+
+        $this->assertStringContainsString('Zebra Imoveis Sem Logo', $html);
+        $this->assertStringNotContainsString('src=""', $html, 'Parceiro sem logo não pode sair como <img src=""> (imagem quebrada).');
+        $this->assertMatchesRegularExpression('/partner-logo-fallback[^>]*>Z</', $html, 'Sem logo, o card mostra a inicial do nome.');
+    }
 }

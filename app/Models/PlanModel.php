@@ -82,11 +82,25 @@ class PlanModel extends Model
     // Callbacks
     protected $allowCallbacks = true;
     protected $beforeInsert   = [];
-    protected $afterInsert    = [];
+    protected $afterInsert    = ['invalidateFeaturedPartners'];
     protected $beforeUpdate   = [];
-    protected $afterUpdate    = [];
+    protected $afterUpdate    = ['invalidateFeaturedPartners'];
     protected $beforeFind     = [];
     protected $afterFind      = [];
     protected $beforeDelete   = [];
-    protected $afterDelete    = [];
+    protected $afterDelete    = ['invalidateFeaturedPartners'];
+
+    /**
+     * A vitrine "Imobiliárias em destaque" da home é decidida pela feature
+     * `exposicao.vitrine` do plano. Marcar ou desmarcar a caixa no formulário
+     * do superadmin precisa refletir na home na hora, não em até 1 h de TTL.
+     * (PlanSeeder escreve pelo query builder e não passa por aqui — seed é
+     * operação manual, e `cache()->clean()` faz parte do deploy.)
+     */
+    protected function invalidateFeaturedPartners(array $data): array
+    {
+        \App\Services\AccountService::forgetFeaturedPartnersCache();
+
+        return $data;
+    }
 }

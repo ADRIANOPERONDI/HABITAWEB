@@ -1,10 +1,13 @@
 <script>
     $(document).ready(function() {
         // Initialize Select2 for public pages
+        // dropdownAutoWidth dimensiona a lista pelo nome mais longo de cidade/
+        // bairro — no celular isso passava da borda da tela, então só no desktop.
+        var select2AutoWidth = !window.matchMedia('(max-width: 767.98px)').matches;
         $('.select2-public').select2({
             theme: 'bootstrap-5',
             width: '100%',
-            dropdownAutoWidth: true,
+            dropdownAutoWidth: select2AutoWidth,
             selectionCssClass: 'select2-premium-selection',
             dropdownCssClass: 'select2-premium-dropdown',
         });

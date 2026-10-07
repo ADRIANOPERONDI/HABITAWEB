@@ -40,10 +40,11 @@ class Home extends BaseController
         $mapPins = $this->buildMapPins($mapProperties);
 
         // Busca Parceiros (Cache de 1 hora)
-        $partners = cache()->get('home_partners');
+        $partnersCacheKey = \App\Services\AccountService::FEATURED_PARTNERS_CACHE_KEY;
+        $partners = cache()->get($partnersCacheKey);
         if ($partners === null) {
              $partners = $accountService->getFeaturedPartners(12);
-             cache()->save('home_partners', $partners, 3600);
+             cache()->save($partnersCacheKey, $partners, 3600);
         }
 
         // Busca Opções de Filtro (Cidades, Bairros, Tipos) - Cache de 1 hora

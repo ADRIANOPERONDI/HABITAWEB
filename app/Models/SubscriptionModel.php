@@ -90,6 +90,10 @@ class SubscriptionModel extends Model
             \App\Services\PlanGate::forget($accountId);
         }
 
+        // A vitrine de parceiros da home exige assinatura vigente: ativar,
+        // trocar ou cancelar precisa aparecer lá na hora, não em até 1 h.
+        \App\Services\AccountService::forgetFeaturedPartnersCache();
+
         return $data;
     }
 
