@@ -208,6 +208,7 @@
 <?= $this->section('scripts') ?>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<script src="<?= base_url('assets/js/map-draw-toolbar.js') ?>?v=<?= filemtime(FCPATH . 'assets/js/map-draw-toolbar.js') ?>"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -235,8 +236,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let lastFetchWasInitial = false;
     let isInitialFetch = true;
     let suppressNextMoveFetch = false;
-    let drawAssetsPromise = null;
-    let polygonDrawer = null;
 
     const map = L.map('map', { zoomControl: false }).setView([-14.235, -51.925], 4);
     L.control.zoom({ position: 'topright' }).addTo(map);
@@ -250,30 +249,29 @@ document.addEventListener('DOMContentLoaded', function() {
     }).addTo(map);
     requestAnimationFrame(() => map.invalidateSize());
 
-    // Draw buttons as native Leaflet controls (prevents z-index issues)
-    const DrawControl = L.Control.extend({
-        options: { position: 'bottomleft' },
-        onAdd: function() {
-            const container = L.DomUtil.create('div', 'map-floating-actions leaflet-bar');
-            container.style.cssText = 'border:none;background:none;box-shadow:none;display:flex;gap:10px;';
-
-            const btnStart = L.DomUtil.create('button', 'map-floating-btn', container);
-            btnStart.type = 'button';
-            btnStart.id = 'btnStartDraw';
-            btnStart.innerHTML = '<i class="fa-solid fa-draw-polygon"></i> Desenhar área';
-
-            const btnClear = L.DomUtil.create('button', 'map-floating-btn text-danger', container);
-            btnClear.type = 'button';
-            btnClear.id = 'btnClearDraw';
-            btnClear.innerHTML = '<i class="fa-solid fa-xmark"></i> Apagar área';
-            btnClear.style.display = 'none';
-
-            L.DomEvent.disableClickPropagation(container);
-            L.DomEvent.disableScrollPropagation(container);
-            return container;
+    // Barra de desenho compartilhada com a home (assets/js/map-draw-toolbar.js):
+    // Desenhar área -> Concluir / Desfazer / Cancelar -> Apagar área. Continua
+    // em bottomleft, que o public.css centraliza na base do mapa (e sobe acima
+    // do botão "Ver lista" no celular).
+    const drawToolbar = HabitawebMapDraw.attach(map, {
+        position: 'bottomleft',
+        layout: 'row',
+        assetsBase: <?= json_encode(base_url('assets/js/leaflet-draw'), JSON_UNESCAPED_SLASHES) ?>,
+        shapeOptions: { color: '#0f766e', fillOpacity: 0.16, weight: 2 },
+        drawError: { color: '#ef4444', message: '<strong>Ops!</strong> ajuste o desenho para não cruzar linhas.' },
+        onCreated: function(layer, coords) {
+            currentPolygon = layer;
+            inputPropertyIds.value = '';
+            inputPolygon.value = JSON.stringify(coords);
+            fetchMapData();
+        },
+        onCleared: function() {
+            currentPolygon = null;
+            inputPolygon.value = '';
+            inputPropertyIds.value = '';
+            fetchMapData();
         }
     });
-    new DrawControl().addTo(map);
 
     const markers = L.markerClusterGroup({
         showCoverageOnHover: false,
@@ -292,38 +290,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     map.addLayer(markers);
-
-    const drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
-    const drawOptions = {
-        allowIntersection: false,
-        drawError: { color: '#ef4444', message: '<strong>Ops!</strong> ajuste o desenho para não cruzar linhas.' },
-        shapeOptions: { color: '#0f766e', fillOpacity: 0.16, weight: 2 }
-    };
-
-    function loadDrawAssets() {
-        if (window.L && L.Draw) {
-            return Promise.resolve();
-        }
-        if (drawAssetsPromise) {
-            return drawAssetsPromise;
-        }
-
-        drawAssetsPromise = new Promise((resolve, reject) => {
-            const css = document.createElement('link');
-            css.rel = 'stylesheet';
-            css.href = '<?= base_url('assets/js/leaflet-draw/leaflet.draw.css') ?>';
-            document.head.appendChild(css);
-
-            const script = document.createElement('script');
-            script.src = '<?= base_url('assets/js/leaflet-draw/leaflet.draw.js') ?>';
-            script.onload = resolve;
-            script.onerror = reject;
-            document.body.appendChild(script);
-        });
-
-        return drawAssetsPromise;
-    }
 
     function setSkeleton() {
         listContainer.innerHTML = `
@@ -354,7 +320,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function syncUrl() {
         const params = new URLSearchParams(new FormData(form));
-        ['bounds', 'polygon', 'property_ids', 'page', 'per_page'].forEach(key => params.delete(key));
+        // `polygon` fica: é o deep link vindo do mapa da home, e recarregar ou
+        // compartilhar a URL precisa preservar a área desenhada.
+        ['bounds', 'property_ids', 'page', 'per_page'].forEach(key => params.delete(key));
         for (const [key, value] of Array.from(params.entries())) {
             if (!value) params.delete(key);
         }
@@ -518,43 +486,6 @@ document.addEventListener('DOMContentLoaded', function() {
         scheduleFetch({ viewportBounds: true });
     });
 
-    map.on('draw:created', function(event) {
-        drawnItems.clearLayers();
-        drawnItems.addLayer(event.layer);
-        currentPolygon = event.layer;
-        inputPropertyIds.value = '';
-        const coords = event.layer.getLatLngs()[0].map(point => [point.lng, point.lat]);
-        inputPolygon.value = JSON.stringify(coords);
-        document.getElementById('btnStartDraw').style.display = 'none';
-        document.getElementById('btnClearDraw').style.display = '';
-        fetchMapData();
-    });
-
-    document.getElementById('btnStartDraw').addEventListener('click', () => {
-        const button = document.getElementById('btnStartDraw');
-        const original = button.innerHTML;
-        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Carregando...';
-        loadDrawAssets()
-            .then(() => {
-                polygonDrawer = polygonDrawer || new L.Draw.Polygon(map, drawOptions);
-                polygonDrawer.enable();
-                button.innerHTML = original;
-            })
-            .catch(() => {
-                button.innerHTML = original;
-                alert('Não foi possível carregar a ferramenta de desenho agora.');
-            });
-    });
-    document.getElementById('btnClearDraw').addEventListener('click', () => {
-        drawnItems.clearLayers();
-        currentPolygon = null;
-        inputPolygon.value = '';
-        inputPropertyIds.value = '';
-        document.getElementById('btnClearDraw').style.display = 'none';
-        document.getElementById('btnStartDraw').style.display = '';
-        fetchMapData();
-    });
-
     document.querySelectorAll('.js-business-chip').forEach(chip => {
         chip.addEventListener('click', () => {
             document.querySelectorAll('.js-business-chip').forEach(item => item.classList.remove('is-active'));
@@ -630,10 +561,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         document.getElementById('sortSelect').value = 'relevance';
         document.querySelectorAll('.js-business-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.value === ''));
-        drawnItems.clearLayers();
+        drawToolbar.clear({ silent: true });
         currentPolygon = null;
-        document.getElementById('btnClearDraw').style.display = 'none';
-        document.getElementById('btnStartDraw').style.display = '';
         fetchMapData();
     });
 
@@ -650,10 +579,33 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => map.invalidateSize(), 240);
     });
 
+    // Deep link (mapa da home ou URL compartilhada): a área já chega no input
+    // oculto, normalizada pelo servidor. Desenha o polígono, enquadra o mapa
+    // nela e deixa o fetch inicial logo abaixo buscar pela área — updateBounds()
+    // ignora o viewport quando há polígono. Sem animação o moveend dispara
+    // síncrono e consome suppressNextMoveFetch, como no reenquadramento de
+    // renderMarkers().
+    (function restorePolygonFromUrl() {
+        if (!inputPolygon.value) return;
+        let coords = null;
+        try { coords = JSON.parse(inputPolygon.value); } catch (e) { coords = null; }
+        const layer = Array.isArray(coords) ? drawToolbar.setPolygon(coords) : null;
+        if (!layer) {
+            inputPolygon.value = '';
+            return;
+        }
+        currentPolygon = layer;
+        suppressNextMoveFetch = true;
+        map.fitBounds(layer.getBounds().pad(0.15), { animate: false });
+        setTimeout(() => { suppressNextMoveFetch = false; }, 500);
+    })();
+
     firstLoadDone = true;
     fetchMapData();
 
-    if (!cidadeParam && 'geolocation' in navigator) {
+    // Com área vinda da URL o mapa já está enquadrado nela; recentrar na
+    // posição do visitante o tiraria de lá.
+    if (!cidadeParam && !currentPolygon && 'geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
             position => {
                 suppressNextMoveFetch = true;
