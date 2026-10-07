@@ -41,8 +41,8 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Custom Public CSS -->
-    <link rel="stylesheet" href="<?= base_url('assets/css/public.css') ?>">
+    <!-- Custom Public CSS (?v= pelo mtime: sem isso o celular segura o CSS antigo depois do deploy) -->
+    <link rel="stylesheet" href="<?= base_url('assets/css/public.css') ?>?v=<?= filemtime(FCPATH . 'assets/css/public.css') ?>">
     
     <!-- Select2 -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
