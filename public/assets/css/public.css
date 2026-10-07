@@ -53,37 +53,60 @@ h4,
     object-fit: cover;
 }
 
-/* Floating Search Bar */
+/* Floating Search Bar
+   Os ajustes que viviam inline em Layouts/public.php (com !important) moram
+   aqui. Com tudo na mesma folha e na mesma especificidade, a media query do
+   celular (abaixo) sobrescreve sem precisar de !important. */
 .search-container-floating {
     background: #fff;
-    border-radius: var(--border-radius-xl);
-    box-shadow: var(--shadow-soft);
-    padding: 8px;
+    border-radius: 50px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+    padding: 0 10px;
     display: flex;
     align-items: center;
-    max-width: 850px;
+    width: 95%;
+    max-width: 1050px;
     margin: -40px auto 0;
     position: relative;
     z-index: 10;
     border: 1px solid #ebebeb;
 }
 
-.search-item {
-    flex: 1;
-    padding: 12px 24px;
-    border-right: 1px solid #ebebeb;
+/* O Select2 grava width inline no container; só !important passa por cima. */
+.search-container-floating .select2-container {
+    width: 100% !important;
 }
 
-.search-item:last-of-type {
-    border-right: none;
+.search-item {
+    flex: 1;
+    height: 90px;
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* Divisória só ENTRE campos. O wrapper do botão não é .search-item, então
+   o último campo não ganha risco sobrando à direita (o antigo
+   :last-of-type nunca casava com ele, porque o último div é o do botão). */
+.search-item + .search-item {
+    border-left: 1px solid #f0f0f0;
+}
+
+.search-item.flex-large {
+    flex: 1.4;
 }
 
 .search-item label {
     display: block;
-    font-size: 12px;
-    font-weight: 800;
+    font-size: 11px;
+    font-weight: 700;
     color: #000;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.5;
     margin-bottom: 2px;
+    white-space: nowrap;
 }
 
 .search-item input,
@@ -102,22 +125,31 @@ h4,
     color: #000;
 }
 
+.search-submit {
+    padding: 0 16px;
+}
+
 .btn-search-round {
-    background: var(--primary-color);
+    width: 58px;
+    height: 58px;
+    font-size: 20px;
+    flex-shrink: 0;
+    background: var(--primary-gradient);
     color: #fff;
-    width: 48px;
-    height: 48px;
+    border: none;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: none;
-    transition: opacity 0.3s;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(var(--primary-rgb), 0.3);
 }
 
 .btn-search-round:hover {
     opacity: 0.9;
     color: #fff;
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(var(--primary-rgb), 0.4);
 }
 
 /* Partners Section */

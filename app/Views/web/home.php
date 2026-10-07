@@ -52,7 +52,7 @@
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="px-3">
+        <div class="search-submit">
             <button type="submit" class="btn-search-round">
                 <i class="fa-solid fa-magnifying-glass"></i>
             </button>
