@@ -68,6 +68,8 @@ final class HomeFeaturedFillTest extends HabitawebTestCase
 
         $this->assertStringNotContainsString('Novos imóveis em breve', $html);
         $this->assertStringContainsString('Qualquer Recente', $html);
+        $this->assertStringContainsString('Parceiros em destaque', $html);
+        $this->assertStringNotContainsString('Nossos Parceiros', $html);
         $this->assertStringNotContainsString('alta qualidade visual', $html);
     }
 }
