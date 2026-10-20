@@ -96,4 +96,26 @@ final class BairroDuplicadoTest extends HabitawebTestCase
         $this->assertTrue($r['success'], json_encode($r));
         $this->assertSame('Centro', $r['data']->bairro);
     }
+
+    public function testBackfillUnificaImoveisJaGravadosSemFundirNomesDistintos(): void
+    {
+        $model = new \App\Models\PropertyModel();
+        $base  = ['account_id' => $this->accountId, 'tipo_negocio' => 'VENDA', 'tipo_imovel' => 'casa',
+            'cidade' => 'Cidade Backfill', 'estado' => 'SC', 'status' => 'ACTIVE', 'preco' => 1];
+        foreach (['CENTRO', 'Centro', 'SAO JORGE', 'São Jorge', 'Centro Histórico'] as $i => $b) {
+            $model->insert($base + ['titulo' => "bf$i", 'bairro' => $b]);
+        }
+
+        $resolver = new \App\Services\NeighborhoodResolver();
+
+        $seco = $resolver->backfill(true);
+        $this->assertSame(2, count($seco), 'dry-run deve apontar só Centro e São Jorge');
+        $this->assertSame(1, $model->where('bairro', 'CENTRO')->countAllResults(), 'dry-run não grava');
+
+        $resolver->backfill(false);
+
+        $bairros = array_unique(array_column($model->where('cidade', 'Cidade Backfill')->findAll(), 'bairro'));
+        sort($bairros);
+        $this->assertSame(['Centro', 'Centro Histórico', 'São Jorge'], $bairros);
+    }
 }

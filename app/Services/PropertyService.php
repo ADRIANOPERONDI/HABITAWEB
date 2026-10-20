@@ -1442,7 +1442,9 @@ class PropertyService
         $model = (new PropertyModel())->distinct()->select('bairro')->where('cidade', $resolved);
         $this->publicVisibility->apply($model);
 
-        return $model->orderBy('bairro', 'ASC')->findAll();
+        // Rede de protecao: grafia que so difere na caixa nao vira 2 opcoes
+        // (o filtro compara por LOWER(), entao nenhum imovel fica sem opcao).
+        return $this->dedupPorCaixa($model->orderBy('bairro', 'ASC')->findAll(), 'bairro');
     }
 
     /**

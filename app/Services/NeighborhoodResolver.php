@@ -47,6 +47,23 @@ class NeighborhoodResolver
         $cidadeKey = self::cityKey($cidade);
         $bairroKey = NeighborhoodName::key($bairro);
 
+        $conhecido = $this->lookup($cidadeKey, $bairroKey);
+        if ($conhecido !== null) {
+            return $conhecido;
+        }
+
+        $nome = NeighborhoodName::normalize($bairro) ?? '';
+
+        if ($register && $nome !== '' && $cidadeKey !== '') {
+            $this->register($cidadeKey, $nome, $bairroKey);
+        }
+
+        return $nome;
+    }
+
+    /** Nome canônico já conhecido (alias ou bairro registrado), ou null. */
+    public function lookup(string $cidadeKey, string $bairroKey): ?string
+    {
         $alias = $this->db->table('neighborhood_aliases a')
             ->select('n.name')
             ->join('neighborhoods n', 'n.id = a.neighborhood_id')
@@ -62,17 +79,81 @@ class NeighborhoodResolver
             ->where('cidade_key', $cidadeKey)
             ->where('normalized_key', $bairroKey)
             ->get()->getRow();
-        if ($registrado) {
-            return $registrado->name;
+
+        return $registrado ? $registrado->name : null;
+    }
+
+    /**
+     * Unifica as grafias de bairro já gravadas em `properties`.
+     *
+     * Agrupa por (cidade, chave do bairro) — nunca entre cidades, nunca entre
+     * nomes de chave diferente. O nome canônico do grupo é o já registrado
+     * (ou alias); se não há, a melhor grafia existente: com acento > caixa
+     * mista > a mais frequente. Cada grafia diferente da canônica vira um
+     * UPDATE.
+     *
+     * @return list<array{cidade: string, canonico: string, variantes: list<string>, imoveis: int}> um item por grupo que mudaria
+     */
+    public function backfill(bool $dryRun = true): array
+    {
+        $linhas = $this->db->table('properties')
+            ->select('cidade, bairro, COUNT(*) AS total')
+            ->where("TRIM(COALESCE(bairro, '')) !=", '')
+            ->groupBy('cidade, bairro')
+            ->get()->getResultArray();
+
+        $grupos = [];
+        foreach ($linhas as $l) {
+            $chave = self::cityKey($l['cidade']) . '|' . NeighborhoodName::key($l['bairro']);
+            $grupos[$chave][] = $l;
         }
 
-        $nome = NeighborhoodName::normalize($bairro) ?? '';
+        $relatorio = [];
+        foreach ($grupos as $chave => $variantes) {
+            [$cidadeKey, $bairroKey] = explode('|', $chave, 2);
 
-        if ($register && $nome !== '' && $cidadeKey !== '') {
-            $this->register($cidadeKey, $nome, $bairroKey);
+            $canonico = $this->lookup($cidadeKey, $bairroKey);
+            if ($canonico === null) {
+                usort($variantes, static function (array $a, array $b): int {
+                    $score = static fn (array $v): int => (preg_match('/[^\x00-\x7F]/u', $v['bairro']) ? 1000000 : 0)
+                        + ($v['bairro'] !== mb_strtoupper($v['bairro'], 'UTF-8') && $v['bairro'] !== mb_strtolower($v['bairro'], 'UTF-8') ? 100000 : 0)
+                        + (int) $v['total'];
+
+                    return $score($b) <=> $score($a);
+                });
+                $canonico = NeighborhoodName::normalize($variantes[0]['bairro']) ?? '';
+                if (! $dryRun && $canonico !== '' && $cidadeKey !== '') {
+                    $this->register($cidadeKey, $canonico, $bairroKey);
+                }
+            }
+
+            $mudam = array_values(array_filter($variantes, static fn (array $v): bool => $v['bairro'] !== $canonico));
+            if ($mudam === [] || $canonico === '') {
+                continue;
+            }
+
+            if (! $dryRun) {
+                foreach ($mudam as $v) {
+                    $this->db->table('properties')
+                        ->where('cidade', $v['cidade'])
+                        ->where('bairro', $v['bairro'])
+                        ->update(['bairro' => $canonico]);
+                }
+            }
+
+            $relatorio[] = [
+                'cidade'    => $variantes[0]['cidade'],
+                'canonico'  => $canonico,
+                'variantes' => array_map(static fn (array $v): string => $v['bairro'], $mudam),
+                'imoveis'   => array_sum(array_map(static fn (array $v): int => (int) $v['total'], $mudam)),
+            ];
         }
 
-        return $nome;
+        if (! $dryRun && $relatorio !== []) {
+            PublicPropertyVisibilityService::invalidateCaches();
+        }
+
+        return $relatorio;
     }
 
     /** Registra o bairro canônico; idempotente. */
