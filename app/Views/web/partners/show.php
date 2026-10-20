@@ -105,12 +105,14 @@
                                         <?= price_label((float) $property->preco, $property->tipo_negocio) ?>
                                     </h4>
                                     
+                                    <?php $specs = property_specs($property); ?>
+                                    <?php if ($specs): ?>
                                     <div class="d-flex justify-content-between mt-3 pt-3 border-top small text-muted">
-                                        <span><i class="fas fa-vector-square me-1"></i> <?= $property->area_total ?> m²</span>
-                                        <span><i class="fas fa-bed me-1"></i> <?= $property->quartos ?></span>
-                                        <span><i class="fas fa-bath me-1"></i> <?= $property->banheiros ?></span>
-                                        <span><i class="fas fa-car me-1"></i> <?= $property->vagas ?></span>
+                                        <?php foreach ($specs as $spec): ?>
+                                            <span title="<?= esc($spec['label']) ?>"><i class="fas <?= $spec['icon'] ?> me-1"></i> <?= esc($spec['value']) ?></span>
+                                        <?php endforeach; ?>
                                     </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>

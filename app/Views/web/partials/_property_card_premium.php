@@ -31,20 +31,14 @@
                 <p class="premium-card-title"><?= esc($property->titulo) ?></p>
             </div>
 
+            <?php $specs = property_specs($property); ?>
+            <?php if ($specs): ?>
             <div class="premium-specs">
-                <?php if($property->area_total): ?>
-                    <span><i class="fa-solid fa-ruler-combined"></i> <?= (int)$property->area_total ?>m²</span>
-                <?php endif; ?>
-                <?php if($property->quartos): ?>
-                    <span><i class="fa-solid fa-bed"></i> <?= $property->quartos ?></span>
-                <?php endif; ?>
-                <?php if($property->banheiros): ?>
-                    <span><i class="fa-solid fa-bath"></i> <?= $property->banheiros ?></span>
-                <?php endif; ?>
-                <?php if($property->vagas): ?>
-                    <span><i class="fa-solid fa-car"></i> <?= $property->vagas ?></span>
-                <?php endif; ?>
+                <?php foreach ($specs as $spec): ?>
+                    <span title="<?= esc($spec['label']) ?>"><i class="fa-solid <?= $spec['icon'] ?>"></i> <?= esc($spec['value']) ?></span>
+                <?php endforeach; ?>
             </div>
+            <?php endif; ?>
 
             <div class="premium-price-row">
                 <div>

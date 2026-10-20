@@ -78,49 +78,30 @@
                 <i class="fa-solid fa-location-dot text-primary me-2"></i> <?= esc($property->bairro) ?>, <?= esc($property->cidade) ?>
             </div>
 
+            <?php // property_specs(): só o que se aplica ao tipo e foi informado; sem isso saía " m²" solto e "0" em terreno. ?>
+            <?php $specs = property_specs($property, 'detail'); ?>
+            <?php if ($specs): ?>
             <div class="row g-4 mb-5">
-                <?php // Sem a guarda, imovel sem area cadastrada mostrava um " m²" solto. ?>
-                <?php if($property->area_total): ?>
+                <?php foreach ($specs as $spec): ?>
                 <div class="col-6 col-md-2 text-center">
                     <div class="p-3 bg-white border" style="border-radius: 8px;">
-                        <i class="fa-solid fa-ruler-combined fa-2x text-primary mb-2"></i>
-                        <h5 class="fw-bold mb-0"><?= $property->area_total ?> m²</h5>
-                        <small class="text-muted">Área</small>
+                        <i class="fa-solid <?= $spec['icon'] ?> fa-2x text-primary mb-2"></i>
+                        <h5 class="fw-bold mb-0"><?= esc($spec['value']) ?></h5>
+                        <small class="text-muted"><?= esc($spec['label']) ?></small>
                     </div>
                 </div>
-                <?php endif; ?>
-                <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-white border" style="border-radius: 8px;">
-                        <i class="fa-solid fa-bed fa-2x text-primary mb-2"></i>
-                        <h5 class="fw-bold mb-0"><?= $property->quartos ?></h5>
-                        <small class="text-muted">Quartos</small>
-                    </div>
-                </div>
-                <?php if($property->suites): ?>
-                <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-white border" style="border-radius: 8px;">
-                        <i class="fa-solid fa-person-shelter fa-2x text-primary mb-2"></i>
-                        <h5 class="fw-bold mb-0"><?= $property->suites ?></h5>
-                        <small class="text-muted">Suítes</small>
-                    </div>
-                </div>
-                <?php endif; ?>
-                <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-white border" style="border-radius: 8px;">
-                        <i class="fa-solid fa-bath fa-2x text-primary mb-2"></i>
-                        <h5 class="fw-bold mb-0"><?= $property->banheiros ?></h5>
-                        <small class="text-muted">Banh.</small>
-                    </div>
-                </div>
-                 <div class="col-6 col-md-2 text-center">
-                    <div class="p-3 bg-white border" style="border-radius: 8px;">
-                        <i class="fa-solid fa-car fa-2x text-primary mb-2"></i>
-                        <h5 class="fw-bold mb-0"><?= $property->vagas ?></h5>
-                        <small class="text-muted">Vagas</small>
-                    </div>
-                </div>
+                <?php endforeach; ?>
             </div>
+            <?php endif; ?>
 
+            <?php
+            $hasAmenities = $property->aceita_pets || $property->mobiliado || $property->semimobiliado
+                || $property->is_desocupado || $property->indicado_investidor
+                || $property->is_destaque || (isset($property->highlight_level) && $property->highlight_level > 0)
+                || $property->is_novo || $property->is_exclusivo || $property->is_locado
+                || $property->indicado_primeira_moradia || $property->indicado_temporada;
+            ?>
+            <?php if ($hasAmenities): ?>
             <h4 class="fw-bold mb-3">Comodidades & Diferenciais</h4>
             <div class="row g-3 mb-5">
                 <?php if($property->aceita_pets): ?>
@@ -201,27 +182,29 @@
                                 <?php endif; ?>
             </div>
 
+            <?php endif; ?>
+
+            <?php if (trim(strip_tags((string) $property->descricao)) !== ''): ?>
             <h4 class="fw-bold mb-3">Descrição</h4>
             <div class="text-muted lh-lg mb-5">
                 <?= clean_html($property->descricao) ?>
             </div>
+            <?php endif; ?>
 
+            <?php if (! empty($features)): ?>
             <h4 class="fw-bold mb-3">Outras Características</h4>
             <div class="row g-3 mb-5">
-                <?php if(empty($features)): ?>
-                    <p class="text-muted small">Nenhuma outra característica cadastrada.</p>
-                <?php else: ?>
-                    <?php foreach($features as $feature): ?>
-                        <div class="col-md-4">
-                            <i class="fa-solid fa-check text-success me-2"></i> 
-                            <?= esc(\App\Helpers\PropertyCategoryHelper::getFeatureLabel($feature->chave)) ?> 
-                            <?php if($feature->valor && $feature->valor != '1'): ?>
-                                <span class="text-muted small">(<?= esc($feature->valor) ?>)</span>
-                            <?php endif; ?>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
+                <?php foreach($features as $feature): ?>
+                    <div class="col-md-4">
+                        <i class="fa-solid fa-check text-success me-2"></i>
+                        <?= esc(\App\Helpers\PropertyCategoryHelper::getFeatureLabel($feature->chave)) ?>
+                        <?php if($feature->valor && $feature->valor != '1'): ?>
+                            <span class="text-muted small">(<?= esc($feature->valor) ?>)</span>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
             </div>
+            <?php endif; ?>
 
             <?php if($property->latitude && $property->longitude): ?>
             <h4 class="fw-bold mb-3 mt-5">Localização</h4>

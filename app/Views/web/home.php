@@ -153,17 +153,14 @@
                                     </div>
                                     <p class="text-muted x-small mb-2 text-truncate"><?= esc($property->titulo) ?></p>
 
+                                    <?php $specs = property_specs($property); ?>
+                                    <?php if ($specs): ?>
                                     <div class="property-specs d-flex gap-2 mb-2 text-muted x-small border-bottom pb-2">
-                                        <?php if($property->area_total): ?>
-                                            <span title="Área Total"><i class="fa-solid fa-maximize"></i> <?= (int)$property->area_total ?>m²</span>
-                                        <?php endif; ?>
-                                        <?php if($property->quartos): ?>
-                                            <span title="Quartos"><i class="fa-solid fa-bed"></i> <?= $property->quartos ?></span>
-                                        <?php endif; ?>
-                                        <?php if($property->banheiros): ?>
-                                            <span title="Banheiros"><i class="fa-solid fa-bath"></i> <?= $property->banheiros ?></span>
-                                        <?php endif; ?>
+                                        <?php foreach ($specs as $spec): ?>
+                                            <span title="<?= esc($spec['label']) ?>"><i class="fa-solid <?= $spec['icon'] ?>"></i> <?= esc($spec['value']) ?></span>
+                                        <?php endforeach; ?>
                                     </div>
+                                    <?php endif; ?>
                                     
                                     <div class="mt-auto d-flex align-items-center justify-content-between">
                                         <div class="fw-bold text-dark"><?= price_label((float) $property->preco, $property->tipo_negocio) ?></div>
