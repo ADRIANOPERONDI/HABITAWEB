@@ -243,3 +243,65 @@ if (!function_exists('partner_url')) {
         return site_url('parceiro/' . $partner->id);
     }
 }
+
+if (!function_exists('social_links')) {
+    /**
+     * Redes sociais do portal (Configurações > Redes Sociais) prontas para o
+     * rodapé — SÓ as configuradas com um destino válido.
+     *
+     * Antes o rodapé lia `social.whatsapp`, chave que não existe (o painel
+     * grava `social.whatsapp_number`), e caía no padrão '#'; Facebook e
+     * Instagram vinham da migration com valor '' e viravam `href=""`. Os
+     * três ícones apareciam sem levar a lugar nenhum.
+     *
+     * Aceita no Facebook/Instagram URL completa, domínio sem esquema
+     * ("instagram.com/x") e, no Instagram, "@usuario". O WhatsApp é número
+     * (só dígitos contam); sem DDI, assume Brasil (55).
+     *
+     * @param array<string, string|null>|null $settings chave => valor; null lê de app_setting()
+     *
+     * @return list<array{network: string, label: string, icon: string, url: string}>
+     */
+    function social_links(?array $settings = null): array
+    {
+        $get = static fn (string $key): string => trim((string) ($settings !== null ? ($settings[$key] ?? '') : app_setting($key, '')));
+
+        $asUrl = static function (string $value, string $host): ?string {
+            if ($value === '' || $value === '#') {
+                return null;
+            }
+            if (! preg_match('#^https?://#i', $value)) {
+                $value = 'https://' . ltrim($value, '/');
+            }
+            $hostAtual = strtolower((string) (parse_url($value, PHP_URL_HOST) ?? ''));
+
+            // O domínio da rede ou um subdomínio dele (www., m.) — nunca
+            // "facebook.com.golpe.example".
+            return $hostAtual === $host || str_ends_with($hostAtual, '.' . $host) ? $value : null;
+        };
+
+        $links = [];
+
+        if ($url = $asUrl($get('social.facebook'), 'facebook.com')) {
+            $links[] = ['network' => 'facebook', 'label' => 'Facebook', 'icon' => 'fa-brands fa-facebook-f', 'url' => $url];
+        }
+
+        $instagram = $get('social.instagram');
+        if (str_starts_with($instagram, '@')) {
+            $instagram = 'instagram.com/' . substr($instagram, 1);
+        }
+        if ($url = $asUrl($instagram, 'instagram.com')) {
+            $links[] = ['network' => 'instagram', 'label' => 'Instagram', 'icon' => 'fa-brands fa-instagram', 'url' => $url];
+        }
+
+        $digits = preg_replace('/\D+/', '', $get('social.whatsapp_number')) ?? '';
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55' . $digits;
+        }
+        if (strlen($digits) >= 12 && strlen($digits) <= 15) {
+            $links[] = ['network' => 'whatsapp', 'label' => 'WhatsApp', 'icon' => 'fa-brands fa-whatsapp', 'url' => 'https://wa.me/' . $digits];
+        }
+
+        return $links;
+    }
+}

@@ -79,7 +79,7 @@
                                     <div class="d-flex justify-content-between align-items-center">
                                         <small class="text-muted">
                                             <i class="fas fa-home me-1 text-primary"></i>
-                                            <strong><?= $partner->total_properties ?? 0 ?></strong> Imóveis
+                                            <strong><?= (int) ($partner->total_properties ?? 0) ?></strong> <?= (int) ($partner->total_properties ?? 0) === 1 ? 'Imóvel' : 'Imóveis' ?>
                                         </small>
                                         <span class="btn btn-sm btn-outline-primary rounded-pill px-3">
                                             Ver Perfil

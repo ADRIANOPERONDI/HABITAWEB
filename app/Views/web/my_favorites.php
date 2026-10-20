@@ -14,7 +14,7 @@
     <?php else: ?>
         <div class="row g-4">
             <?php foreach ($properties as $property): ?>
-                <div class="col-md-6 col-lg-4">
+                <div class="col-md-6 col-lg-4 js-favorite-card">
                     <div class="card h-100 border-0 shadow-sm rounded-4 overflow-hidden card-hover">
                         <div class="position-relative">
                             <span class="badge bg-primary position-absolute top-0 start-0 m-3"><?= esc($property->tipo_negocio) ?></span>
@@ -25,8 +25,8 @@
                             <img src="<?= $cover ?>" class="card-img-top object-fit-cover" height="250" alt="<?= esc($property->titulo) ?>" loading="lazy" decoding="async">
                             
                             <!-- Favorite Button (Always Active in this list) -->
-                            <button class="btn btn-light rounded-circle position-absolute top-0 end-0 m-3 btn-favorite shadow-sm" data-id="<?= $property->id ?>">
-                                <i class="fa-solid fa-heart text-danger"></i>
+                            <button type="button" class="btn btn-light rounded-circle position-absolute top-0 end-0 m-3 btn-favorite shadow-sm" data-id="<?= $property->id ?>" data-favorited="1" data-remove-card title="Remover dos favoritos" aria-label="Remover dos favoritos" aria-pressed="true">
+                                <i class="fa-solid fa-heart text-danger" aria-hidden="true"></i>
                             </button>
                         </div>
                         <div class="card-body">

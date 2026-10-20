@@ -63,8 +63,8 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-premium btn-premium-primary" aria-label="Filtrar imóveis">
-                        <i class="fa-solid fa-magnifying-glass"></i>
+                    <button type="submit" class="btn btn-premium btn-premium-primary" aria-label="Buscar imóveis">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     </button>
                 </div>
 
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let initialQuery = null;
 
     const map = L.map('map', { zoomControl: false }).setView([-14.235, -51.925], 4);
-    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.control.zoom({ position: 'topright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
         tileSize: <?= (int) config('Map')->tileSize ?>,
@@ -581,8 +581,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 activeFetchController = null;
                 if (!data.success) return;
 
-                resultsTitle.textContent = `${data.count || 0} imóveis encontrados`;
-                resultsSubtitle.textContent = currentPolygon ? 'Resultado dentro da área desenhada' : `${data.map_count || 0} pins na área visível`;
+                const total = data.count || 0;
+                const pins = data.map_count || 0;
+                resultsTitle.textContent = `${total} ${plural(total, 'imóvel encontrado', 'imóveis encontrados')}`;
+                resultsSubtitle.textContent = currentPolygon
+                    ? 'Resultado dentro da área desenhada'
+                    : `${pins} ${plural(pins, 'imóvel', 'imóveis')} no mapa`;
 
                 if (append) {
                     const loadMore = listContainer.querySelector('#btnLoadMoreMap')?.closest('.d-flex');

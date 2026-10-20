@@ -70,8 +70,8 @@
                         </span>
                     <?php endif; ?>
                 </div>
-                <button class="btn btn-outline-danger rounded-circle border-0 btn-favorite p-2" data-id="<?= $property->id ?>" data-favorited="<?= ($isFavorited ?? false) ? '1' : '0' ?>" data-csrf-header="<?= csrf_header() ?>" data-csrf-hash="<?= csrf_hash() ?>" title="<?= ($isFavorited ?? false) ? 'Remover dos favoritos' : 'Favoritar' ?>">
-                   <i class="<?= ($isFavorited ?? false) ? 'fa-solid text-danger' : 'fa-regular' ?> fa-heart fa-2x"></i>
+                <button class="btn btn-outline-danger rounded-circle border-0 btn-favorite p-2" data-id="<?= $property->id ?>" data-favorited="<?= ($isFavorited ?? false) ? '1' : '0' ?>" title="<?= ($isFavorited ?? false) ? 'Remover dos favoritos' : 'Favoritar' ?>" aria-label="<?= ($isFavorited ?? false) ? 'Remover dos favoritos' : 'Favoritar' ?>" aria-pressed="<?= ($isFavorited ?? false) ? 'true' : 'false' ?>">
+                   <i class="<?= ($isFavorited ?? false) ? 'fa-solid text-danger' : 'fa-regular' ?> fa-heart fa-2x" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="text-muted mb-4 fs-5">
@@ -425,47 +425,6 @@
                     });
                 });
 
-                const favoriteBtn = document.querySelector('.btn-favorite');
-                if (favoriteBtn) {
-                    favoriteBtn.addEventListener('click', function() {
-                        if (favoriteBtn.disabled) return;
-                        favoriteBtn.disabled = true;
-
-                        fetch('<?= site_url('favoritos/toggle') ?>', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest',
-                                [favoriteBtn.dataset.csrfHeader]: favoriteBtn.dataset.csrfHash,
-                            },
-                            body: JSON.stringify({ property_id: favoriteBtn.dataset.id }),
-                        })
-                        .then(response => {
-                            if (response.status === 401) {
-                                window.location.href = '<?= site_url('login') ?>';
-                                throw new Error('Não autenticado');
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            const icon = favoriteBtn.querySelector('i');
-                            // O envelope de resposta tem 'status' em dois
-                            // niveis: data.status e o codigo HTTP (201/200),
-                            // data.data.status e 'added'/'removed' -- o icone
-                            // nunca acendia porque comparava o nivel errado.
-                            const nowFavorited = data.data?.status === 'added';
-                            favoriteBtn.dataset.favorited = nowFavorited ? '1' : '0';
-                            favoriteBtn.title = nowFavorited ? 'Remover dos favoritos' : 'Favoritar';
-                            icon.classList.toggle('fa-solid', nowFavorited);
-                            icon.classList.toggle('text-danger', nowFavorited);
-                            icon.classList.toggle('fa-regular', !nowFavorited);
-                        })
-                        .catch(error => console.error(error))
-                        .finally(() => {
-                            favoriteBtn.disabled = false;
-                        });
-                    });
-                }
                 </script>
             </div>
         </div>

@@ -334,8 +334,8 @@
             
             <div class="d-flex align-items-center gap-3">
                 <!-- Theme Toggle -->
-                <button id="theme-toggle" class="btn btn-light rounded-circle shadow-sm p-2" title="Alternar Tema">
-                    <i class="fa-solid fa-moon" id="theme-toggle-icon"></i>
+                <button id="theme-toggle" type="button" class="btn btn-light rounded-circle shadow-sm p-2" title="Alternar tema" aria-label="Alternar tema claro/escuro">
+                    <i class="fa-solid fa-moon" id="theme-toggle-icon" aria-hidden="true"></i>
                 </button>
 
                 <div class="dropdown me-3 d-none d-sm-block">
@@ -689,6 +689,9 @@
                 themeIcon.classList.add('fa-moon');
                 themeToggle.classList.replace('btn-dark', 'btn-light');
             }
+            const label = theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro';
+            themeToggle.setAttribute('aria-label', label);
+            themeToggle.title = label;
         }
 
         // Initialize icon

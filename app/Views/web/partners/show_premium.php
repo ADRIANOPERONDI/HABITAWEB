@@ -105,8 +105,8 @@
                 <?php if ($redesPreenchidas): ?>
                     <div class="d-flex gap-3">
                         <?php foreach ($redesPreenchidas as $rede => $icon): ?>
-                            <a href="<?= esc($partner->$rede, 'attr') ?>" target="_blank" rel="noopener" class="text-muted fs-5" title="<?= esc(ucfirst($rede)) ?>">
-                                <i class="<?= $icon ?>"></i>
+                            <a href="<?= esc($partner->$rede, 'attr') ?>" target="_blank" rel="noopener" class="text-muted fs-5" title="<?= esc(ucfirst($rede)) ?>" aria-label="<?= esc(ucfirst($rede), 'attr') ?>">
+                                <i class="<?= $icon ?>" aria-hidden="true"></i>
                             </a>
                         <?php endforeach; ?>
                     </div>

@@ -53,8 +53,8 @@
             </select>
         </div>
         <div class="search-submit">
-            <button type="submit" class="btn-search-round">
-                <i class="fa-solid fa-magnifying-glass"></i>
+            <button type="submit" class="btn-search-round" aria-label="Buscar imóveis">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
             </button>
         </div>
     </form>
@@ -70,7 +70,7 @@
             </div>
             <div>
                 <h2 class="section-title mb-0">Imóveis no mapa</h2>
-                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista ou desenhe uma área para buscar</p>
+                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> <?= count($mapProperties) === 1 ? 'imóvel' : 'imóveis' ?> em destaque · clique num pin para localizar na lista ou desenhe uma área para buscar</p>
             </div>
         </div>
 
@@ -261,8 +261,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const pins = <?= json_encode($mapPins, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
     if (!pins.length) return;
 
-    const map = L.map('homeMap', { zoomControl: true, scrollWheelZoom: false })
+    const map = L.map('homeMap', { zoomControl: false, scrollWheelZoom: false })
         .setView([-14.235, -51.925], 4);
+    // Botões de zoom com nome em português (o Leaflet usa o title como nome acessível).
+    L.control.zoom({ zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
         tileSize: <?= (int) config('Map')->tileSize ?>,
