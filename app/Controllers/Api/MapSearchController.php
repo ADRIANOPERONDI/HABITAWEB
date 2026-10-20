@@ -87,7 +87,7 @@ class MapSearchController extends BaseController
                     'id' => $prop->id,
                     'lat' => $prop->latitude,
                     'lng' => $prop->longitude,
-                    'price' => $this->formatShortPrice((float) $prop->preco),
+                    'price' => $this->formatPinPrice((float) $prop->preco),
                     'operation' => $prop->tipo_negocio,
                     // Pin próprio do mapa, sem passar por SponsoredPlacementService (não
                     // é paginado nem tem slot) — precisa checar expiração na mão, senão
@@ -143,11 +143,11 @@ class MapSearchController extends BaseController
         ];
     }
 
-    private function formatShortPrice(float $price): string
+    private function formatPinPrice(float $price): string
     {
         helper('format');
 
-        return short_price($price);
+        return map_price_label($price);
     }
 
     private function loadCardImages(array &$properties, int $limitPerProperty = 5): void

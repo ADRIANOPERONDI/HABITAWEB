@@ -393,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const nextMarkers = items.map(prop => {
             const icon = L.divIcon({
                 className: 'custom-pin',
-                html: `<div class="price-marker-pill ${prop.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${prop.id}">R$ ${prop.price}</div>`,
+                html: `<div class="price-marker-pill ${prop.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${prop.id}">${prop.price}</div>`,
                 iconSize: [84, 34],
                 iconAnchor: [42, 34]
             });

@@ -99,7 +99,7 @@ class Home extends BaseController
                 'id'           => $property->id,
                 'lat'          => (float) $property->latitude,
                 'lng'          => (float) $property->longitude,
-                'price'        => short_price((float) $property->preco),
+                'price'        => map_price_label((float) $property->preco),
                 'operation'    => $property->tipo_negocio,
                 'is_sponsored' => (bool) ($property->is_destaque || ((int) ($property->highlight_level ?? 0) > 0)),
                 'url'          => site_url('imovel/' . $property->id),
