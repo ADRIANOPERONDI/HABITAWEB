@@ -104,4 +104,19 @@
             pendentes[i].setAttribute('loading', 'eager');
         }
     });
+
+    // Posição da foto no contador do cartão ("3 / 16"). No slide final de
+    // "+N fotos" o contador some: ali o próprio slide já diz o total.
+    document.addEventListener('slid.bs.carousel', function (event) {
+        var pos = event.target.querySelector('.js-carousel-pos');
+        if (!pos) {
+            return;
+        }
+        var badge = pos.closest('.premium-carousel-count');
+        var isMore = event.relatedTarget && event.relatedTarget.classList.contains('premium-carousel-more');
+        badge.classList.toggle('d-none', !!isMore);
+        if (!isMore) {
+            pos.textContent = String(event.to + 1);
+        }
+    });
 </script>

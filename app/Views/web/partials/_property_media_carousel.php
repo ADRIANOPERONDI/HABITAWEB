@@ -21,6 +21,14 @@
         $images[] = $fallbackImage;
     }
 
+    // Um único contador de fotos por cartão, sempre com o TOTAL do anúncio.
+    // A prévia carrega no máximo 5 fotos (MapSearchController::loadCardImages);
+    // antes o selo sobre a foto contava só essas 5 e a linha de specs mostrava
+    // o total (16), e o mesmo cartão exibia dois números diferentes.
+    $preview = count($images);
+    $total   = max($preview, (int) ($property->media_count ?? 0));
+    $faltam  = $total - $preview;
+
     $carouselId = 'property-media-carousel-' . (int) $property->id . '-' . substr(md5($fallbackImage), 0, 8);
 ?>
 
@@ -42,17 +50,26 @@
                 <img src="<?= esc($image) ?>" loading="<?= $loading ?>" fetchpriority="<?= $priority ?>" alt="<?= esc($property->titulo) ?>" onerror="this.src='<?= base_url('assets/img/placeholder-house.png') ?>'">
             </div>
         <?php endforeach; ?>
+        <?php if ($faltam > 0): ?>
+            <?php // Último slide da prévia: deixa claro que há mais fotos e que elas ficam no anúncio (o clique segue o link do cartão). ?>
+            <div class="carousel-item h-100 premium-carousel-more">
+                <div class="premium-carousel-more-inner">
+                    <strong>+<?= $faltam ?> <?= $faltam === 1 ? 'foto' : 'fotos' ?></strong>
+                    <span>Abra o anúncio para ver todas as <?= $total ?></span>
+                </div>
+            </div>
+        <?php endif; ?>
     </div>
 
-    <?php if(count($images) > 1): ?>
+    <?php if($preview > 1 || $faltam > 0): ?>
         <button class="carousel-control-prev premium-carousel-control" type="button" data-bs-target="#<?= esc($carouselId) ?>" data-bs-slide="prev" onclick="event.preventDefault(); event.stopPropagation();" aria-label="Foto anterior">
             <span class="carousel-control-prev-icon" aria-hidden="true"></span>
         </button>
         <button class="carousel-control-next premium-carousel-control" type="button" data-bs-target="#<?= esc($carouselId) ?>" data-bs-slide="next" onclick="event.preventDefault(); event.stopPropagation();" aria-label="Próxima foto">
             <span class="carousel-control-next-icon" aria-hidden="true"></span>
         </button>
-        <div class="premium-carousel-count">
-            <i class="fa-solid fa-camera"></i> <?= count($images) ?>
+        <div class="premium-carousel-count" aria-label="<?= $total ?> fotos no anúncio">
+            <i class="fa-solid fa-camera" aria-hidden="true"></i> <span class="js-carousel-pos">1</span>&nbsp;/&nbsp;<?= $total ?>
         </div>
     <?php endif; ?>
 </div>

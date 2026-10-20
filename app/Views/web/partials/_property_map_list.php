@@ -60,9 +60,6 @@
                             <?php foreach (property_specs($property) as $spec): ?>
                                 <span title="<?= esc($spec['label']) ?>"><i class="fa-solid <?= $spec['icon'] ?>"></i> <?= esc($spec['value']) ?></span>
                             <?php endforeach; ?>
-                            <?php if(isset($property->media_count) && (int)$property->media_count > 1): ?>
-                                <span><i class="fa-solid fa-camera"></i> <?= (int)$property->media_count ?></span>
-                            <?php endif; ?>
                         </div>
 
                         <div class="premium-price-row">
