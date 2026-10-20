@@ -64,6 +64,13 @@ class NeighborhoodResolver
     /** Nome canônico já conhecido (alias ou bairro registrado), ou null. */
     public function lookup(string $cidadeKey, string $bairroKey): ?string
     {
+        // Antes da migration as tabelas nao existem: o dry-run do backfill
+        // precisa funcionar assim mesmo (registro vazio), para dar para ver o
+        // que mudaria ANTES de migrar.
+        if (! $this->db->tableExists('neighborhoods')) {
+            return null;
+        }
+
         $alias = $this->db->table('neighborhood_aliases a')
             ->select('n.name')
             ->join('neighborhoods n', 'n.id = a.neighborhood_id')
