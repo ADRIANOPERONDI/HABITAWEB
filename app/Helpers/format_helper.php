@@ -2,20 +2,42 @@
 
 if (! function_exists('short_price')) {
     /**
-     * Formata um valor em Reais de forma curta para exibição em marcadores de
-     * mapa/pins (ex.: 450000 -> "450 mil", 1200000 -> "1,2 mi"). Sem o "R$".
+     * Formata um valor em Reais de forma curta para marcadores de mapa (sem o
+     * "R$"). Abaixo de 10 mil o valor sai exato ("2.500"): arredondar 2.500
+     * para "3 mil" muda a percepção do preço de um aluguel em 20%. De 10 mil
+     * a 999 mil usa "mil" com até 1 casa ("12,5 mil", "350 mil") e de 1 milhão
+     * em diante "mi" com até 2 casas ("1,25 mi"), sempre sem zeros sobrando.
      */
     function short_price(float $price): string
     {
-        if ($price >= 1000000) {
-            return number_format($price / 1000000, $price >= 10000000 ? 0 : 1, ',', '.') . ' mi';
+        $trim = static fn (float $v, int $dec): string => rtrim(rtrim(number_format($v, $dec, ',', '.'), '0'), ',');
+
+        if ($price < 10000) {
+            return number_format($price, 0, ',', '.');
         }
 
-        if ($price >= 1000) {
-            return number_format($price / 1000, 0, ',', '.') . ' mil';
+        // 999.960 arredondaria para "1.000 mil": nesse caso já é 1 milhão.
+        if ($price < 1000000 && round($price / 1000, 1) < 1000) {
+            return $trim($price / 1000, 1) . ' mil';
         }
 
-        return number_format($price, 0, ',', '.');
+        return $trim($price / 1000000, 2) . ' mi';
+    }
+}
+
+if (! function_exists('map_price_label')) {
+    /**
+     * Texto completo do marcador de preço do mapa: o mesmo critério de
+     * `price_label()` (zero/ausente = "Sob consulta", nunca "R$ 0"), mas na
+     * forma curta e sem o sufixo "/mês" que não cabe no pin.
+     */
+    function map_price_label(?float $preco): string
+    {
+        if ($preco === null || $preco <= 0) {
+            return 'Sob consulta';
+        }
+
+        return 'R$ ' . short_price($preco);
     }
 }
 

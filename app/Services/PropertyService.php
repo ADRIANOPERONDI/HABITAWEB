@@ -959,6 +959,32 @@ class PropertyService
         return $builder->get($limit)->getResult(\App\Entities\Property::class);
     }
 
+    /**
+     * Mensagem de erro se a faixa de preço dos filtros for inválida (não
+     * numérica, negativa ou com mínimo maior que o máximo); null se estiver
+     * ok ou vazia. Compartilhado por busca web, mapa e API v1.
+     */
+    public static function priceRangeError(array $filters): ?string
+    {
+        $values = [];
+        foreach (['min_price' => 'mínimo', 'max_price' => 'máximo'] as $key => $label) {
+            $raw = $filters[$key] ?? null;
+            if ($raw === null || $raw === '') {
+                continue;
+            }
+            if (! is_numeric($raw) || (float) $raw < 0) {
+                return "Preço {$label} inválido.";
+            }
+            $values[$key] = (float) $raw;
+        }
+
+        if (isset($values['min_price'], $values['max_price']) && $values['min_price'] > $values['max_price']) {
+            return 'O preço mínimo não pode ser maior que o máximo.';
+        }
+
+        return null;
+    }
+
     private function normalizeMapFilters(array $filters): array
     {
         ksort($filters);
@@ -1489,16 +1515,34 @@ class PropertyService
         $this->applyLocationFilter($builder, $filters, 'cidade');
         $this->applyLocationFilter($builder, $filters, 'bairro');
 
-        // isset()+string-vazia, não só isset(): min_price='' chegando aqui
-        // (querystring com o campo presente e vazio) faria
-        // `WHERE preco >= ''`, que o Postgres rejeita — coluna numérica não
-        // aceita string vazia, nem por coerção implícita.
-        if (isset($filters['min_price']) && $filters['min_price'] !== '') {
-            $builder->where('properties.preco >=', (float) $filters['min_price']);
-        }
+        // Faixa de preço. Imóvel "Sob consulta" (preco <= 0) não tem preço
+        // conhecido, então não pode cair "dentro" de nenhuma faixa: com min ou
+        // max informado só entram imóveis com preço > 0 na faixa, a menos que
+        // o usuário peça include_no_price. Faixa inválida (min > max, negativa,
+        // não numérica) é ignorada aqui — quem recebe a requisição avisa o
+        // usuário via priceRangeError() antes de chegar neste ponto.
+        $hasMin = isset($filters['min_price']) && $filters['min_price'] !== '';
+        $hasMax = isset($filters['max_price']) && $filters['max_price'] !== '';
+        if (($hasMin || $hasMax) && self::priceRangeError($filters) === null) {
+            $includeNoPrice = filter_var($filters['include_no_price'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-        if (isset($filters['max_price']) && $filters['max_price'] !== '') {
-            $builder->where('properties.preco <=', (float) $filters['max_price']);
+            if ($includeNoPrice) {
+                $builder->groupStart()->groupStart();
+            } else {
+                $builder->groupStart();
+            }
+            $builder->where('properties.preco >', 0);
+            if ($hasMin) {
+                $builder->where('properties.preco >=', (float) $filters['min_price']);
+            }
+            if ($hasMax) {
+                $builder->where('properties.preco <=', (float) $filters['max_price']);
+            }
+            if ($includeNoPrice) {
+                $builder->groupEnd()->orWhere('properties.preco <=', 0)->groupEnd();
+            } else {
+                $builder->groupEnd();
+            }
         }
 
         // --- Spatial Filters ---

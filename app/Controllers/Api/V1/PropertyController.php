@@ -9,7 +9,7 @@ class PropertyController extends BaseController
     /** Filtros aceitos em GET /properties. Qualquer outra chave é ignorada. */
     private const ALLOWED_FILTERS = [
         'status', 'tipo_negocio', 'tipo_imovel', 'cidade', 'bairro', 'estado',
-        'quartos', 'banheiros', 'vagas', 'suites', 'min_price', 'max_price',
+        'quartos', 'banheiros', 'vagas', 'suites', 'min_price', 'max_price', 'include_no_price',
         'user_id_responsavel', 'client_id', 'external_id', 'search', 'term',
         'order', 'sort', 'page', 'per_page',
     ];
@@ -38,6 +38,10 @@ class PropertyController extends BaseController
         // Allowlist dos filtros. Antes o getGet() cru era repassado ao service,
         // que aceitava qualquer chave — inclusive account_id e show_deleted.
         $filters = array_intersect_key($this->request->getGet(), array_flip(self::ALLOWED_FILTERS));
+
+        if ($priceError = PropertyService::priceRangeError($filters)) {
+            return $this->respondError($priceError, 422, [], self::ERR_VALIDATION);
+        }
 
         // ESCOPO DE TENANT — o ponto crítico.
         // listProperties() só filtra por conta se o CHAMADOR mandar account_id.

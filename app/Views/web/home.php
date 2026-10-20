@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const layers = pins.map(function(pin) {
         const icon = L.divIcon({
             className: 'custom-pin',
-            html: `<div class="price-marker-pill ${pin.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${pin.id}">R$ ${pin.price}</div>`,
+            html: `<div class="price-marker-pill ${pin.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${pin.id}">${pin.price}</div>`,
             iconSize: [84, 34],
             iconAnchor: [42, 34]
         });

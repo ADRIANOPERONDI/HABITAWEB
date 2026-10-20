@@ -80,6 +80,7 @@
                 <input type="hidden" name="vagas" id="inputVagas" value="<?= esc($filters['vagas'] ?? '') ?>">
                 <input type="hidden" name="min_price" id="inputMinPrice" value="<?= esc($filters['min_price'] ?? '') ?>">
                 <input type="hidden" name="max_price" id="inputMaxPrice" value="<?= esc($filters['max_price'] ?? '') ?>">
+                <input type="hidden" name="include_no_price" id="inputIncludeNoPrice" value="<?= ! empty($filters['include_no_price']) && filter_var($filters['include_no_price'], FILTER_VALIDATE_BOOLEAN) ? '1' : '' ?>">
                 <input type="hidden" name="sort" id="inputSort" value="<?= esc($selectedSort) ?>">
                 <input type="hidden" name="bounds" id="inputBounds" value="">
                 <input type="hidden" name="polygon" id="inputPolygon" value="<?= esc($filters['polygon'] ?? '') ?>">
@@ -159,11 +160,18 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-bold text-muted">Preço mínimo</label>
-                        <input type="number" id="modalMinPrice" class="form-control" value="<?= esc($filters['min_price'] ?? '') ?>" placeholder="R$ 0">
+                        <input type="number" id="modalMinPrice" class="form-control" min="0" step="any" inputmode="decimal" value="<?= esc($filters['min_price'] ?? '') ?>" placeholder="R$ 0">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-bold text-muted">Preço máximo</label>
-                        <input type="number" id="modalMaxPrice" class="form-control" value="<?= esc($filters['max_price'] ?? '') ?>" placeholder="R$ 1.000.000">
+                        <input type="number" id="modalMaxPrice" class="form-control" min="0" step="any" inputmode="decimal" value="<?= esc($filters['max_price'] ?? '') ?>" placeholder="R$ 1.000.000">
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="modalIncludeNoPrice" <?= ! empty($filters['include_no_price']) && filter_var($filters['include_no_price'], FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' ?>>
+                            <label class="form-check-label small" for="modalIncludeNoPrice">Incluir imóveis sob consulta (sem preço informado)</label>
+                        </div>
+                        <div id="priceRangeError" class="text-danger small mt-1<?= empty($priceError) ? ' d-none' : '' ?>" role="alert"><?= esc($priceError ?? '') ?></div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold text-muted">Quartos</label>
@@ -393,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const nextMarkers = items.map(prop => {
             const icon = L.divIcon({
                 className: 'custom-pin',
-                html: `<div class="price-marker-pill ${prop.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${prop.id}">R$ ${prop.price}</div>`,
+                html: `<div class="price-marker-pill ${prop.is_sponsored ? 'sponsored' : ''}" id="marker-pill-${prop.id}">${prop.price}</div>`,
                 iconSize: [84, 34],
                 iconAnchor: [42, 34]
             });
@@ -540,6 +548,21 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.getElementById('btnApplyAdvancedFilters').addEventListener('click', function() {
+        const priceErrorBox = document.getElementById('priceRangeError');
+        const minRaw = document.getElementById('modalMinPrice').value.trim();
+        const maxRaw = document.getElementById('modalMaxPrice').value.trim();
+        const minVal = minRaw === '' ? null : Number(minRaw);
+        const maxVal = maxRaw === '' ? null : Number(maxRaw);
+        let priceError = '';
+        if ((minVal !== null && (isNaN(minVal) || minVal < 0)) || (maxVal !== null && (isNaN(maxVal) || maxVal < 0))) {
+            priceError = 'Informe valores de preço válidos.';
+        } else if (minVal !== null && maxVal !== null && minVal > maxVal) {
+            priceError = 'O preço mínimo não pode ser maior que o máximo.';
+        }
+        priceErrorBox.textContent = priceError;
+        priceErrorBox.classList.toggle('d-none', priceError === '');
+        if (priceError) return;
+        document.getElementById('inputIncludeNoPrice').value = document.getElementById('modalIncludeNoPrice').checked ? '1' : '';
         document.getElementById('inputTipoImovel').value = document.getElementById('modalTipoImovel').value;
         document.getElementById('inputQuartos').value = document.getElementById('modalQuartos').value;
         document.getElementById('inputBanheiros').value = document.getElementById('modalBanheiros').value;
@@ -556,10 +579,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btnClearFilters').addEventListener('click', function() {
         form.reset();
         $('#filterCidade, #filterBairro').val('');
-        ['inputTipoNegocio','inputTipoImovel','inputQuartos','inputBanheiros','inputVagas','inputMinPrice','inputMaxPrice','inputSort','inputPropertyIds','inputPolygon'].forEach(id => {
+        ['inputTipoNegocio','inputTipoImovel','inputQuartos','inputBanheiros','inputVagas','inputMinPrice','inputMaxPrice','inputIncludeNoPrice','inputSort','inputPropertyIds','inputPolygon'].forEach(id => {
             document.getElementById(id).value = id === 'inputSort' ? 'relevance' : '';
         });
         document.getElementById('sortSelect').value = 'relevance';
+        ['modalMinPrice','modalMaxPrice'].forEach(id => { document.getElementById(id).value = ''; });
+        document.getElementById('modalIncludeNoPrice').checked = false;
         document.querySelectorAll('.js-business-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.value === ''));
         drawToolbar.clear({ silent: true });
         currentPolygon = null;

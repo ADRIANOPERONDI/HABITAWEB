@@ -47,6 +47,10 @@ class MapSearchController extends BaseController
         $mapOnly = filter_var($this->request->getGet('map_only'), FILTER_VALIDATE_BOOLEAN);
         $listOnly = filter_var($this->request->getGet('list_only'), FILTER_VALIDATE_BOOLEAN);
         
+        if ($priceError = \App\Services\PropertyService::priceRangeError($filters)) {
+            return $this->respond(['success' => false, 'message' => $priceError], 422);
+        }
+
         // Remove empty filters
         $filters = array_filter($filters, function($value) {
             return !is_null($value) && $value !== '';
@@ -87,7 +91,7 @@ class MapSearchController extends BaseController
                     'id' => $prop->id,
                     'lat' => $prop->latitude,
                     'lng' => $prop->longitude,
-                    'price' => $this->formatShortPrice((float) $prop->preco),
+                    'price' => $this->formatPinPrice((float) $prop->preco),
                     'operation' => $prop->tipo_negocio,
                     // Pin próprio do mapa, sem passar por SponsoredPlacementService (não
                     // é paginado nem tem slot) — precisa checar expiração na mão, senão
@@ -136,6 +140,7 @@ class MapSearchController extends BaseController
             'vagas'        => $this->request->getGet('vagas'),
             'min_price'    => $this->request->getGet('min_price'),
             'max_price'    => $this->request->getGet('max_price'),
+            'include_no_price' => $this->request->getGet('include_no_price'),
             'bounds'       => $this->request->getGet('bounds'), // SW_LNG,SW_LAT,NE_LNG,NE_LAT
             'polygon'      => PolygonFilter::normalize($this->request->getGet('polygon')), // JSON [[lng,lat],...] ou null
             'property_ids' => $this->request->getGet('property_ids'), // for filtering list by cluster
@@ -143,11 +148,11 @@ class MapSearchController extends BaseController
         ];
     }
 
-    private function formatShortPrice(float $price): string
+    private function formatPinPrice(float $price): string
     {
         helper('format');
 
-        return short_price($price);
+        return map_price_label($price);
     }
 
     private function loadCardImages(array &$properties, int $limitPerProperty = 5): void

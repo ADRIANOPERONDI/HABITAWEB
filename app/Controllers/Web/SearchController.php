@@ -74,6 +74,13 @@ class SearchController extends BaseController
             return !is_null($value) && $value !== '';
         });
         
+        // Faixa de preço inválida (mín > máx, negativa): a busca roda sem ela e
+        // a view avisa, em vez de devolver uma lista vazia sem explicação.
+        $priceError = \App\Services\PropertyService::priceRangeError($filters);
+        if ($priceError !== null) {
+            unset($filters['min_price'], $filters['max_price']);
+        }
+
         // Força apenas ativos
         $filters['status'] = 'ACTIVE';
 
@@ -93,6 +100,7 @@ class SearchController extends BaseController
 
         return view('web/search_map', [
             'filters'            => $filters,
+            'priceError'         => $priceError,
             'tipos'              => $filterOptions['tipos'] ?? [],
             'cidades'            => $filterOptions['cidades'] ?? [],
             'bairros'            => $bairros
@@ -134,6 +142,7 @@ class SearchController extends BaseController
             'tipo_imovel'  => $this->request->getGet('tipo_imovel'),
             'min_price'    => $this->request->getGet('min_price'),
             'max_price'    => $this->request->getGet('max_price'),
+            'include_no_price' => $this->request->getGet('include_no_price'),
             // Deep link vindo do mapa da home (ou de URL compartilhada). O valor
             // volta para a página no input oculto, então só passa normalizado.
             'polygon'      => PolygonFilter::normalize($this->request->getGet('polygon')),
