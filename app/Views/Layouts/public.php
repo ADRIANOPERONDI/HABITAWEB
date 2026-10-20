@@ -293,11 +293,15 @@
                     <p class="opacity-75 mb-4">
                         <?= app_setting('footer.description', 'O portal imobiliário mais completo da região. Conectando pessoas aos seus sonhos.') ?>
                     </p>
+                    <?php // Só as redes configuradas em Configurações > Redes Sociais; sem nenhuma, o bloco some. ?>
+                    <?php $socialLinks = social_links(); ?>
+                    <?php if ($socialLinks): ?>
                     <div class="footer-social d-flex gap-3">
-                        <a href="<?= app_setting('social.facebook', '#') ?>" class="text-white opacity-75"><i class="fa-brands fa-facebook-f fs-5"></i></a>
-                        <a href="<?= app_setting('social.instagram', '#') ?>" class="text-white opacity-75"><i class="fa-brands fa-instagram fs-5"></i></a>
-                        <a href="<?= app_setting('social.whatsapp', '#') ?>" class="text-white opacity-75"><i class="fa-brands fa-whatsapp fs-5"></i></a>
+                        <?php foreach ($socialLinks as $social): ?>
+                            <a href="<?= esc($social['url'], 'attr') ?>" class="text-white opacity-75" target="_blank" rel="noopener" aria-label="<?= esc($social['label'], 'attr') ?>" title="<?= esc($social['label'], 'attr') ?>"><i class="<?= $social['icon'] ?> fs-5" aria-hidden="true"></i></a>
+                        <?php endforeach; ?>
                     </div>
+                    <?php endif; ?>
                 </div>
                 
                 <div class="col-lg-2 col-md-4 mb-4 mb-md-0">
