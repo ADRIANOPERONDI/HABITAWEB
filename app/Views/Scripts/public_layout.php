@@ -40,29 +40,29 @@
             });
         <?php endif; ?>
 
-        $('.btn-favorite').on('click', function(e) {
+        // Favoritar: um único handler para a página do imóvel e "Meus
+        // Favoritos". Antes este chamava /api/v1/favorites/toggle, que exige
+        // Authorization: Bearer — todo clique, mesmo logado, voltava 401 e
+        // abria "Login necessário"; na página do imóvel ele rodava junto com
+        // um segundo handler próprio, e em "Meus Favoritos" remover nunca
+        // funcionava. A rota web usa a sessão e o CSRF normal.
+        $(document).on('click', '.btn-favorite', function(e) {
             e.preventDefault();
-            let btn = $(this);
-            let propertyId = btn.data('id');
-            
-            // Check if logged in via localized variable or simple check
-            // For now, we assume strict checking on server side or proper error handling
-            
-            $.ajax({
-                url: '<?= site_url("api/v1/favorites/toggle") ?>',
+            const btn = this;
+            if (btn.disabled) return;
+            btn.disabled = true;
+
+            fetch('<?= site_url('favoritos/toggle') ?>', {
                 method: 'POST',
-                dataType: 'json',
-                contentType: 'application/json',
-                data: JSON.stringify({ property_id: propertyId }),
-                success: function(response) {
-                    if (response.status === 'added') {
-                        btn.find('i').removeClass('fa-regular').addClass('fa-solid text-danger');
-                    } else {
-                        btn.find('i').removeClass('fa-solid text-danger').addClass('fa-regular');
-                    }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    '<?= csrf_header() ?>': '<?= csrf_hash() ?>'
                 },
-                error: function(xhr) {
-                    if (xhr.status === 401) {
+                body: JSON.stringify({ property_id: btn.dataset.id })
+            })
+                .then(response => {
+                    if (response.status === 401) {
                         Swal.fire({
                             title: 'Login necessário',
                             text: 'Faça login para salvar seus favoritos.',
@@ -71,16 +71,35 @@
                             confirmButtonText: 'Login',
                             cancelButtonText: 'Cancelar',
                             confirmButtonColor: '#6366f1'
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                window.location.href = '<?= site_url("login") ?>';
-                            }
+                        }).then(result => {
+                            if (result.isConfirmed) window.location.href = '<?= site_url('login') ?>';
                         });
-                    } else {
-                        console.error(xhr);
+                        return null;
                     }
-                }
-            });
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    // Envelope V1: o 'added'/'removed' fica em data.data.status
+                    // (data.status é o código HTTP).
+                    const nowFavorited = data.data?.status === 'added';
+                    const icon = btn.querySelector('i');
+                    const label = nowFavorited ? 'Remover dos favoritos' : 'Favoritar';
+                    btn.dataset.favorited = nowFavorited ? '1' : '0';
+                    btn.title = label;
+                    btn.setAttribute('aria-label', label);
+                    btn.setAttribute('aria-pressed', nowFavorited ? 'true' : 'false');
+                    icon.classList.toggle('fa-solid', nowFavorited);
+                    icon.classList.toggle('text-danger', nowFavorited);
+                    icon.classList.toggle('fa-regular', !nowFavorited);
+
+                    if (!nowFavorited && btn.dataset.removeCard !== undefined) {
+                        btn.closest('.js-favorite-card')?.remove();
+                        if (!document.querySelector('.js-favorite-card')) window.location.reload();
+                    }
+                })
+                .catch(error => console.error(error))
+                .finally(() => { btn.disabled = false; });
         });
     });
 </script>
