@@ -69,7 +69,7 @@
             <span class="carousel-control-next-icon" aria-hidden="true"></span>
         </button>
         <div class="premium-carousel-count" aria-label="<?= $total ?> fotos no anúncio">
-            <i class="fa-solid fa-camera" aria-hidden="true"></i> <span class="js-carousel-pos">1</span>&nbsp;/&nbsp;<?= $total ?>
+            <i class="fa-solid fa-camera" aria-hidden="true"></i> <span><span class="js-carousel-pos">1</span> / <?= $total ?></span>
         </div>
     <?php endif; ?>
 </div>

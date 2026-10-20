@@ -47,7 +47,7 @@ final class CardPhotoCounterTest extends HabitawebTestCase
     {
         $html = $this->card(5, 5);
 
-        $this->assertStringContainsString('&nbsp;/&nbsp;5', $html);
+        $this->assertStringContainsString('1</span> / 5</span>', $html);
         $this->assertStringNotContainsString('premium-carousel-more', $html);
         $this->assertSame(5, substr_count($html, 'class="carousel-item'));
     }
@@ -56,8 +56,8 @@ final class CardPhotoCounterTest extends HabitawebTestCase
     {
         $html = $this->card(5, 16);
 
-        $this->assertStringContainsString('&nbsp;/&nbsp;16', $html);
-        $this->assertStringNotContainsString('&nbsp;/&nbsp;5<', $html);
+        $this->assertStringContainsString('1</span> / 16</span>', $html);
+        $this->assertStringNotContainsString('1</span> / 5</span>', $html);
         $this->assertStringContainsString('+11 fotos', $html);
         $this->assertStringContainsString('ver todas as 16', $html);
         $this->assertSame(6, substr_count($html, 'class="carousel-item'));

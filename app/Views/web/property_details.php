@@ -16,7 +16,8 @@
         </ol>
     </nav>
 
-    <div class="row g-5">
+    <?php // g-5 (3rem) passa da folga do .container no celular e gerava rolagem lateral de 12px. ?>
+    <div class="row g-4 g-lg-5">
         <!-- Gallery & Main Info -->
         <div class="col-12 col-lg-8">
             <div class="card border-0 overflow-hidden mb-4" style="border-radius: 12px; box-shadow: var(--premium-shadow-sm);">
@@ -338,17 +339,22 @@
                 <form id="leadForm">
                     <input type="hidden" name="<?= csrf_token() ?>" value="<?= csrf_hash() ?>">
                     <input type="hidden" name="property_id" value="<?= $property->id ?>">
+                    <?php // Rótulo visível (o placeholder some ao digitar) e autocomplete: no celular o teclado sugere nome, e-mail e telefone salvos. ?>
                     <div class="mb-3">
-                        <input type="text" name="nome_visitante" class="form-control" placeholder="Seu nome" required>
+                        <label for="leadNome" class="form-label small fw-semibold mb-1">Nome</label>
+                        <input type="text" id="leadNome" name="nome_visitante" class="form-control" placeholder="Seu nome" autocomplete="name" enterkeyhint="next" required>
                     </div>
                     <div class="mb-3">
-                        <input type="email" name="email_visitante" class="form-control" placeholder="Seu e-mail" required>
-                    </div>
-                     <div class="mb-3">
-                        <input type="tel" name="telefone_visitante" class="form-control" placeholder="Seu telefone" required>
+                        <label for="leadEmail" class="form-label small fw-semibold mb-1">E-mail</label>
+                        <input type="email" id="leadEmail" name="email_visitante" class="form-control" placeholder="seu@email.com" autocomplete="email" inputmode="email" enterkeyhint="next" required>
                     </div>
                     <div class="mb-3">
-                        <textarea name="mensagem" class="form-control" rows="3" placeholder="Mensagem">Olá, gostaria de mais informações sobre este imóvel.</textarea>
+                        <label for="leadTelefone" class="form-label small fw-semibold mb-1">Telefone</label>
+                        <input type="tel" id="leadTelefone" name="telefone_visitante" class="form-control" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="tel" enterkeyhint="next" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="leadMensagem" class="form-label small fw-semibold mb-1">Mensagem</label>
+                        <textarea id="leadMensagem" name="mensagem" class="form-control" rows="3" placeholder="Mensagem">Olá, gostaria de mais informações sobre este imóvel.</textarea>
                     </div>
                     <?php if(($showContact ?? false) && $hasContactNumber): ?>
                         <button type="button" id="btnWhatsAppHub" class="btn btn-success w-100 btn-lg fw-bold rounded-pill mb-3 shadow-sm">

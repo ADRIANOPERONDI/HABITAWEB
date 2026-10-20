@@ -140,7 +140,8 @@
 </div>
 
 <div class="modal fade" id="advancedFiltersModal" tabindex="-1" aria-labelledby="advancedFiltersTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <?php // Rolável com cabeçalho/rodapé fixos e tela cheia no celular: o "Aplicar filtros" ficava abaixo da dobra. ?>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg map-filter-drawer">
             <div class="modal-header border-0 pb-0">
                 <div>
