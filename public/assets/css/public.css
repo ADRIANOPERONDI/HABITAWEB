@@ -798,10 +798,12 @@ body {
     font-weight: 800 !important;
 }
 
+/* Quebra linha em vez de rolar de lado: na tela estreita o "Limpar" ficava
+   cortado na borda, sem indicação de que havia mais botões. */
 .map-chip-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    overflow-x: auto;
     padding: 10px 1px 2px;
 }
 
@@ -858,10 +860,15 @@ body {
     pointer-events: auto;
 }
 
+/* Largura natural (limitada à tela): com left:50% o bloco ficava com no
+   máximo metade do mapa, e no celular "Concluir / Desfazer / Cancelar"
+   empilhavam um por linha, cobrindo justamente a área onde se desenha. */
 .leaflet-bottom.leaflet-left {
     left: 50% !important;
     transform: translateX(-50%);
     bottom: 12px !important;
+    width: max-content;
+    max-width: calc(100vw - 24px);
 }
 
 .map-floating-btn {
@@ -995,11 +1002,22 @@ body {
         flex-direction: column;
     }
 
+    /* dvh = altura VISÍVEL (sem a barra do navegador). Com 100vh e
+       min-height: 620px a página passava da tela no iPhone (59-62px) e, com
+       o body em overflow hidden, esse trecho ficava inalcançável — e o mapa
+       rolava para baixo do cabeçalho, escondendo o botão de zoom "+". */
     .map-premium-page {
         height: calc(100vh - 106px);
-        min-height: 620px;
+        height: calc(100dvh - 106px);
+        min-height: 0;
         display: block;
         position: relative;
+    }
+
+    /* Folga para o botão flutuante "Ver mapa": sem ela o fim da lista
+       (último preço, "Carregar mais") ficava sempre embaixo dele. */
+    .map-results-scroll {
+        padding-bottom: 96px;
     }
 
     .map-sidebar,
@@ -1035,6 +1053,16 @@ body {
 
     .leaflet-bottom.leaflet-left {
         bottom: 68px !important;
+    }
+
+    .map-draw-toolbar {
+        gap: 6px !important;
+    }
+
+    .map-draw-toolbar .map-floating-btn {
+        min-height: 40px;
+        padding: 8px 12px;
+        font-size: 13px;
     }
 }
 
@@ -1088,4 +1116,10 @@ body {
 
 .map-filter-count.d-none {
     display: none !important;
+}
+
+/* Cabeçalho fixo (106px): ao focar um campo com o teclado aberto, o navegador
+   rola o mínimo para mostrá-lo e o deixava embaixo do cabeçalho. */
+html {
+    scroll-padding-top: 116px;
 }
