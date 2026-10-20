@@ -37,11 +37,22 @@ final class NeighborhoodName
             return null;
         }
 
-        $normalizado = CityName::normalize($bairro);
+        $limpo = trim(preg_replace('/\s+/u', ' ', $bairro) ?? '');
 
-        if ($normalizado === null || $normalizado === '') {
-            return $normalizado;
+        // Caixa mista ("VivaPark", "Planejado (Belvedere)") é grafia de quem
+        // cadastrou, não descuido: só se reescreve o que está TODO em maiúscula
+        // ou TODO em minúscula. Re-capitalizar o resto estraga nomes próprios.
+        if ($limpo === '' || ($limpo !== mb_strtoupper($limpo, 'UTF-8') && $limpo !== mb_strtolower($limpo, 'UTF-8'))) {
+            return $limpo;
         }
+
+        $normalizado = CityName::normalize($limpo) ?? '';
+        // Letra logo depois de "(" também abre palavra: "(belvedere)" -> "(Belvedere)".
+        $normalizado = preg_replace_callback(
+            '/\(\p{Ll}/u',
+            static fn (array $m): string => '(' . mb_strtoupper(mb_substr($m[0], 1), 'UTF-8'),
+            $normalizado
+        ) ?? $normalizado;
 
         $palavras = explode(' ', $normalizado);
         foreach ($palavras as $i => $palavra) {

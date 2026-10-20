@@ -29,6 +29,10 @@ final class NeighborhoodNameTest extends CIUnitTestCase
         yield ['jardim   peperi', 'Jardim Peperi'];
         yield ['VILA DOS PINHEIROS', 'Vila dos Pinheiros'];
         yield ['LOTEAMENTO SAO PAULO II', 'Loteamento Sao Paulo II'];
+        yield 'caixa mista fica como esta' => ['VivaPark', 'VivaPark'];
+        yield 'parenteses mistos' => ['Planejado (Belvedere)', 'Planejado (Belvedere)'];
+        yield 'parenteses em maiusculas' => ['PLANEJADO (BELVEDERE)', 'Planejado (Belvedere)'];
+        yield 'mista com espaco extra' => ['  VivaPark  ', 'VivaPark'];
     }
 
     public function testChaveIgnoraCaixaAcentoEEspacoMasNaoJuntaNomesDistintos(): void
