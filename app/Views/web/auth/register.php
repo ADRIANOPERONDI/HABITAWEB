@@ -171,7 +171,7 @@
                         </div>
 
                         <button type="submit" class="btn btn-primary w-100 py-3 rounded-pill fw-bold fs-5 shadow-sm">
-                            Criar Conta Grátis <i class="fas fa-arrow-right ms-2"></i>
+                            Criar conta <i class="fas fa-arrow-right ms-2"></i>
                         </button>
                     </form>
                 </div>

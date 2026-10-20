@@ -139,15 +139,21 @@ final class PlanCheckoutTest extends HabitawebTestCase
         $response->assertSee('Aluguel R$ 40,00');
     }
 
-    /** A rampa é sempre mensal (P6) — a vitrine precisa dizer isso, não só mostrar o número. */
-    public function testMostraRampaSoNoMensal(): void
+    /**
+     * A rampa de lançamento (meses sem mensalidade) é condição de negociação,
+     * não oferta pública: a vitrine de planos não a anuncia nem fala em "grátis".
+     */
+    public function testVitrineNaoAnunciaRampaNemGratuidade(): void
     {
         $this->makePlan(['nome' => 'Plano Qualquer']);
 
         $response = $this->get('checkout/plans');
+        $html     = $response->response()->getBody();
 
         $response->assertStatus(200);
-        $response->assertSee('ciclo mensal');
+        $this->assertStringNotContainsString('ciclo mensal', $html);
+        $this->assertStringNotContainsStringIgnoringCase('grátis', $html);
+        $this->assertStringNotContainsStringIgnoringCase('gratis', $html);
     }
 
     public function testPlanoInativoNaoAparece(): void
