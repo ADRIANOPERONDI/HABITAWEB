@@ -47,6 +47,10 @@ class MapSearchController extends BaseController
         $mapOnly = filter_var($this->request->getGet('map_only'), FILTER_VALIDATE_BOOLEAN);
         $listOnly = filter_var($this->request->getGet('list_only'), FILTER_VALIDATE_BOOLEAN);
         
+        if ($priceError = \App\Services\PropertyService::priceRangeError($filters)) {
+            return $this->respond(['success' => false, 'message' => $priceError], 422);
+        }
+
         // Remove empty filters
         $filters = array_filter($filters, function($value) {
             return !is_null($value) && $value !== '';
@@ -136,6 +140,7 @@ class MapSearchController extends BaseController
             'vagas'        => $this->request->getGet('vagas'),
             'min_price'    => $this->request->getGet('min_price'),
             'max_price'    => $this->request->getGet('max_price'),
+            'include_no_price' => $this->request->getGet('include_no_price'),
             'bounds'       => $this->request->getGet('bounds'), // SW_LNG,SW_LAT,NE_LNG,NE_LAT
             'polygon'      => PolygonFilter::normalize($this->request->getGet('polygon')), // JSON [[lng,lat],...] ou null
             'property_ids' => $this->request->getGet('property_ids'), // for filtering list by cluster
