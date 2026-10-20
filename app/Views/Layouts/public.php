@@ -216,7 +216,7 @@
             <?php endif; ?>
         </a>
             
-            <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+            <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Abrir menu">
                 <span class="navbar-toggler-icon"></span>
             </button>
             
@@ -244,8 +244,8 @@
                 
                 <div class="d-flex align-items-center gap-3">
                     <!-- Theme Toggle -->
-                    <button id="theme-toggle" class="btn btn-link text-main p-2 text-decoration-none shadow-none" title="Alternar Tema">
-                        <i class="fa-solid fa-moon fs-5" id="theme-toggle-icon"></i>
+                    <button id="theme-toggle" type="button" class="btn btn-link text-main p-2 text-decoration-none shadow-none" title="Alternar tema" aria-label="Alternar tema claro/escuro">
+                        <i class="fa-solid fa-moon fs-5" id="theme-toggle-icon" aria-hidden="true"></i>
                     </button>
 
                     <a href="<?= site_url('anuncie') ?>" class="btn btn-outline-primary rounded-pill px-4 fw-bold d-none d-md-block">
@@ -253,8 +253,8 @@
                     </a>
 
                     <?php if (auth()->loggedIn()): ?>
-                        <a href="<?= site_url('meus-favoritos') ?>" class="text-dark position-relative me-2" title="Meus Favoritos">
-                            <i class="fa-regular fa-heart fa-lg"></i>
+                        <a href="<?= site_url('meus-favoritos') ?>" class="text-dark position-relative me-2" title="Meus favoritos" aria-label="Meus favoritos">
+                            <i class="fa-regular fa-heart fa-lg" aria-hidden="true"></i>
                         </a>
                         <a href="<?= site_url('admin') ?>" class="btn btn-primary rounded-pill px-4">
                             Meu Painel
@@ -375,6 +375,10 @@
                 themeIcon.classList.remove('fa-sun');
                 themeIcon.classList.add('fa-moon');
             }
+            // O nome diz o que o clique FAZ, não o estado atual.
+            const label = theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro';
+            themeToggle.setAttribute('aria-label', label);
+            themeToggle.title = label;
         }
 
         // Initialize icon

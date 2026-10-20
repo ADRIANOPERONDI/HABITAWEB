@@ -42,8 +42,8 @@
                                 
                                 <div class="input-group mb-2">
                                     <input type="text" class="form-control" value="<?= esc($qrCode['payload']) ?>" id="pixCopy" readonly>
-                                    <button class="btn btn-outline-primary" type="button" onclick="copyPix()">
-                                        <i class="fas fa-copy"></i>
+                                    <button class="btn btn-outline-primary" type="button" onclick="copyPix()" aria-label="Copiar código Pix" title="Copiar código Pix">
+                                        <i class="fas fa-copy" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <small class="text-muted">Código Expira em breve</small>

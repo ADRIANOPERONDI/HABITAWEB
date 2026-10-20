@@ -63,8 +63,8 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-premium btn-premium-primary" aria-label="Filtrar imóveis">
-                        <i class="fa-solid fa-magnifying-glass"></i>
+                    <button type="submit" class="btn btn-premium btn-premium-primary" aria-label="Buscar imóveis">
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     </button>
                 </div>
 
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let initialQuery = null;
 
     const map = L.map('map', { zoomControl: false }).setView([-14.235, -51.925], 4);
-    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.control.zoom({ position: 'topright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
     L.tileLayer(<?= json_encode(config('Map')->tileUrl) ?>, {
         maxZoom: <?= (int) config('Map')->tileMaxZoom ?>,
         tileSize: <?= (int) config('Map')->tileSize ?>,
