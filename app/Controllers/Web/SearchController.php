@@ -91,12 +91,13 @@ class SearchController extends BaseController
             cache()->save('search_filter_options', $filterOptions, 3600);
         }
 
-        // Deep-link com cidade na URL (ex.: /imoveis/venda/sao-paulo) já chega
-        // renderizado sem passar pelo JS de cascata — escopar aqui também,
-        // senão o dropdown de bairro nasce listando bairro de outra cidade.
+        // Bairro depende da cidade: sem cidade escolhida o dropdown fica vazio
+        // (e desabilitado na view), igual ao que o JS faz ao limpar a cidade.
+        // Antes a página sem cidade listava os bairros de TODAS as cidades
+        // misturados, e o "Limpar" deixava a lista da cidade anterior.
         $bairros = !empty($filters['cidade'])
             ? $propertyService->getBairrosByCidade($filters['cidade'])
-            : ($filterOptions['bairros'] ?? []);
+            : [];
 
         return view('web/search_map', [
             'filters'            => $filters,
@@ -143,6 +144,12 @@ class SearchController extends BaseController
             'min_price'    => $this->request->getGet('min_price'),
             'max_price'    => $this->request->getGet('max_price'),
             'include_no_price' => $this->request->getGet('include_no_price'),
+            // O JS grava estes na URL (syncUrl); sem lê-los aqui, recarregar ou
+            // compartilhar a busca perdia quartos/banheiros/vagas/ordenação.
+            'quartos'      => $this->request->getGet('quartos'),
+            'banheiros'    => $this->request->getGet('banheiros'),
+            'vagas'        => $this->request->getGet('vagas'),
+            'sort'         => $this->request->getGet('sort'),
             // Deep link vindo do mapa da home (ou de URL compartilhada). O valor
             // volta para a página no input oculto, então só passa normalizado.
             'polygon'      => PolygonFilter::normalize($this->request->getGet('polygon')),
