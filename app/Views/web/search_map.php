@@ -27,6 +27,9 @@
 <?php
     $selectedBusiness = $filters['tipo_negocio'] ?? '';
     $selectedSort = $filters['sort'] ?? 'relevance';
+    $selectedCidade = $filters['cidade'] ?? '';
+    $selectedBairro = $filters['bairro'] ?? '';
+    $bairroNaLista = in_array($selectedBairro, array_map(static fn ($b) => $b->bairro, $bairros ?? []), true);
 ?>
 
 <div class="map-premium-page" id="mapPremiumPage">
@@ -47,11 +50,15 @@
 
                         <div class="map-field">
                             <label for="filterBairro">Bairro</label>
-                            <select name="bairro" id="filterBairro" class="form-select">
-                                <option value="">Todos os bairros</option>
+                            <?php // Bairro depende da cidade: sem cidade, fica desabilitado (a não ser que a URL já traga um bairro). ?>
+                            <select name="bairro" id="filterBairro" class="form-select" <?= $selectedCidade === '' && $selectedBairro === '' ? 'disabled' : '' ?>>
+                                <option value=""><?= $selectedCidade === '' ? 'Escolha a cidade' : 'Todos os bairros' ?></option>
                                 <?php if(!empty($bairros)): foreach($bairros as $b): ?>
-                                    <option value="<?= esc($b->bairro) ?>" <?= ($filters['bairro'] ?? '') === $b->bairro ? 'selected' : '' ?>><?= esc($b->bairro) ?></option>
+                                    <option value="<?= esc($b->bairro) ?>" <?= $selectedBairro === $b->bairro ? 'selected' : '' ?>><?= esc($b->bairro) ?></option>
                                 <?php endforeach; endif; ?>
+                                <?php if($selectedBairro !== '' && ! $bairroNaLista): ?>
+                                    <option value="<?= esc($selectedBairro) ?>" selected><?= esc($selectedBairro) ?></option>
+                                <?php endif; ?>
                             </select>
                         </div>
                     </div>
@@ -65,13 +72,17 @@
                     <button type="button" class="premium-chip js-business-chip <?= $selectedBusiness === '' ? 'is-active' : '' ?>" data-value="">Todos</button>
                     <button type="button" class="premium-chip js-business-chip <?= $selectedBusiness === 'VENDA' ? 'is-active' : '' ?>" data-value="VENDA">Comprar</button>
                     <button type="button" class="premium-chip js-business-chip <?= $selectedBusiness === 'ALUGUEL' ? 'is-active' : '' ?>" data-value="ALUGUEL">Alugar</button>
-                    <button type="button" class="premium-chip" data-bs-toggle="modal" data-bs-target="#advancedFiltersModal">
-                        <i class="fa-solid fa-sliders"></i> Filtros
+                    <button type="button" class="premium-chip" id="btnAdvancedFilters" data-bs-toggle="modal" data-bs-target="#advancedFiltersModal" aria-label="Filtros avançados">
+                        <i class="fa-solid fa-sliders" aria-hidden="true"></i> Filtros
+                        <span class="map-filter-count d-none" id="advancedFilterCount" aria-hidden="true"></span>
                     </button>
                     <button type="button" class="premium-chip" id="btnClearFilters">
                         <i class="fa-solid fa-rotate-left"></i> Limpar
                     </button>
                 </div>
+
+                <?php // Critérios ativos que não aparecem na barra (tipo, preço, quartos...), cada um removível. Preenchido pelo JS. ?>
+                <div class="map-active-filters d-none" id="activeFilterChips" aria-label="Filtros ativos"></div>
 
                 <input type="hidden" name="tipo_negocio" id="inputTipoNegocio" value="<?= esc($selectedBusiness) ?>">
                 <input type="hidden" name="tipo_imovel" id="inputTipoImovel" value="<?= esc($filters['tipo_imovel'] ?? '') ?>">
@@ -171,7 +182,7 @@
                             <input class="form-check-input" type="checkbox" id="modalIncludeNoPrice" <?= ! empty($filters['include_no_price']) && filter_var($filters['include_no_price'], FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' ?>>
                             <label class="form-check-label small" for="modalIncludeNoPrice">Incluir imóveis sob consulta (sem preço informado)</label>
                         </div>
-                        <div id="priceRangeError" class="text-danger small mt-1<?= empty($priceError) ? ' d-none' : '' ?>" role="alert"><?= esc($priceError ?? '') ?></div>
+                        <div id="priceRangeError" class="text-danger small mt-1<?= empty($priceError) ? ' d-none' : '' ?>" role="alert"<?= empty($priceError) ? '' : ' data-server="1"' ?>><?= esc($priceError ?? '') ?></div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold text-muted">Quartos</label>
@@ -235,6 +246,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const bairrosApiUrl = new URL('<?= site_url('api/imoveis/bairros') ?>');
     const bairrosApiPath = bairrosApiUrl.pathname;
     const mobileToggle = document.getElementById('btnMobileToggle');
+    const cidadeSelect = document.getElementById('filterCidade');
+    const bairroSelect = document.getElementById('filterBairro');
+    const activeFilterChips = document.getElementById('activeFilterChips');
+    const advancedFilterCount = document.getElementById('advancedFilterCount');
+    const advancedFiltersButton = document.getElementById('btnAdvancedFilters');
+    const advancedFiltersModal = document.getElementById('advancedFiltersModal');
+    // URL que a busca grava ao mudar de filtro. As rotas SEO
+    // (/imoveis/venda/sao-paulo) carregam cidade/negócio no CAMINHO, e o
+    // caminho vence a querystring no servidor: trocar a cidade e recarregar
+    // voltava para a cidade antiga. Saindo do filtro inicial, a URL passa
+    // para /imoveis?..., que carrega tudo pela querystring.
+    const searchBasePath = new URL('<?= site_url('imoveis') ?>').pathname;
+    const plainSearchPaths = [searchBasePath, new URL('<?= site_url('imoveis/mapa') ?>').pathname];
+    const byId = id => document.getElementById(id);
 
     let activeFetchController = null;
     let fetchTimeout = null;
@@ -244,6 +269,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let lastFetchWasInitial = false;
     let isInitialFetch = true;
     let suppressNextMoveFetch = false;
+    let initialQuery = null;
 
     const map = L.map('map', { zoomControl: false }).setView([-14.235, -51.925], 4);
     L.control.zoom({ position: 'topright' }).addTo(map);
@@ -271,13 +297,13 @@ document.addEventListener('DOMContentLoaded', function() {
             currentPolygon = layer;
             inputPropertyIds.value = '';
             inputPolygon.value = JSON.stringify(coords);
-            fetchMapData();
+            fetchMapData({ history: 'push' });
         },
         onCleared: function() {
             currentPolygon = null;
             inputPolygon.value = '';
             inputPropertyIds.value = '';
-            fetchMapData();
+            fetchMapData({ history: 'push' });
         }
     });
 
@@ -326,7 +352,8 @@ document.addEventListener('DOMContentLoaded', function() {
         inputBounds.value = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
     }
 
-    function syncUrl() {
+    /** Querystring dos critérios da busca (sem viewport, cluster e paginação). */
+    function currentQuery() {
         const params = new URLSearchParams(new FormData(form));
         // `polygon` fica: é o deep link vindo do mapa da home, e recarregar ou
         // compartilhar a URL precisa preservar a área desenhada.
@@ -334,8 +361,189 @@ document.addEventListener('DOMContentLoaded', function() {
         for (const [key, value] of Array.from(params.entries())) {
             if (!value) params.delete(key);
         }
-        const url = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
-        window.history.replaceState({}, '', url);
+        if (params.get('sort') === 'relevance') params.delete('sort');
+        return params.toString();
+    }
+
+    /**
+     * Grava os critérios na URL. 'push' cria entrada no histórico (mudança de
+     * filtro feita pelo usuário: o "voltar" do navegador desfaz), 'replace'
+     * só atualiza (mover o mapa, paginação, carga inicial), 'none' não mexe
+     * (restauração vinda do próprio histórico). O estado guarda a querystring
+     * para o popstate restaurar até a entrada inicial de uma rota SEO, cuja
+     * URL não tem querystring nenhuma.
+     */
+    function syncUrl(mode) {
+        if (mode === 'none') return;
+        const q = currentQuery();
+        let path = window.location.pathname;
+        if (!plainSearchPaths.includes(path)) {
+            if (q === initialQuery) {
+                window.history.replaceState({ q }, '', window.location.href);
+                return;
+            }
+            path = searchBasePath;
+        }
+        const url = path + (q ? '?' + q : '');
+        if (mode === 'push' && url !== window.location.pathname + window.location.search) {
+            window.history.pushState({ q }, '', url);
+        } else {
+            window.history.replaceState({ q }, '', url);
+        }
+    }
+
+    function formatPriceShort(value) {
+        const v = Number(value);
+        if (!isFinite(v)) return value;
+        const trim = (n, dec) => n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: dec });
+        if (v < 10000) return 'R$ ' + trim(v, 0);
+        if (v < 1000000 && Math.round(v / 100) / 10 < 1000) return 'R$ ' + trim(v / 1000, 1) + ' mil';
+        return 'R$ ' + trim(v / 1000000, 2) + ' mi';
+    }
+
+    function plural(n, singular, pluralForm) {
+        return Number(n) === 1 ? singular : pluralForm;
+    }
+
+    /**
+     * Critérios ativos que não aparecem na barra principal. Cada item sabe
+     * se limpar; `advanced` conta para o número no botão "Filtros".
+     */
+    function activeFilterItems() {
+        const items = [];
+        const tipo = byId('inputTipoImovel').value;
+        if (tipo) {
+            const opt = Array.from(byId('modalTipoImovel').options).find(o => o.value === tipo);
+            items.push({ label: opt ? opt.textContent.trim() : tipo, advanced: true, clear: () => { byId('inputTipoImovel').value = ''; } });
+        }
+        const min = byId('inputMinPrice').value;
+        const max = byId('inputMaxPrice').value;
+        if (min || max) {
+            let label = min && max
+                ? `${formatPriceShort(min)} a ${formatPriceShort(max)}`
+                : (max ? `Até ${formatPriceShort(max)}` : `A partir de ${formatPriceShort(min)}`);
+            if (byId('inputIncludeNoPrice').value === '1') label += ' + sob consulta';
+            items.push({ label, advanced: true, clear: () => {
+                byId('inputMinPrice').value = '';
+                byId('inputMaxPrice').value = '';
+                byId('inputIncludeNoPrice').value = '';
+            } });
+        }
+        [['inputQuartos', 'quarto', 'quartos'], ['inputBanheiros', 'banheiro', 'banheiros'], ['inputVagas', 'vaga', 'vagas']].forEach(([id, singular, pluralForm]) => {
+            const n = byId(id).value;
+            if (n) items.push({ label: `${n}+ ${plural(n, singular, pluralForm)}`, advanced: true, clear: () => { byId(id).value = ''; } });
+        });
+        if (inputPolygon.value) {
+            items.push({ label: 'Área desenhada', advanced: false, clear: () => {
+                drawToolbar.clear({ silent: true });
+                currentPolygon = null;
+                inputPolygon.value = '';
+            } });
+        }
+        return items;
+    }
+
+    function renderActiveFilters() {
+        const items = activeFilterItems();
+        activeFilterChips.replaceChildren();
+        items.forEach(item => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'premium-chip is-active';
+            chip.setAttribute('aria-label', `Remover filtro ${item.label}`);
+            chip.append(document.createTextNode(item.label + ' '));
+            const x = document.createElement('i');
+            x.className = 'fa-solid fa-xmark';
+            x.setAttribute('aria-hidden', 'true');
+            chip.append(x);
+            chip.addEventListener('click', () => {
+                item.clear();
+                inputPropertyIds.value = '';
+                fetchMapData({ history: 'push' });
+            });
+            activeFilterChips.append(chip);
+        });
+        activeFilterChips.classList.toggle('d-none', items.length === 0);
+
+        const advanced = items.filter(item => item.advanced).length;
+        advancedFilterCount.textContent = String(advanced);
+        advancedFilterCount.classList.toggle('d-none', advanced === 0);
+        advancedFiltersButton.classList.toggle('is-active', advanced > 0);
+        advancedFiltersButton.setAttribute('aria-label', advanced
+            ? `Filtros avançados (${advanced} ${plural(advanced, 'ativo', 'ativos')})`
+            : 'Filtros avançados');
+    }
+
+    /**
+     * Repopula o bairro conforme a cidade. Sem cidade, o campo fica
+     * desabilitado: listar bairros de todas as cidades misturava "Centro" de
+     * municípios diferentes. Devolve promise para quem precisa do bairro já
+     * selecionado antes de buscar (restauração pelo histórico).
+     */
+    function loadBairros(cidade, selected = '') {
+        bairroSelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = cidade ? 'Todos os bairros' : 'Escolha a cidade';
+        bairroSelect.append(placeholder);
+        bairroSelect.disabled = !cidade;
+        if (!cidade) return Promise.resolve();
+
+        return fetch(bairrosApiPath + '?cidade=' + encodeURIComponent(cidade))
+            .then(response => response.json())
+            .then(data => {
+                (data.bairros || []).forEach(function(bairro) {
+                    const opt = document.createElement('option');
+                    opt.value = bairro;
+                    opt.textContent = bairro;
+                    bairroSelect.appendChild(opt);
+                });
+            })
+            .catch(() => {})
+            .then(() => {
+                if (!selected) return;
+                bairroSelect.value = selected;
+                if (bairroSelect.value !== selected) {
+                    const opt = document.createElement('option');
+                    opt.value = selected;
+                    opt.textContent = selected;
+                    bairroSelect.appendChild(opt);
+                    bairroSelect.value = selected;
+                }
+            });
+    }
+
+    /** Aplica uma querystring (vinda do histórico) aos campos da busca. */
+    function applyQuery(params) {
+        const get = key => params.get(key) || '';
+        byId('inputTipoNegocio').value = get('tipo_negocio');
+        document.querySelectorAll('.js-business-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.value === get('tipo_negocio')));
+        ['tipo_imovel:inputTipoImovel', 'quartos:inputQuartos', 'banheiros:inputBanheiros', 'vagas:inputVagas', 'min_price:inputMinPrice', 'max_price:inputMaxPrice'].forEach(pair => {
+            const [key, id] = pair.split(':');
+            byId(id).value = get(key);
+        });
+        byId('inputIncludeNoPrice').value = get('include_no_price') ? '1' : '';
+        const sort = get('sort') || 'relevance';
+        byId('inputSort').value = sort;
+        byId('sortSelect').value = sort;
+        inputPropertyIds.value = '';
+
+        const polygon = get('polygon');
+        if (polygon !== inputPolygon.value) {
+            drawToolbar.clear({ silent: true });
+            currentPolygon = null;
+            inputPolygon.value = '';
+            let coords = null;
+            try { coords = polygon ? JSON.parse(polygon) : null; } catch (e) { coords = null; }
+            const layer = Array.isArray(coords) ? drawToolbar.setPolygon(coords) : null;
+            if (layer) {
+                currentPolygon = layer;
+                inputPolygon.value = polygon;
+            }
+        }
+
+        cidadeSelect.value = get('cidade');
+        return loadBairros(cidadeSelect.value, get('bairro'));
     }
 
     function fetchMapData(options = {}) {
@@ -358,7 +566,8 @@ document.addEventListener('DOMContentLoaded', function() {
             inputPage.value = '1';
             setSkeleton();
         }
-        syncUrl();
+        renderActiveFilters();
+        syncUrl(options.history || 'replace');
 
         const params = new URLSearchParams(new FormData(form));
         if (onlyUpdateList) params.set('list_only', '1');
@@ -500,13 +709,13 @@ document.addEventListener('DOMContentLoaded', function() {
             chip.classList.add('is-active');
             document.getElementById('inputTipoNegocio').value = chip.dataset.value;
             inputPropertyIds.value = '';
-            fetchMapData();
+            fetchMapData({ history: 'push' });
         });
     });
 
     $('#mapFiltersForm').on('change', 'select', function() {
         inputPropertyIds.value = '';
-        scheduleFetch();
+        scheduleFetch({ history: 'push' });
     });
 
     // Cascata cidade -> bairro: sem isto o dropdown de bairro listava bairro
@@ -515,36 +724,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // parecia busca quebrada). O reset do bairro é síncrono, antes do fetch
     // de repopulação — o handler de 'change' delegado acima já dispara a
     // busca com o bairro limpo, sem precisar esperar a lista nova chegar.
-    document.getElementById('filterCidade').addEventListener('change', function() {
-        const bairroSelect = document.getElementById('filterBairro');
-        bairroSelect.value = '';
-
-        fetch(bairrosApiPath + '?cidade=' + encodeURIComponent(this.value))
-            .then(response => response.json())
-            .then(data => {
-                bairroSelect.innerHTML = '<option value="">Todos os bairros</option>';
-                (data.bairros || []).forEach(function(bairro) {
-                    const opt = document.createElement('option');
-                    opt.value = bairro;
-                    opt.textContent = bairro;
-                    bairroSelect.appendChild(opt);
-                });
-            })
-            .catch(() => {
-                // Falha de rede: mantém a lista já renderizada (não pior que hoje).
-            });
+    cidadeSelect.addEventListener('change', function() {
+        loadBairros(this.value);
     });
 
     form.addEventListener('submit', function(event) {
         event.preventDefault();
         inputPropertyIds.value = '';
-        fetchMapData();
+        fetchMapData({ history: 'push' });
     });
 
     document.getElementById('sortSelect').addEventListener('change', function() {
         document.getElementById('inputSort').value = this.value;
         document.getElementById('modalSort').value = this.value;
-        fetchMapData();
+        fetchMapData({ history: 'push' });
     });
 
     document.getElementById('btnApplyAdvancedFilters').addEventListener('click', function() {
@@ -573,12 +766,33 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('sortSelect').value = document.getElementById('modalSort').value;
         inputPropertyIds.value = '';
         bootstrap.Modal.getInstance(document.getElementById('advancedFiltersModal')).hide();
-        fetchMapData();
+        fetchMapData({ history: 'push' });
+    });
+
+    // O modal sempre abre com o estado ATUAL da busca: depois de remover uma
+    // etiqueta, voltar no navegador ou cancelar uma edição, os campos dele
+    // ficavam com valores que não estavam mais aplicados.
+    advancedFiltersModal.addEventListener('show.bs.modal', function() {
+        byId('modalTipoImovel').value = byId('inputTipoImovel').value;
+        byId('modalSort').value = byId('inputSort').value || 'relevance';
+        byId('modalMinPrice').value = byId('inputMinPrice').value;
+        byId('modalMaxPrice').value = byId('inputMaxPrice').value;
+        byId('modalIncludeNoPrice').checked = byId('inputIncludeNoPrice').value === '1';
+        byId('modalQuartos').value = byId('inputQuartos').value;
+        byId('modalBanheiros').value = byId('inputBanheiros').value;
+        byId('modalVagas').value = byId('inputVagas').value;
+        const priceErrorBox = byId('priceRangeError');
+        if (!priceErrorBox.dataset.server) {
+            priceErrorBox.textContent = '';
+            priceErrorBox.classList.add('d-none');
+        }
+        delete priceErrorBox.dataset.server;
     });
 
     document.getElementById('btnClearFilters').addEventListener('click', function() {
         form.reset();
-        $('#filterCidade, #filterBairro').val('');
+        cidadeSelect.value = '';
+        loadBairros('');
         ['inputTipoNegocio','inputTipoImovel','inputQuartos','inputBanheiros','inputVagas','inputMinPrice','inputMaxPrice','inputIncludeNoPrice','inputSort','inputPropertyIds','inputPolygon'].forEach(id => {
             document.getElementById(id).value = id === 'inputSort' ? 'relevance' : '';
         });
@@ -588,7 +802,17 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.js-business-chip').forEach(chip => chip.classList.toggle('is-active', chip.dataset.value === ''));
         drawToolbar.clear({ silent: true });
         currentPolygon = null;
-        fetchMapData();
+        inputPropertyIds.value = '';
+        fetchMapData({ history: 'push' });
+    });
+
+    // "Voltar"/"avançar" do navegador: restaura os critérios daquela entrada
+    // (cidade, bairro, filtros, área) e refaz a busca sem criar entrada nova.
+    window.addEventListener('popstate', function(event) {
+        const q = event.state && typeof event.state.q === 'string'
+            ? event.state.q
+            : window.location.search.replace(/^\?/, '');
+        applyQuery(new URLSearchParams(q)).then(() => fetchMapData({ history: 'none' }));
     });
 
     listContainer.addEventListener('click', function(event) {
@@ -625,8 +849,15 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => { suppressNextMoveFetch = false; }, 500);
     })();
 
+    initialQuery = currentQuery();
     firstLoadDone = true;
     fetchMapData();
+
+    // Faixa de preço inválida vinda da URL: o servidor ignorou a faixa; abre o
+    // modal para a mensagem aparecer em vez de ficar escondida nele.
+    if (byId('priceRangeError').dataset.server) {
+        bootstrap.Modal.getOrCreateInstance(advancedFiltersModal).show();
+    }
 
     // Com área vinda da URL o mapa já está enquadrado nela; recentrar na
     // posição do visitante o tiraria de lá.

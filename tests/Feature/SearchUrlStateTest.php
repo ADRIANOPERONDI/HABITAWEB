@@ -56,4 +56,31 @@ final class SearchUrlStateTest extends HabitawebTestCase
         $this->assertMatchesRegularExpression('/id="inputSort" value="price_asc"/', $html);
         $this->assertMatchesRegularExpression('/<option value="3"\s+selected>3\+<\/option>/', $html, 'modal de quartos pré-selecionado');
     }
+
+    public function testSemCidadeBairroFicaDesabilitadoENaoMisturaCidades(): void
+    {
+        $html = $this->html('imoveis');
+
+        $this->assertMatchesRegularExpression('/<select name="bairro" id="filterBairro" class="form-select"\s+disabled>/', $html);
+        $this->assertStringContainsString('Escolha a cidade', $html);
+        $this->assertStringNotContainsString('>Bairro De B<', $html);
+        $this->assertStringNotContainsString('>Agostini<', $html);
+    }
+
+    public function testComCidadeBairroListaSoOsDaquelaCidade(): void
+    {
+        $html = $this->html('imoveis?cidade=' . urlencode('Cidade Url A') . '&bairro=Agostini');
+
+        $this->assertDoesNotMatchRegularExpression('/id="filterBairro" class="form-select"\s+disabled/', $html);
+        $this->assertMatchesRegularExpression('/<option value="Agostini"\s+selected>Agostini<\/option>/', $html);
+        $this->assertStringNotContainsString('>Bairro De B<', $html);
+    }
+
+    public function testFaixaInvalidaNaUrlMarcaErroParaOModalAbrir(): void
+    {
+        $html = $this->html('imoveis?min_price=900000&max_price=100000');
+
+        $this->assertStringContainsString('data-server="1"', $html);
+        $this->assertStringContainsString('O preço mínimo não pode ser maior que o máximo.', $html);
+    }
 }
