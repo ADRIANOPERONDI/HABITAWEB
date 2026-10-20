@@ -257,6 +257,24 @@ class PropertyService
                 $data['cidade'] = \App\Libraries\Text\CityName::normalize($data['cidade']);
             }
 
+            // 2b'. Bairro canonico, dentro da cidade.
+            // Mesmo problema da cidade: "CENTRO" (Simob) e "Centro" (admin)
+            // viravam duas opcoes no filtro. NeighborhoodResolver devolve o
+            // nome registrado para a cidade (alias manual ou mesma chave sem
+            // caixa/acento) ou o Title Case de um bairro novo. Em atualizacao
+            // parcial sem `cidade` no payload, usa a do proprio imovel.
+            if (isset($data['bairro']) && is_string($data['bairro'])) {
+                if (\App\Libraries\Text\NeighborhoodName::looksLikeReference($data['bairro'])) {
+                    // Nao descarta: so avisa. Texto de ponto de referencia no campo
+                    // bairro costuma vir errado da origem (ex.: "Proximo a ...").
+                    log_message('warning', 'Bairro suspeito (parece ponto de referencia) no imovel '
+                        . ($id ?? 'novo') . ': ' . mb_substr($data['bairro'], 0, 80));
+                }
+
+                $cidadeDoBairro = is_string($data['cidade'] ?? null) ? $data['cidade'] : (string) ($property->cidade ?? '');
+                $data['bairro'] = (new NeighborhoodResolver())->resolve($cidadeDoBairro, $data['bairro']);
+            }
+
             // 2c. Coordenada posta a mao.
             // Quem arrastou o pino sabe onde o imovel fica melhor que o
             // Nominatim — e para endereco rural ou de loteamento novo, que o
@@ -1450,7 +1468,9 @@ class PropertyService
         $model = (new PropertyModel())->distinct()->select('bairro')->where('cidade', $resolved);
         $this->publicVisibility->apply($model);
 
-        return $model->orderBy('bairro', 'ASC')->findAll();
+        // Rede de protecao: grafia que so difere na caixa nao vira 2 opcoes
+        // (o filtro compara por LOWER(), entao nenhum imovel fica sem opcao).
+        return $this->dedupPorCaixa($model->orderBy('bairro', 'ASC')->findAll(), 'bairro');
     }
 
     /**
