@@ -581,8 +581,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 activeFetchController = null;
                 if (!data.success) return;
 
-                resultsTitle.textContent = `${data.count || 0} imóveis encontrados`;
-                resultsSubtitle.textContent = currentPolygon ? 'Resultado dentro da área desenhada' : `${data.map_count || 0} pins na área visível`;
+                const total = data.count || 0;
+                const pins = data.map_count || 0;
+                resultsTitle.textContent = `${total} ${plural(total, 'imóvel encontrado', 'imóveis encontrados')}`;
+                resultsSubtitle.textContent = currentPolygon
+                    ? 'Resultado dentro da área desenhada'
+                    : `${pins} ${plural(pins, 'imóvel', 'imóveis')} no mapa`;
 
                 if (append) {
                     const loadMore = listContainer.querySelector('#btnLoadMoreMap')?.closest('.d-flex');

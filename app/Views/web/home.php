@@ -70,7 +70,7 @@
             </div>
             <div>
                 <h2 class="section-title mb-0">Imóveis no mapa</h2>
-                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> imóveis em destaque · clique num pin para localizar na lista ou desenhe uma área para buscar</p>
+                <p class="section-subtitle mb-0"><?= count($mapProperties) ?> <?= count($mapProperties) === 1 ? 'imóvel' : 'imóveis' ?> em destaque · clique num pin para localizar na lista ou desenhe uma área para buscar</p>
             </div>
         </div>
 
