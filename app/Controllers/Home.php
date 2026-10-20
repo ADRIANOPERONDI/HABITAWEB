@@ -13,7 +13,7 @@ class Home extends BaseController
         // a query mais cara dela (sort ponderado com joins de plano/assinatura).
         $featured = cache()->get('home_featured');
         if ($featured === null) {
-            $featured = $propertyService->getFeaturedProperties(8);
+            $featured = $propertyService->getHomeFeaturedProperties(8);
             cache()->save('home_featured', $featured, 180);
         }
 

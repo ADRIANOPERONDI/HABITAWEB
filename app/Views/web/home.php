@@ -94,7 +94,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4 px-2">
             <div>
                 <h2 class="section-title">Destaques Recomendados</h2>
-                <p class="section-subtitle mb-0">Imóveis verificados com alta qualidade visual.</p>
+                <p class="section-subtitle mb-0">Imóveis em destaque e os anúncios mais recentes.</p>
             </div>
             <a href="<?= site_url('imoveis') ?>" class="btn btn-link text-dark fw-bold text-decoration-none text-nowrap">
                 Ver todos <i class="fa-solid fa-chevron-right ms-1"></i>
