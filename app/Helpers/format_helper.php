@@ -60,3 +60,63 @@ if (! function_exists('price_label')) {
         return $tipoNegocio === 'ALUGUEL' ? $label . '/mês' : $label;
     }
 }
+
+if (! function_exists('property_specs')) {
+    /**
+     * Características numéricas de um imóvel prontas para exibir (área,
+     * quartos, banheiros, vagas e, no detalhe, suítes), já filtradas para que
+     * um cadastro incompleto nunca gere campo solto ("m²" sem número, ícone
+     * sem valor):
+     *  - só entra o que se aplica ao tipo (terreno não tem quarto/vaga;
+     *    PropertyCategoryHelper::getApplicableFields é a fonte);
+     *  - NULL é "não informado" e some; 0 é zero informado de verdade;
+     *  - em 'card' o zero também some (poluição visual); em 'detail' aparece;
+     *  - área zerada ou ausente some sempre.
+     *
+     * @param string $context 'card' ou 'detail'
+     *
+     * @return list<array{key: string, icon: string, value: string, label: string}>
+     */
+    function property_specs(object $property, string $context = 'card'): array
+    {
+        $applicable = \App\Helpers\PropertyCategoryHelper::getApplicableFields((string) ($property->tipo_imovel ?? ''));
+        $specs      = [];
+
+        $area = (float) ($property->area_total ?? 0);
+        if ($area <= 0) {
+            $area = (float) ($property->area_construida ?? 0);
+        }
+        if ($area > 0 && in_array('area_total', $applicable, true)) {
+            $specs[] = [
+                'key'   => 'area',
+                'icon'  => 'fa-ruler-combined',
+                'value' => rtrim(rtrim(number_format($area, 2, ',', '.'), '0'), ',') . ' m²',
+                'label' => 'Área',
+            ];
+        }
+
+        $counts = [
+            'quartos'   => ['fa-bed', 'Quartos', true],
+            'suites'    => ['fa-person-shelter', 'Suítes', false],
+            'banheiros' => ['fa-bath', 'Banh.', true],
+            'vagas'     => ['fa-car', 'Vagas', true],
+        ];
+        foreach ($counts as $field => [$icon, $label, $inCard]) {
+            if (! in_array($field, $applicable, true) || ($context === 'card' && ! $inCard)) {
+                continue;
+            }
+
+            $raw = $property->{$field} ?? null;
+            if ($raw === null || $raw === '' || (int) $raw < 0) {
+                continue;
+            }
+            if ((int) $raw === 0 && ($context === 'card' || $field === 'suites')) {
+                continue;
+            }
+
+            $specs[] = ['key' => $field, 'icon' => $icon, 'value' => (string) (int) $raw, 'label' => $label];
+        }
+
+        return $specs;
+    }
+}
