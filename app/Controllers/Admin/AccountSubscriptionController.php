@@ -43,6 +43,7 @@ class AccountSubscriptionController extends BaseController
         $percentHoje = null;
         $valorHoje = null;
         $pendingRampCharge = false;
+        $carencia = null;
 
         if ($subscription && $subscription->ramp_started_at) {
             $rampService = new \App\Services\LaunchRampService($this->paymentService);
@@ -57,6 +58,15 @@ class AccountSubscriptionController extends BaseController
             $pendingRampCharge = $subscription->payment_method === 'FREE'
                 && $percentHoje > 0
                 && empty($subscription->asaas_subscription_id);
+
+            $schedule = $rampService->negotiatedSchedule($subscription);
+            if ($schedule !== null) {
+                $carencia = $schedule + [
+                    'isencao_total_meses'       => (int) $subscription->isencao_total_meses,
+                    'isencao_mensalidade_meses' => (int) ($subscription->isencao_mensalidade_meses ?? 0),
+                    'leads_isentos_hoje'        => $rampService->leadsExemptOn($subscription),
+                ];
+            }
         }
 
         return $this->response->setJSON([
@@ -69,6 +79,51 @@ class AccountSubscriptionController extends BaseController
             'percent_hoje' => $percentHoje,
             'valor_hoje' => $valorHoje,
             'pendingRampCharge' => $pendingRampCharge,
+            'carencia' => $carencia,
+        ]);
+    }
+
+    /**
+     * POST: concede a carência negociada com a imobiliária — plano
+     * contratado, início e os dois prazos (ver PaymentService::grantNegotiatedTerms).
+     * Cadastro pelo site não ganha carência; só por aqui (ou pelo
+     * `spark assinatura:ativar`).
+     */
+    public function grantTerms($accountId)
+    {
+        if (!auth()->user()->inGroup('superadmin')) {
+            return $this->response->setJSON(['error' => 'Acesso negado.'])->setStatusCode(403);
+        }
+
+        if (!model('App\Models\AccountModel')->find((int) $accountId)) {
+            return $this->response->setJSON(['error' => 'Conta não encontrada.'])->setStatusCode(404);
+        }
+
+        $planId  = (int) $this->request->getPost('plan_id');
+        $inicio  = trim((string) ($this->request->getPost('inicio') ?: date('Y-m-d')));
+        $total   = $this->request->getPost('isencao_total_meses');
+        $soLeads = $this->request->getPost('isencao_mensalidade_meses');
+
+        if ($planId <= 0 || !is_numeric($total) || !is_numeric($soLeads)) {
+            return $this->response->setJSON(['error' => 'Informe o plano e os dois prazos da carência.'])->setStatusCode(400);
+        }
+
+        try {
+            $result = $this->paymentService->grantNegotiatedTerms((int) $accountId, $planId, $inicio, (int) $total, (int) $soLeads);
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return $this->response->setJSON(['error' => $e->getMessage()])->setStatusCode(400);
+        }
+
+        $s = $result['schedule'];
+        $fmt = static fn (string $d): string => date('d/m/Y', strtotime($d));
+
+        return $this->response->setJSON([
+            'success' => $s === null
+                ? 'Carência aplicada.'
+                : 'Carência aplicada: sem mensalidade e sem leads até ' . $fmt(date('Y-m-d', strtotime($s['leads_a_partir'] . ' -1 day')))
+                    . '; leads cobrados a partir de ' . $fmt($s['leads_a_partir'])
+                    . '; mensalidade a partir de ' . $fmt($s['mensalidade_a_partir']) . '.',
+            'schedule' => $s,
         ]);
     }
 

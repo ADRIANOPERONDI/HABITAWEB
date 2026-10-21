@@ -583,12 +583,22 @@ class PaymentService
      * relógio da assinatura anterior (troca de plano não dá 6 meses novos de
      * graça); o checkout usa `LaunchRampService::enrollmentDateForNewSignup()`.
      *
+     * `$isencao` leva os prazos da carência negociada
+     * (`isencao_total_meses`, `isencao_mensalidade_meses`) para a assinatura
+     * nova — sem isso, trocar de plano perderia a condição acordada.
+     *
+     * @param array{isencao_total_meses?: int|null, isencao_mensalidade_meses?: int|null} $isencao
+     *
      * @return array{success: bool, local_id: int}
      */
-    public function createFreeLocalSubscription(int $accountId, $plan, string $billingCycle, ?string $rampStartedAt): array
+    public function createFreeLocalSubscription(int $accountId, $plan, string $billingCycle, ?string $rampStartedAt, array $isencao = []): array
     {
+        $isencao = [
+            'isencao_total_meses'       => $isencao['isencao_total_meses'] ?? null,
+            'isencao_mensalidade_meses' => $isencao['isencao_mensalidade_meses'] ?? null,
+        ];
         $rampService      = new LaunchRampService($this);
-        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt]);
+        $rampSubscription = new Subscription(['ramp_started_at' => $rampStartedAt] + $isencao);
 
         $activeSub = $this->subscriptionModel
             ->where('account_id', $accountId)
@@ -611,13 +621,71 @@ class PaymentService
             'billing_cycle'      => $billingCycle,
             'ramp_started_at'    => $rampStartedAt,
             'ramp_percent_atual' => $rampStartedAt !== null ? $rampService->percentFor($rampSubscription) : null,
-        ], true);
+        ] + $isencao, true);
 
         // Espelha settleTransaction(): sem isto, accounts.status fica PENDING
         // e o AdminAuth bloqueia o painel mesmo com subscriptions.status ACTIVE.
         $this->accountModel->update($accountId, ['status' => 'ACTIVE']);
 
         return ['success' => true, 'local_id' => $localSubId];
+    }
+
+    /**
+     * Concede a carência negociada com a imobiliária (item 11 da revisão):
+     * plano contratado + data de início + meses sem nada (mensalidade e
+     * leads) + meses seguintes só com leads. Cria a assinatura local a R$ 0,
+     * sem gateway, substituindo a ativa.
+     *
+     * Recusa conta com assinatura paga no gateway: a Asaas não aceita valor
+     * zero, e manter a recorrência lá cobraria a imobiliária durante a
+     * carência — essa assinatura precisa ser cancelada antes.
+     *
+     * @return array{local_id: int, percent_hoje: int, schedule: array<string, string>|null}
+     */
+    public function grantNegotiatedTerms(int $accountId, int $planId, string $inicio, int $mesesIsencaoTotal, int $mesesSoLeads): array
+    {
+        $plan = model(\App\Models\PlanModel::class)->find($planId);
+        if (! $plan || ! $plan->ativo) {
+            throw new \InvalidArgumentException('Plano não encontrado ou desativado.');
+        }
+
+        foreach ([$mesesIsencaoTotal, $mesesSoLeads] as $meses) {
+            if ($meses < 0 || $meses > 36) {
+                throw new \InvalidArgumentException('Os prazos da carência devem ficar entre 0 e 36 meses.');
+            }
+        }
+
+        $data = \DateTimeImmutable::createFromFormat('!Y-m-d', $inicio);
+        if (! $data || $data->format('Y-m-d') !== $inicio) {
+            throw new \InvalidArgumentException('Data de início inválida.');
+        }
+        if ($data > new \DateTimeImmutable('+1 year') || $data < new \DateTimeImmutable('-3 years')) {
+            throw new \InvalidArgumentException('Data de início fora do intervalo aceito (até 3 anos atrás ou 1 ano à frente).');
+        }
+
+        $ativa = $this->subscriptionModel->where('account_id', $accountId)->where('status', 'ACTIVE')->orderBy('id', 'DESC')->first();
+        if ($ativa && ! empty($ativa->asaas_subscription_id)) {
+            throw new \RuntimeException('Esta conta tem assinatura paga no gateway. Cancele-a antes de conceder a carência.');
+        }
+
+        $isencao = ['isencao_total_meses' => $mesesIsencaoTotal, 'isencao_mensalidade_meses' => $mesesSoLeads];
+        $result  = $this->createFreeLocalSubscription($accountId, $plan, 'MONTHLY', $inicio, $isencao);
+
+        $rampService = new LaunchRampService($this);
+        $nova        = new Subscription(['ramp_started_at' => $inicio] + $isencao);
+
+        audit_log('carencia.concedida', [
+            'account_id'  => $accountId,
+            'entity_type' => 'subscription',
+            'entity_id'   => $result['local_id'],
+            'metadata'    => ['plan' => $plan->chave, 'inicio' => $inicio] + $isencao,
+        ]);
+
+        return [
+            'local_id'     => (int) $result['local_id'],
+            'percent_hoje' => $rampService->percentFor($nova),
+            'schedule'     => $rampService->negotiatedSchedule($nova),
+        ];
     }
 
     /**

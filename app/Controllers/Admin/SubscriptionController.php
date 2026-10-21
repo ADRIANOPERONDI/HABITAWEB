@@ -364,7 +364,12 @@ class SubscriptionController extends BaseController
                 $accountId,
                 $targetPlan,
                 $billingCycle,
-                $activeSub->ramp_started_at ?? null
+                $activeSub->ramp_started_at ?? null,
+                [
+                    // A carência negociada acompanha a troca de plano.
+                    'isencao_total_meses'       => $activeSub->isencao_total_meses ?? null,
+                    'isencao_mensalidade_meses' => $activeSub->isencao_mensalidade_meses ?? null,
+                ]
             );
 
             return redirect()->to('admin/subscription')->with('message', "Plano alterado para {$targetPlan->nome} com sucesso!");
