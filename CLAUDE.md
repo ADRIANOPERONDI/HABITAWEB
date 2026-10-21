@@ -163,7 +163,22 @@ own lifetime (from `subscriptions.ramp_started_at`, not the calendar — a
 coupon-style global date range doesn't fit "6 months free from *this*
 account's signup"). `ramp_started_at IS NULL` means the subscription simply
 isn't enrolled and always pays full price — that's the safety default
-every call site relies on. `spark assinaturas:aplicar-rampa` (daily cron)
+every call site relies on.
+
+The free period is a **negotiated condition, not a public offer**: sign-ups
+through the site/checkout never enter it (`enrollmentDateForNewSignup()`
+always returns null) and the public pages never mention "grátis". A
+superadmin grants it per account at `/admin/accounts/{id}` → Assinatura →
+"Carência negociada" (`PaymentService::grantNegotiatedTerms()`; also
+`spark assinatura:ativar`), choosing the contracted plan, a start date and
+two terms stored on the subscription: `isencao_total_meses` (no mensalidade
+and no lead charges — `LeadChargeService` skips them via
+`LaunchRampService::leadsExemptOn()`) and `isencao_mensalidade_meses` (then
+no mensalidade, leads charged). After both, full price. With those columns
+set they override the global `plan_launch_ramps` bands, which only still
+apply to subscriptions without terms. Granting is refused when the account
+has a paid gateway subscription (Asaas rejects R$ 0 — cancel it first).
+`spark assinaturas:aplicar-rampa` (daily cron)
 applies faixa transitions; it corrects price automatically on a
 subscription that already has a real gateway subscription, but deliberately
 does **not** auto-create the first-ever real charge for a 0%→X% transition
