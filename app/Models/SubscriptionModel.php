@@ -20,6 +20,8 @@ class SubscriptionModel extends Model
         // cobra cheio. 'valor' e o preco efetivamente cobrado, ja com o
         // desconto de rampa se houver.
         'ramp_started_at', 'ramp_percent_atual', 'valor',
+        // Carência negociada pelo administrador (ver LaunchRampService).
+        'isencao_total_meses', 'isencao_mensalidade_meses',
     ];
 
     protected bool $allowEmptyInserts = false;

@@ -212,42 +212,35 @@ final class PlanCheckoutTest extends HabitawebTestCase
     }
 
     /**
-     * D1: todo cadastro novo pelo checkout, mensal, entra na rampa. Mês 1 é
-     * 0% — o checkout precisa criar a assinatura local gratuita e NUNCA
-     * chamar o gateway (Asaas não aceita assinatura de valor zero).
+     * Cadastro pelo site não ganha a carência (item 11 da revisão): ela é
+     * condição de negociação concedida pelo administrador. O checkout mensal
+     * segue o fluxo pago normal, com gateway, mesmo com faixas de rampa
+     * configuradas. Antes (D1) todo checkout mensal entrava na rampa a R$ 0.
      */
-    public function testCheckoutMensalNaRampaCriaAssinaturaGratuitaSemGateway(): void
+    public function testCheckoutMensalPeloSiteNaoEntraNaCarenciaECobraNoGateway(): void
     {
         $this->ativarGatewayFake();
         $this->seedRampaMesUmZeroPorCento();
-        FakePaymentGateway::$paymentsCreated     = [];
-        FakePaymentGateway::$subscriptionUpdates = [];
 
         $tenant = (new TenantFactory())->create([], 'PRATA');
         $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
 
-        $response = $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
+        $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
             'plan_id'       => (string) $plan->id,
             'billing_type'  => 'PIX',
             'billing_cycle' => 'MONTHLY',
         ]));
 
-        $response->assertRedirectTo('admin/subscription');
-
         $novaSub = model(SubscriptionModel::class)
             ->where('account_id', $tenant['account']->id)
-            ->where('status', 'ACTIVE')
+            ->where('payment_method !=', 'FREE')
+            ->orderBy('id', 'DESC')
             ->first();
 
-        $this->assertNotNull($novaSub);
-        $this->assertSame('FREE', $novaSub->payment_method);
-        $this->assertEquals(0.00, (float) $novaSub->valor);
-        $this->assertNotNull($novaSub->ramp_started_at);
-        $this->assertSame(0, (int) $novaSub->ramp_percent_atual);
-        $this->assertNull($novaSub->data_fim, 'assinatura gratuita nao pode ter data de expiracao');
-
-        $this->assertSame([], FakePaymentGateway::$paymentsCreated, 'mes gratis nao pode gerar cobranca no gateway');
-        $this->assertSame([], FakePaymentGateway::$subscriptionUpdates, 'mes gratis nao pode falar com o gateway');
+        $this->assertNotNull($novaSub, 'checkout mensal deveria ter criado uma assinatura paga');
+        $this->assertNull($novaSub->ramp_started_at, 'cadastro pelo site não entra na carência');
+        $this->assertNotNull($novaSub->asaas_subscription_id, 'segue o fluxo pago normal, com gateway');
+        $this->assertGreaterThan(0, (float) $novaSub->valor);
     }
 
     /**

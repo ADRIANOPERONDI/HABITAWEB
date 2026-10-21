@@ -162,32 +162,76 @@ final class LaunchRampServiceTest extends HabitawebTestCase
     }
 
     /**
-     * D1/P6: todo cadastro novo pelo checkout entra na rampa, mas só no
-     * ciclo mensal — aplicar o desconto de rampa a um plano anual criaria
-     * pró-rata sobre um valor de 12 meses pago de uma vez, ou "anual a R$ 0".
+     * Cadastro pelo site não entra mais na carência, em nenhum ciclo: ela é
+     * condição de negociação concedida pelo administrador (item 11 da
+     * revisão). Antes todo cadastro mensal entrava sozinho (D1).
      */
-    public function testDataDeAdesaoParaNovoCadastroSoNoMensal(): void
+    public function testCadastroPeloSiteNuncaEntraNaCarencia(): void
     {
         $service = new LaunchRampService();
 
-        $this->assertSame(date('Y-m-d'), $service->enrollmentDateForNewSignup('MONTHLY'));
-        $this->assertNull($service->enrollmentDateForNewSignup('QUARTERLY'));
-        $this->assertNull($service->enrollmentDateForNewSignup('SEMIANNUALLY'));
-        $this->assertNull($service->enrollmentDateForNewSignup('YEARLY'));
+        foreach (['MONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'] as $ciclo) {
+            $this->assertNull($service->enrollmentDateForNewSignup($ciclo), $ciclo);
+        }
     }
 
-    /**
-     * Sem faixa configurada pro mês 1, marcar `ramp_started_at = hoje`
-     * gravaria uma data sem nenhum efeito prático (percentFor() cairia no
-     * fallback de 100% de qualquer jeito) — melhor nem entrar na rampa.
-     */
-    public function testDataDeAdesaoENulaSemFaixaConfiguradaParaOMesUm(): void
+    private function negociada(string $inicio, int $total = 6, int $soLeads = 6): Subscription
     {
-        $db = \Config\Database::connect();
-        $db->table('plan_launch_ramps')->truncate();
+        return new Subscription([
+            'ramp_started_at'           => $inicio,
+            'isencao_total_meses'       => $total,
+            'isencao_mensalidade_meses' => $soLeads,
+        ]);
+    }
 
+    /** 6 + 6: mensalidade zero por 12 meses, cheia depois — sem a faixa de 50%. */
+    public function testCarenciaNegociadaIsentaMensalidadePelosDoisPrazos(): void
+    {
         $service = new LaunchRampService();
+        $sub     = $this->negociada('2026-01-10');
 
-        $this->assertNull($service->enrollmentDateForNewSignup('MONTHLY'));
+        $this->assertSame(0, $service->percentFor($sub, '2026-01-10'), 'mês 1');
+        $this->assertSame(0, $service->percentFor($sub, '2026-08-01'), 'mês 7: só leads, mensalidade ainda isenta');
+        $this->assertSame(0, $service->percentFor($sub, '2027-01-09'), 'mês 12');
+        $this->assertSame(100, $service->percentFor($sub, '2027-01-10'), 'mês 13: plano cheio');
+    }
+
+    public function testLeadsSoIsentosNoPrazoDeIsencaoTotal(): void
+    {
+        $service = new LaunchRampService();
+        $sub     = $this->negociada('2026-01-10');
+
+        $this->assertTrue($service->leadsExemptOn($sub, '2026-07-09'), 'último dia do mês 6');
+        $this->assertFalse($service->leadsExemptOn($sub, '2026-07-10'), 'mês 7: leads cobrados');
+        $this->assertFalse($service->leadsExemptOn(new Subscription(['ramp_started_at' => '2026-01-10']), '2026-02-01'), 'sem prazos negociados, leads seguem a regra normal');
+        $this->assertFalse($service->leadsExemptOn(new Subscription(['ramp_started_at' => null]), '2026-02-01'));
+    }
+
+    public function testPrazosNegociadosLivresEAgendaParaOPainel(): void
+    {
+        $service = new LaunchRampService();
+        $sub     = $this->negociada('2026-03-01', 3, 9);
+
+        $this->assertSame(
+            ['inicio' => '2026-03-01', 'leads_a_partir' => '2026-06-01', 'mensalidade_a_partir' => '2027-03-01'],
+            $service->negotiatedSchedule($sub)
+        );
+        $this->assertSame(
+            ['date' => '2027-03-01', 'from_percent' => 0, 'to_percent' => 100],
+            $service->nextTransition($sub, '2026-05-01')
+        );
+        $this->assertNull($service->nextTransition($sub, '2027-03-02'), 'já no plano cheio');
+        $this->assertNull($service->negotiatedSchedule(new Subscription(['ramp_started_at' => '2026-03-01'])));
+    }
+
+    /** Prazo zero (negociação sem carência) cobra cheio desde o início. */
+    public function testCarenciaZeradaCobraCheio(): void
+    {
+        $service = new LaunchRampService();
+        $sub     = $this->negociada('2026-03-01', 0, 0);
+
+        $this->assertSame(100, $service->percentFor($sub, '2026-03-01'));
+        $this->assertFalse($service->leadsExemptOn($sub, '2026-03-01'));
+        $this->assertNull($service->nextTransition($sub, '2026-03-01'));
     }
 }
