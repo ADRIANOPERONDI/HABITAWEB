@@ -66,7 +66,7 @@ final class PaymentSyncRecoveryTest extends HabitawebTestCase
 
         $transaction = $transactions->where('gateway_transaction_id', $paymentId)->first();
         $this->assertSame('SUCCESS', $transaction['status']);
-        $this->assertSame([], $transactions->getOverdueAccountIdsCached(3));
+        $this->assertSame([], $transactions->getOverdueAccountIdsCached());
         $this->assertNull(cache('home_featured'));
     }
 

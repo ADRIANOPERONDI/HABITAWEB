@@ -55,7 +55,7 @@ return [
     'magic_link_check_email_desc'  => 'Enviamos um link de login seguro para o seu e-mail. Se não encontrar, verifique a pasta de spam.',
 
     // Filter Messages
-    'filter_overdue_error'     => 'Conta bloqueada. Você possui uma fatura com mais de 3 dias de atraso. Efetue o pagamento para liberar o sistema e seus anúncios.',
+    'filter_overdue_error'     => 'Pagamento em atraso há mais de 5 dias: seus anúncios estão fora do ar e você não está recebendo novos contatos. Assim que o pagamento for confirmado, tudo volta automaticamente.',
     'filter_pending_activation' => 'Sua conta está pendente de ativação (primeiro pagamento). Acesse os detalhes da fatura abaixo.',
     'filter_inactive_account'  => 'Sua conta não está ativa. Escolha um plano ou verifique seu pagamento.',
 

@@ -84,30 +84,30 @@ class AdminAuth implements FilterInterface
                 // 2. Get Account Status
                 $account = $db->table('accounts')->select('status')->where('id', $accountId)->get()->getRow();
                 
-                // 3. Verifica faturas pendentes atrasadas há 3+ dias para bloquear (mesmo se a conta ainda estiver ACTIVE no banco)
+                // 3. Atraso de pagamento NÃO bloqueia mais o painel (regra
+                // comercial, item 11 da revisão): com DIAS_ATRASO_SUSPENSAO de
+                // atraso a conta fica suspensa — anúncios fora do ar e sem
+                // novos contatos (PublicPropertyVisibilityService) —, mas a
+                // imobiliária continua no painel para ver as cobranças, pagar
+                // e acessar os contatos já recebidos. O aviso aparece no topo
+                // do painel (Layouts/master).
+                //
+                // A sincronização proativa com o gateway continua, para a
+                // conta voltar assim que o pagamento cair mesmo se o webhook
+                // atrasar — no máximo uma vez a cada 5 minutos por conta, já
+                // que agora o tenant navega pelo painel suspenso.
                 $txModel = model('App\Models\PaymentTransactionModel');
-                $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($accountId, 3);
-
-                // PROACTIVE SYNC: Se parecer bloqueado, tenta sincronizar com o Gateway antes de barrar
-                if ($isBlockedByOverdue) {
+                if ($txModel->isAccountBlockedByOverdue($accountId) && ! cache("overdue_sync_{$accountId}")) {
+                    cache()->save("overdue_sync_{$accountId}", 1, 300);
                     try {
-                        $paymentService = new \App\Services\PaymentService();
-                        $paymentService->syncPendingPayments($accountId);
-                        // Re-check after sync
-                        $isBlockedByOverdue = $txModel->isAccountBlockedByOverdue($accountId, 3);
+                        (new \App\Services\PaymentService())->syncPendingPayments($accountId);
                     } catch (\Exception $e) {
                         log_message('error', '[AdminAuth] Falha na sincronização proativa: ' . $e->getMessage());
                     }
                 }
 
-                // Priority 1: Strict block by overdue invoices (> 3 days grace period)
-                if ($isBlockedByOverdue) {
-                    return redirect()->to('admin/subscription')->with('error', lang('App.filter_overdue_error'));
-                }
-
-                // Priority 2: Block by Account Status (PENDING, SUSPENDED, etc)
-                // If account is SUSPENDED but NOT strictly overdue (isBlockedByOverdue is false), 
-                // we allow access to avoid sync issues/false positives for future invoices.
+                // Block by Account Status (PENDING etc). SUSPENDED fica liberado:
+                // suspensão por atraso não tira o acesso ao painel.
                 if ($account && $account->status !== 'ACTIVE' && $account->status !== 'SUSPENDED') {
                      
                      // Check if there is a pending subscription (New Account flow)

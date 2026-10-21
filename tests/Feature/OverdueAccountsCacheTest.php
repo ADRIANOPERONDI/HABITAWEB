@@ -19,12 +19,12 @@ final class OverdueAccountsCacheTest extends HabitawebTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        cache()->delete('overdue_account_ids_3');
+        cache()->delete('overdue_account_ids_' . PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO);
     }
 
     protected function tearDown(): void
     {
-        cache()->delete('overdue_account_ids_3');
+        cache()->delete('overdue_account_ids_' . PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO);
         parent::tearDown();
     }
 
@@ -32,12 +32,12 @@ final class OverdueAccountsCacheTest extends HabitawebTestCase
     {
         $model = new PaymentTransactionModel();
 
-        $this->assertSame([], $model->getOverdueAccountIdsCached(3));
+        $this->assertSame([], $model->getOverdueAccountIdsCached());
 
         // Semeia o cache manualmente com um sentinela: se a 2ª chamada fosse ao
         // banco, retornaria [] — receber o sentinela prova que veio do cache.
-        cache()->save('overdue_account_ids_3', [999888], 120);
-        $this->assertSame([999888], $model->getOverdueAccountIdsCached(3));
+        cache()->save('overdue_account_ids_' . PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO, [999888], 120);
+        $this->assertSame([999888], $model->getOverdueAccountIdsCached());
     }
 
     public function testOverdueAccountAppearsAndUpsertInvalidatesCache(): void
@@ -48,7 +48,7 @@ final class OverdueAccountsCacheTest extends HabitawebTestCase
         $model = new PaymentTransactionModel();
 
         // Aquece o cache ANTES da fatura vencida existir → lista vazia cacheada.
-        $this->assertSame([], $model->getOverdueAccountIdsCached(3));
+        $this->assertSame([], $model->getOverdueAccountIdsCached());
 
         // upsertTransaction (o choke point de todo webhook de gateway) cria a
         // fatura vencida E deve invalidar o cache no mesmo ato.
@@ -62,7 +62,7 @@ final class OverdueAccountsCacheTest extends HabitawebTestCase
         ]);
 
         $this->assertNotFalse($result, 'upsertTransaction falhou: ' . json_encode($model->errors()));
-        $this->assertContains($accountId, $model->getOverdueAccountIdsCached(3));
+        $this->assertContains($accountId, $model->getOverdueAccountIdsCached());
     }
 
     /**

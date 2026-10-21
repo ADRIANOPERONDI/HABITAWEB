@@ -224,13 +224,13 @@ class AccountService
      * pede ("imobiliárias em destaque" como benefício vendido). Passa a
      * exigir a feature `exposicao.vitrine` do plano vigente e reusa o mesmo
      * bloqueio por atraso que já protege a busca pública de imóvel
-     * (`getOverdueAccountIdsCached`, 3 dias) — não faz sentido vitrinar quem
+     * (`getOverdueAccountIdsCached`, `DIAS_ATRASO_SUSPENSAO` dias) — não faz sentido vitrinar quem
      * está impedido de aparecer na busca.
      */
     public function getFeaturedPartners(int $limit = 12): array
     {
         $blockedAccountIds = Factories::models(\App\Models\PaymentTransactionModel::class)
-            ->getOverdueAccountIdsCached(3);
+            ->getOverdueAccountIdsCached(\App\Models\PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO);
 
         $builder = $this->accountModel
             ->select('accounts.*')
