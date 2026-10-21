@@ -157,7 +157,22 @@
                 <?php if (($rampInfo ?? null) !== null): ?>
                     <div class="alert alert-success border-0 rounded-3 small mb-3">
                         <i class="fas fa-gift me-1"></i>
-                        <?php if ($rampInfo['proxima_data'] !== null): ?>
+                        <?php if (($rampInfo['carencia'] ?? null) !== null): ?>
+                            <?php
+                                $c   = $rampInfo['carencia'];
+                                $fmt = static fn (string $d): string => date('d/m/Y', strtotime($d));
+                                $ateTotal = date('Y-m-d', strtotime($c['leads_a_partir'] . ' -1 day'));
+                                $ateMensal = date('Y-m-d', strtotime($c['mensalidade_a_partir'] . ' -1 day'));
+                            ?>
+                            <strong>Condição especial da sua imobiliária:</strong>
+                            <?php if ($c['leads_a_partir'] > $c['inicio']): ?>
+                                sem mensalidade e sem cobrança de leads até <?= $fmt($ateTotal) ?>;
+                            <?php endif; ?>
+                            <?php if ($c['mensalidade_a_partir'] > $c['leads_a_partir']): ?>
+                                de <?= $fmt($c['leads_a_partir']) ?> a <?= $fmt($ateMensal) ?>, só os leads são cobrados;
+                            <?php endif; ?>
+                            mensalidade de R$ <?= number_format((float) $rampInfo['valor_cheio'], 2, ',', '.') ?> a partir de <?= $fmt($c['mensalidade_a_partir']) ?>.
+                        <?php elseif ($rampInfo['proxima_data'] !== null): ?>
                             Rampa de lançamento: mês <?= (int) $rampInfo['mes_vida'] ?><?= $rampInfo['mes_ate'] !== null ? ' de ' . (int) $rampInfo['mes_ate'] : '' ?>
                             (<?= (int) $rampInfo['percent_atual'] ?>% do valor — R$ <?= number_format($rampInfo['valor_atual'], 2, ',', '.') ?>)
                             — a partir de <?= esc(date('d/m/Y', strtotime((string) $rampInfo['proxima_data']))) ?> passa a

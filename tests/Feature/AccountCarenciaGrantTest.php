@@ -141,4 +141,18 @@ final class AccountCarenciaGrantTest extends HabitawebTestCase
         $this->assertSame(3, (int) $nova->isencao_total_meses);
         $this->assertSame(9, (int) $nova->isencao_mensalidade_meses);
     }
+
+    /** A tela da conta traz o formulário da carência. */
+    public function testTelaDaContaTemOFormularioDaCarencia(): void
+    {
+        $accountId = (int) (new TenantFactory())->create()['account']->id;
+
+        $html = $this->actingAs($this->superadmin())->get("admin/accounts/{$accountId}/edit")->response()->getBody();
+
+        $this->assertStringContainsString('id="carencia-form"', $html);
+        $this->assertStringContainsString('Meses sem mensalidade e sem leads', $html);
+        $this->assertStringContainsString('/subscription/carencia', $html);
+
+    }
 }
+

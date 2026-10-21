@@ -129,7 +129,11 @@ class SubscriptionController extends BaseController
             $rampInfo = [
                 'mes_vida'      => $mesVida,
                 'mes_ate'       => $faixaAtual['mes_ate'] ?? null,
-                'percent_atual' => $faixaAtual['percentual'] ?? 100,
+                'percent_atual' => $rampService->percentFor($subscription),
+                // Carência negociada (prazos da conta): a tela mostra as datas
+                // da condição em vez do "mês X de Y" das faixas globais.
+                'carencia'      => $rampService->negotiatedSchedule($subscription),
+                'valor_cheio'   => (new \App\Services\PaymentService())->getPlanAmountForBillingCycle($plan, $billingCycle),
                 'valor_atual'   => $rampService->amountFor($plan, $billingCycle, $subscription),
                 'proxima_data'  => $proxima['date'] ?? null,
                 'proximo_valor' => $proxima !== null
