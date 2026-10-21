@@ -79,11 +79,7 @@
                         </a>
                     <?php endif; ?>
 
-                    <?php if(!empty($partner->email)): ?>
-                        <a href="mailto:<?= $partner->email ?>" class="btn btn-outline-dark rounded-pill px-4">
-                            <i class="fas fa-envelope me-2"></i> Email
-                        </a>
-                    <?php endif; ?>
+                    <?php // Sem e-mail público: contato por fora do site não vira lead (item 11 da revisão). ?>
 
                     <?php if(!empty($partner->site)): ?>
                         <a href="<?= esc($partner->site, 'attr') ?>" target="_blank" rel="noopener" class="btn btn-outline-dark rounded-pill px-4">
