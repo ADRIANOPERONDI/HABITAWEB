@@ -260,4 +260,42 @@ final class LeadChargeReceivedTest extends HabitawebTestCase
 
         $this->assertSame(1, model(LeadChargeModel::class)->countAllResults());
     }
+
+    /** Mesma pessoa com e-mail em outra caixa/espaços, dentro de 30 dias: mesmo lead, uma cobrança, contato registrado no histórico. */
+    public function testContatoRepetidoEm30DiasEhOMesmoLeadComHistorico(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $this->regra(['tipo_negocio' => 'VENDA', 'value' => 80]);
+        $propertyId = $this->property($tenant['account']->id, 'VENDA');
+        $email      = 'repetido_' . bin2hex(random_bytes(4)) . '@teste.local';
+
+        $service  = new LeadService();
+        $primeiro = $service->trySaveLead(['property_id' => $propertyId, 'nome_visitante' => 'Visitante', 'email_visitante' => $email, 'mensagem' => 'Primeira']);
+        $segundo  = $service->trySaveLead(['property_id' => $propertyId, 'nome_visitante' => 'Visitante', 'email_visitante' => '  ' . strtoupper($email) . ' ', 'mensagem' => 'Voltei a chamar']);
+
+        $this->assertSame((int) $primeiro['data']->id, (int) $segundo['data']->id, 'mesmo lead');
+        $this->assertSame(1, model(LeadChargeModel::class)->where('account_id', $tenant['account']->id)->countAllResults());
+
+        $eventos = db_connect()->table('lead_events')->where('lead_id', $primeiro['data']->id)->where('evento', 'lead.contato_repetido')->countAllResults();
+        $this->assertSame(1, $eventos, 'o contato repetido fica no histórico do lead');
+    }
+
+    /** Passados 30 dias do primeiro contato, a mesma pessoa no mesmo imóvel é lead novo — e nova cobrança. */
+    public function testDepoisDe30DiasEhLeadNovoECobraDeNovo(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $this->regra(['tipo_negocio' => 'VENDA', 'value' => 80]);
+        $propertyId = $this->property($tenant['account']->id, 'VENDA');
+        $email      = 'voltou_' . bin2hex(random_bytes(4)) . '@teste.local';
+
+        $service  = new LeadService();
+        $primeiro = $service->trySaveLead(['property_id' => $propertyId, 'nome_visitante' => 'Visitante', 'email_visitante' => $email, 'mensagem' => 'Em setembro']);
+        model(LeadModel::class)->builder()->where('id', $primeiro['data']->id)
+            ->update(['created_at' => date('Y-m-d H:i:s', strtotime('-31 days'))]);
+
+        $segundo = $service->trySaveLead(['property_id' => $propertyId, 'nome_visitante' => 'Visitante', 'email_visitante' => $email, 'mensagem' => 'Em outubro']);
+
+        $this->assertNotSame((int) $primeiro['data']->id, (int) $segundo['data']->id, 'lead novo');
+        $this->assertSame(2, model(LeadChargeModel::class)->where('account_id', $tenant['account']->id)->countAllResults());
+    }
 }
