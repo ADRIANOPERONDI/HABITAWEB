@@ -32,7 +32,8 @@
     $bairroNaLista = in_array($selectedBairro, array_map(static fn ($b) => $b->bairro, $bairros ?? []), true);
 ?>
 
-<div class="map-premium-page" id="mapPremiumPage">
+<?php // show-list: no celular a busca abre na LISTA de imóveis (o mapa fica a um toque); no desktop a classe não tem efeito. ?>
+<div class="map-premium-page show-list" id="mapPremiumPage">
     <aside class="map-sidebar" aria-label="Resultados da busca no mapa">
         <div class="map-topbar">
             <form id="mapFiltersForm" class="mb-0">
@@ -132,6 +133,8 @@
 
     <section class="map-pane-premium" aria-label="Mapa de imóveis">
         <div id="map"></div>
+        <?php // Celular: faixa de cartões sobre o mapa, para o visitante ver os imóveis sem sair do mapa. Preenchida pelo JS a partir da lista. ?>
+        <div class="map-card-strip" id="mapCardStrip" aria-label="Imóveis nesta área" hidden></div>
     </section>
 
     <button type="button" class="btn btn-premium btn-premium-primary map-mobile-toggle" id="btnMobileToggle">
@@ -584,6 +587,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const total = data.count || 0;
                 const pins = data.map_count || 0;
+                if (!onlyUpdateList || !inputPropertyIds.value) {
+                    lastTotal = total;
+                    updateMobileToggle();
+                }
                 resultsTitle.textContent = `${total} ${plural(total, 'imóvel encontrado', 'imóveis encontrados')}`;
                 resultsSubtitle.textContent = currentPolygon
                     ? 'Resultado dentro da área desenhada'
@@ -601,6 +608,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     renderMarkers(data.map_data || []);
                 }
                 setupListSync();
+                renderCardStrip();
             })
             .catch(err => {
                 if (err.name === 'AbortError') return;
@@ -621,7 +629,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             const marker = L.marker([prop.lat, prop.lng], { icon, propertyId: prop.id });
             marker.on('click', function() {
-                activateProperty(prop.id);
+                if (isMobileMapMode()) {
+                    showPinCard(prop.id);
+                } else {
+                    activateProperty(prop.id);
+                }
             });
             return marker;
         });
@@ -675,11 +687,125 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 360);
     }
 
+    let lastTotal = null;
+
+    // ---- Faixa de cartões sobre o mapa (celular) ----
+    const cardStrip = byId('mapCardStrip');
+    const isMobileLayout = () => window.matchMedia('(max-width: 991px)').matches;
+    const isMobileMapMode = () => isMobileLayout() && !pageShell.classList.contains('show-list');
+
+    function highlightPin(id) {
+        document.querySelectorAll('.price-marker-pill.active').forEach(el => el.classList.remove('active'));
+        const pill = document.getElementById(`marker-pill-${id}`);
+        if (pill) {
+            pill.classList.add('active');
+            const icon = pill.closest('.leaflet-marker-icon');
+            if (icon) icon.style.zIndex = 1000;
+        }
+    }
+
+    const stripObserver = 'IntersectionObserver' in window
+        ? new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && entry.target.dataset.id) highlightPin(entry.target.dataset.id);
+            });
+        }, { root: cardStrip, threshold: 0.6 })
+        : null;
+
+    // Cartão compacto montado a partir do cartão da lista (mesmos dados já
+    // escapados pelo servidor): foto, preço, bairro e características.
+    function buildStripCard(card) {
+        const id = card.dataset.id;
+        const link = card.querySelector('a.premium-property-link');
+        const a = document.createElement('a');
+        a.className = 'map-strip-card';
+        a.href = link ? link.href : '#';
+        a.id = `strip-card-${id}`;
+        a.dataset.id = id;
+
+        const foto = card.querySelector('.carousel-item.active img') || card.querySelector('.carousel-item img');
+        const img = document.createElement('img');
+        img.src = foto ? foto.getAttribute('src') : '';
+        img.alt = '';
+        img.loading = 'lazy';
+        a.append(img);
+
+        const body = document.createElement('div');
+        body.className = 'map-strip-body';
+        const preco = document.createElement('strong');
+        preco.className = 'map-strip-price';
+        preco.textContent = (card.querySelector('.premium-price')?.textContent || '').trim();
+        const local = document.createElement('span');
+        local.className = 'map-strip-location';
+        local.textContent = (card.querySelector('.premium-location')?.textContent || '').trim();
+        body.append(preco, local);
+        const specs = card.querySelector('.premium-specs');
+        if (specs && specs.children.length) {
+            const clone = specs.cloneNode(true);
+            clone.className = 'map-strip-specs';
+            body.append(clone);
+        }
+        a.append(body);
+        a.addEventListener('focus', () => highlightPin(id));
+        return a;
+    }
+
+    function setStripVisible(visible) {
+        cardStrip.hidden = !visible;
+        pageShell.classList.toggle('has-strip', visible);
+    }
+
+    function renderCardStrip() {
+        if (stripObserver) stripObserver.disconnect();
+        cardStrip.replaceChildren();
+        const cards = Array.from(listContainer.querySelectorAll('.map-property-card'));
+        cards.forEach(card => {
+            const el = buildStripCard(card);
+            cardStrip.append(el);
+            if (stripObserver) stripObserver.observe(el);
+        });
+        if (cards.length && lastTotal !== null && lastTotal > cards.length) {
+            const mais = document.createElement('button');
+            mais.type = 'button';
+            mais.className = 'map-strip-more';
+            mais.innerHTML = `<i class="fa-solid fa-list" aria-hidden="true"></i><span>Ver todos os ${lastTotal} na lista</span>`;
+            mais.addEventListener('click', () => mobileToggle.click());
+            cardStrip.append(mais);
+        }
+        cardStrip.scrollLeft = 0;
+        setStripVisible(cards.length > 0);
+    }
+
+    // Toque num pin no celular: mostra o cartão daquele imóvel na faixa
+    // (buscando-o se não estiver na página carregada) em vez de trocar de tela.
+    function showPinCard(id) {
+        const existing = document.getElementById(`strip-card-${id}`);
+        highlightPin(id);
+        if (existing) {
+            existing.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+            return;
+        }
+        fetch(`${mapApiPath}?list_only=1&per_page=6&property_ids=${encodeURIComponent(id)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(res => res.json())
+            .then(data => {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = data.list_html || '';
+                const card = tmp.querySelector('.map-property-card');
+                if (!card) return;
+                const el = buildStripCard(card);
+                cardStrip.prepend(el);
+                if (stripObserver) stripObserver.observe(el);
+                setStripVisible(true);
+                cardStrip.scrollTo({ left: 0, behavior: 'smooth' });
+            })
+            .catch(() => {});
+    }
+
     function updateMobileToggle() {
         const showingList = pageShell.classList.contains('show-list');
         mobileToggle.innerHTML = showingList
             ? '<i class="fa-solid fa-map"></i> Ver mapa'
-            : '<i class="fa-solid fa-list"></i> Ver lista';
+            : '<i class="fa-solid fa-list"></i> Lista' + (lastTotal !== null ? ` (${lastTotal})` : '');
     }
 
     markers.on('clusterclick', function(event) {
@@ -827,10 +953,30 @@ document.addEventListener('DOMContentLoaded', function() {
         fetchMapData({ append: true, onlyUpdateList: true });
     });
 
+    // A busca abre no mapa do Brasil inteiro (sem reenquadrar na carga
+    // inicial). No celular, ao abrir o mapa pela primeira vez, enquadra nos
+    // imóveis encontrados — sem isso o visitante via um continente vazio.
+    let mapOpenedOnce = false;
+
     mobileToggle.addEventListener('click', function() {
         pageShell.classList.toggle('show-list');
         updateMobileToggle();
-        setTimeout(() => map.invalidateSize(), 240);
+        setTimeout(() => {
+            map.invalidateSize();
+            if (!pageShell.classList.contains('show-list') && !mapOpenedOnce) {
+                mapOpenedOnce = true;
+                const layers = markers.getLayers();
+                if (!currentPolygon && layers.length) {
+                    const bounds = L.latLngBounds(layers.map(m => m.getLatLng()));
+                    if (bounds.isValid()) {
+                        suppressNextMoveFetch = true;
+                        map.fitBounds(bounds.pad(0.18), { maxZoom: 13, animate: false });
+                        setTimeout(() => { suppressNextMoveFetch = false; }, 500);
+                    }
+                }
+            }
+            renderCardStrip();
+        }, 240);
     });
 
     // Deep link (mapa da home ou URL compartilhada): a área já chega no input
