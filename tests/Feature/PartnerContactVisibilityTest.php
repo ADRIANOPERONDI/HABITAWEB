@@ -41,15 +41,22 @@ final class PartnerContactVisibilityTest extends HabitawebTestCase
         $response->assertDontSee('11999990000');
     }
 
-    public function testWhatsappETelefoneVisiveisNaPaginaDoParceiroOnboarded(): void
+    /**
+     * Parceiro liberado: o botão do WhatsApp aparece, mas o telefone não fica
+     * escrito nem vira link "tel:" — ligação direta não passa pela plataforma
+     * e não vira lead (decisão do cliente).
+     */
+    public function testWhatsappVisivelETelefoneOcultoNaPaginaDoParceiroOnboarded(): void
     {
-        $tenant = (new TenantFactory())->create();
+        $tenant = (new TenantFactory())->create(['whatsapp' => '49988887777']);
         $accountId = (int) $tenant['account']->id;
         $this->property($accountId);
         $slug = $tenant['account']->slug;
 
         $response = $this->get('imobiliaria/' . $slug);
         $response->assertOK();
-        $response->assertSee('11999990000');
+        $response->assertSee('wa.me/49988887777');
+        $response->assertDontSee('11999990000');
+        $response->assertDontSee('tel:');
     }
 }
