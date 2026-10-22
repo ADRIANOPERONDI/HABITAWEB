@@ -318,4 +318,19 @@ final class PlanCheckoutTest extends HabitawebTestCase
         $this->assertSame('CANCELLED', $adesoes[0]['status']);
         $this->assertSame('PENDING', $adesoes[1]['status']);
     }
+
+    /** A tela do checkout diz quanto se paga hoje (adesão proporcional) e não oferece cartão. */
+    public function testTelaDoCheckoutMostraAdesaoESemCartao(): void
+    {
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
+
+        $html = html_entity_decode($this->actingAs($tenant['user'])->get('checkout/plan/' . $plan->id)->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        $restantes = (int) date('t') - (int) date('j') + 1;
+        $this->assertStringContainsString('Hoje você paga R$ ' . number_format(round(990 * $restantes / (int) date('t'), 2), 2, ',', '.'), $html);
+        $this->assertStringContainsString('vencendo no dia 10', $html);
+        $this->assertStringNotContainsString('value="CREDIT_CARD"', $html);
+        $this->assertStringNotContainsString('value="QUARTERLY"', $html);
+    }
 }
