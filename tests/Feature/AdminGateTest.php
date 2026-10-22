@@ -47,7 +47,13 @@ final class AdminGateTest extends HabitawebTestCase
             ->assertRedirectTo('admin/subscription');
     }
 
-    public function testAccountWithInvoiceOverdueMoreThan3DaysIsBlocked(): void
+    /**
+     * Mais de 5 dias de atraso suspende a conta (anúncios fora do ar, sem
+     * novos contatos), mas NÃO bloqueia o painel: a imobiliária precisa ver
+     * as cobranças, pagar e acessar os contatos que já recebeu. Antes, 3 dias
+     * de atraso redirecionavam o painel inteiro para a tela de assinatura.
+     */
+    public function testAtrasoDeMaisDe5DiasSuspendeMasMantemOPainelComAviso(): void
     {
         $tenant = (new TenantFactory())->create();
 
@@ -58,17 +64,19 @@ final class AdminGateTest extends HabitawebTestCase
             'amount'     => 100.00,
             'status'     => 'PENDING',
             'type'       => 'SUBSCRIPTION',
-            'due_date'   => date('Y-m-d', strtotime('-5 days')),
+            'due_date'   => date('Y-m-d', strtotime('-6 days')),
         ]);
 
         // Sem PaymentGatewaysSeeder, PaymentService::syncPendingPayments() faz no-op
-        // (activeGateway null) — o filtro cai direto no bloqueio, sem tentar rede.
-        $this->actingAs($tenant['user'])
-            ->get('admin/dashboard')
-            ->assertRedirectTo('admin/subscription');
+        // (activeGateway null) — nada de rede.
+        $response = $this->actingAs($tenant['user'])->get('admin/dashboard');
+
+        $response->assertOK();
+        $this->assertStringContainsString('Pagamento em atraso há mais de 5 dias', html_entity_decode($response->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $this->assertContains((int) $tenant['account']->id, (new PaymentTransactionModel())->getOverdueAccountIds(), 'anúncios saem do site');
     }
 
-    public function testInvoiceOverdueLessThan3DaysDoesNotBlock(): void
+    public function testAtrasoDeAte5DiasNaoSuspende(): void
     {
         $tenant = (new TenantFactory())->create();
 
@@ -79,12 +87,14 @@ final class AdminGateTest extends HabitawebTestCase
             'amount'     => 100.00,
             'status'     => 'PENDING',
             'type'       => 'SUBSCRIPTION',
-            'due_date'   => date('Y-m-d', strtotime('-1 day')),
+            'due_date'   => date('Y-m-d', strtotime('-4 days')),
         ]);
 
-        $this->actingAs($tenant['user'])
-            ->get('admin/dashboard')
-            ->assertOK();
+        $response = $this->actingAs($tenant['user'])->get('admin/dashboard');
+
+        $response->assertOK();
+        $this->assertStringNotContainsString('Pagamento em atraso', html_entity_decode($response->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $this->assertNotContains((int) $tenant['account']->id, (new PaymentTransactionModel())->getOverdueAccountIds());
     }
 
     /**

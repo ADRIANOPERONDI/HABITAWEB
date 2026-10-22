@@ -410,6 +410,20 @@
                 </div>
             <?php endif; ?>
 
+            <?php // Conta suspensa por atraso (DIAS_ATRASO_SUSPENSAO): o painel segue aberto, mas a imobiliária precisa saber por que os anúncios sumiram do site. ?>
+            <?php
+                $usuarioPainel = auth()->user();
+                $contaSuspensa = $usuarioPainel && ! $usuarioPainel->inGroup('superadmin') && ! empty($usuarioPainel->account_id)
+                    && model('App\Models\PaymentTransactionModel')->isAccountBlockedByOverdue((int) $usuarioPainel->account_id);
+            ?>
+            <?php if ($contaSuspensa): ?>
+                <div class="alert alert-danger d-flex align-items-center shadow-sm rounded-3 mb-4" role="alert">
+                    <i class="fa-solid fa-circle-exclamation fa-lg me-3"></i>
+                    <div class="flex-grow-1"><?= esc(lang('App.filter_overdue_error')) ?></div>
+                    <a href="<?= site_url('admin/subscription') ?>" class="btn btn-sm btn-danger rounded-pill ms-3 text-nowrap">Ver cobranças</a>
+                </div>
+            <?php endif; ?>
+
             <!-- Page Content -->
             <?= $this->renderSection('content') ?>
         </div>

@@ -56,17 +56,19 @@ class PlanGracePeriodTest extends SubscriptionE2EBase
             'Conta dentro da carência do plano deve acessar o painel mesmo sem fatura paga.'
         );
 
-        // 2. A fatura vence e passa dos 3 dias de tolerância do AdminAuth sem
-        // pagamento: bloqueia via isAccountBlockedByOverdue (mesma trava do Cenário 3).
+        // 2. A fatura vence e passa dos 5 dias de tolerância sem pagamento:
+        // a conta fica suspensa (anúncios fora do ar), mesmo tendo havido
+        // carência — mas o painel continua acessível para pagar.
         $txModel = model('App\Models\PaymentTransactionModel');
         $txModel->where('subscription_id', $subscriptionId)->set([
-            'due_date' => (new \DateTime())->modify('-4 days')->format('Y-m-d'),
+            'due_date' => (new \DateTime())->modify('-6 days')->format('Y-m-d'),
         ])->update();
 
-        $accessAfterDueDate = $this->checkUserAccess($userId, '/admin/dashboard');
-        $this->assertFalse($accessAfterDueDate['canAccess'],
-            'Fatura vencida há mais de 3 dias sem pagamento deve bloquear, mesmo tendo havido carência.'
+        $this->assertTrue($txModel->isAccountBlockedByOverdue((int) $accountId),
+            'Fatura vencida há mais de 5 dias sem pagamento deve suspender, mesmo tendo havido carência.'
         );
+        $accessAfterDueDate = $this->checkUserAccess($userId, '/admin/dashboard');
+        $this->assertTrue($accessAfterDueDate['canAccess'], 'Suspensão não tira o acesso ao painel.');
 
         // 3. Paga a fatura -> segue com cobrança normal daqui pra frente.
         $retryWebhookResult = $this->simulateAsaasWebhook('PAYMENT_CONFIRMED', [
@@ -84,6 +86,7 @@ class PlanGracePeriodTest extends SubscriptionE2EBase
         $this->assertTrue($accessAfterPayment['canAccess'],
             'Após pagar a fatura, o acesso deve voltar/continuar liberado.'
         );
+        $this->assertFalse($txModel->isAccountBlockedByOverdue((int) $accountId), 'Pagamento reativa a conta automaticamente.');
     }
 
     /**

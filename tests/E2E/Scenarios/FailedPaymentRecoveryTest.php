@@ -128,23 +128,28 @@ class FailedPaymentRecoveryTest extends SubscriptionE2EBase
         $originalSub = $this->createSubscription($accountId, $plan->id, 'MONTHLY');
         $subscriptionId = $originalSub['subscriptionId'];
 
-        // A fatura da assinatura fica OVERDUE e vencida há 4 dias (fora da carência de 3),
-        // enquanto a assinatura permanece ACTIVE. Sem o fix do isAccountBlockedByOverdue,
-        // este estado passaria batido pelo AdminAuth.
+        // A fatura da assinatura fica OVERDUE e vencida há 6 dias (além dos 5 de
+        // tolerância), enquanto a assinatura permanece ACTIVE. Sem o fix do
+        // isAccountBlockedByOverdue, este estado passaria batido.
         $txModel = model('App\Models\PaymentTransactionModel');
         $tx = $txModel->where('subscription_id', $subscriptionId)->first();
         $this->assertNotNull($tx, 'A transação da assinatura deveria existir (createSubscription).');
         $txModel->update($tx['id'], [
             'status'   => 'OVERDUE',
-            'due_date' => (new \DateTime())->modify('-4 days')->format('Y-m-d'),
+            'due_date' => (new \DateTime())->modify('-6 days')->format('Y-m-d'),
         ]);
 
-        // Sanidade: a assinatura NÃO foi tocada, segue ACTIVE — o bloqueio vem só do overdue.
+        // Sanidade: a assinatura NÃO foi tocada, segue ACTIVE — a suspensão vem só do overdue.
         $this->assertDatabaseHas('subscriptions', ['id' => $subscriptionId, 'status' => 'ACTIVE']);
 
-        $accessCheck = $this->checkUserAccess($userId, '/admin/dashboard');
-        $this->assertFalse($accessCheck['canAccess'],
-            'Fatura vencida há mais de 3 dias deve bloquear o painel (isAccountBlockedByOverdue).'
+        // Suspensão (regra comercial, item 11): anúncios fora do ar e sem novos
+        // contatos, mas o painel continua acessível para a imobiliária pagar.
+        $this->assertTrue($txModel->isAccountBlockedByOverdue($accountId),
+            'Fatura vencida há mais de 5 dias deve suspender a conta (isAccountBlockedByOverdue).'
         );
+        $this->assertContains((int) $accountId, $txModel->getOverdueAccountIds(), 'anúncios saem do site');
+
+        $accessCheck = $this->checkUserAccess($userId, '/admin/dashboard');
+        $this->assertTrue($accessCheck['canAccess'], 'O painel continua acessível durante a suspensão.');
     }
 }

@@ -55,7 +55,7 @@ return [
     'magic_link_check_email_desc'  => 'We have sent a secure login link to your email. If you can\'t find it, check your spam folder.',
 
     // Filter Messages
-    'filter_overdue_error'     => 'Account blocked. You have an invoice more than 3 days overdue. Please make the payment to unlock the system and your ads.',
+    'filter_overdue_error'     => 'Payment more than 5 days overdue: your listings are offline and you are not receiving new contacts. Everything comes back automatically once the payment is confirmed.',
     'filter_pending_activation' => 'Your account is pending activation (first payment). Access the invoice details below.',
     'filter_inactive_account'  => 'Your account is not active. Choose a plan or check your payment.',
 

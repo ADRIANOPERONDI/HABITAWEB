@@ -18,7 +18,7 @@ class PublicPropertyVisibilityService
                 false
             );
 
-        $blockedAccountIds = (new PaymentTransactionModel())->getOverdueAccountIdsCached(3);
+        $blockedAccountIds = (new PaymentTransactionModel())->getOverdueAccountIdsCached(PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO);
         if ($blockedAccountIds !== []) {
             $builder->whereNotIn("{$propertyAlias}.account_id", $blockedAccountIds);
         }
@@ -48,7 +48,7 @@ class PublicPropertyVisibilityService
             'home_map_nonpaid_pool',
             'home_filter_options',
             'search_filter_options',
-            'overdue_account_ids_3',
+            'overdue_account_ids_' . PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO,
         ] as $key) {
             $cache->delete($key);
         }

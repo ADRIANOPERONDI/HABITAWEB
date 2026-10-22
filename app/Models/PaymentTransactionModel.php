@@ -30,6 +30,15 @@ class PaymentTransactionModel extends Model
      */
     public const SUBSCRIPTION_TYPES = ['SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE'];
 
+    /**
+     * Dias de atraso a partir dos quais a conta fica SUSPENSA: anúncios fora
+     * do ar e sem novos contatos, mas com o painel acessível para consultar
+     * cobranças, pagar e ver os contatos já recebidos (regra comercial, item
+     * 11 da revisão). Pago o atraso, volta sozinha. Antes eram 3 dias e o
+     * painel inteiro era bloqueado.
+     */
+    public const DIAS_ATRASO_SUSPENSAO = 5;
+
     protected bool $allowEmptyInserts = false;
     protected bool $updateOnlyChanged = true;
 
@@ -236,7 +245,7 @@ class PaymentTransactionModel extends Model
      * @param int $days Atraso em dias (default 3)
      * @return bool
      */
-    public function isAccountBlockedByOverdue(int $accountId, int $days = 3): bool
+    public function isAccountBlockedByOverdue(int $accountId, int $days = self::DIAS_ATRASO_SUSPENSAO): bool
     {
         // Inclui OVERDUE: quando o gateway confirma o vencimento (webhook PAYMENT_OVERDUE),
         // a transação passa de PENDING para OVERDUE. Sem OVERDUE aqui, o sinal MAIS forte
@@ -258,7 +267,7 @@ class PaymentTransactionModel extends Model
      * @param int $days Atraso em dias (default 3)
      * @return array
      */
-    public function getOverdueAccountIds(int $days = 3): array
+    public function getOverdueAccountIds(int $days = self::DIAS_ATRASO_SUSPENSAO): array
     {
         $results = $this->select('account_id')
                         ->distinct()
@@ -282,7 +291,7 @@ class PaymentTransactionModel extends Model
      * TTL curto (120s) + invalidação ativa em upsertTransaction() mantêm o
      * bloqueio de inadimplentes com atraso máximo de 2 minutos.
      */
-    public function getOverdueAccountIdsCached(int $days = 3): array
+    public function getOverdueAccountIdsCached(int $days = self::DIAS_ATRASO_SUSPENSAO): array
     {
         $cacheKey = "overdue_account_ids_{$days}";
 
