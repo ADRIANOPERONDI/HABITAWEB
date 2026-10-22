@@ -177,6 +177,20 @@
                                         <div class="fw-bold text-dark"><?= esc($lead->nome_visitante) ?></div>
                                         <div class="small text-muted" style="font-size: 0.7rem;"><?= esc($lead->email_visitante) ?></div>
 
+                                        <?php // Origem do contato e entrega do aviso por e-mail à imobiliária. ?>
+                                        <div class="mt-1 d-flex flex-wrap gap-1">
+                                            <span class="badge bg-light text-dark border" style="font-size: 0.65rem;">
+                                                <?= ($lead->tipo_lead ?? '') === 'WHATSAPP' ? '<i class="fa-brands fa-whatsapp me-1"></i>WhatsApp' : '<i class="fa-solid fa-envelope-open-text me-1"></i>Formulário' ?>
+                                                <?= ($lead->origem ?? 'SITE') !== 'SITE' ? '· ' . esc((string) $lead->origem) : '· site' ?>
+                                            </span>
+                                            <?php $avisoEmail = ($emailStatus ?? [])[(int) $lead->id] ?? null; ?>
+                                            <?php if ($avisoEmail === true): ?>
+                                                <span class="badge bg-success-subtle text-success border" style="font-size: 0.65rem;" title="Aviso do novo contato enviado por e-mail"><i class="fa-solid fa-check me-1"></i>e-mail enviado</span>
+                                            <?php elseif ($avisoEmail === false): ?>
+                                                <span class="badge bg-danger-subtle text-danger border" style="font-size: 0.65rem;" title="O aviso por e-mail não foi entregue — o contato está registrado aqui no painel"><i class="fa-solid fa-triangle-exclamation me-1"></i>e-mail não entregue</span>
+                                            <?php endif; ?>
+                                        </div>
+
                                         <?php
                                             // Só aparece em lead de imóvel vindo de integração; para os
                                             // demais não existe item na fila e a linha fica limpa.
