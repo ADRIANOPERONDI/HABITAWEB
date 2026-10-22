@@ -268,7 +268,22 @@
         </div>
     </nav>
     
-    <div style="margin-top: 106px;"></div>
+    <?php // Espaço do cabeçalho fixo com a altura REAL dele: o valor fixo de 106px deixava uma faixa cinza de ~26px no celular, onde o cabeçalho é mais baixo. ?>
+    <div class="navbar-spacer" aria-hidden="true"></div>
+    <script>
+        (function () {
+            var nav = document.querySelector('nav.navbar.fixed-top');
+            if (!nav) return;
+            function medir() {
+                // Com o menu do celular aberto o cabeçalho cresce; não mede nesse estado.
+                if (nav.querySelector('.navbar-collapse.show, .navbar-collapse.collapsing')) return;
+                document.documentElement.style.setProperty('--navbar-h', nav.offsetHeight + 'px');
+            }
+            medir();
+            window.addEventListener('resize', medir);
+            window.addEventListener('load', medir);
+        })();
+    </script>
 
     <!-- Main Content -->
     <main>

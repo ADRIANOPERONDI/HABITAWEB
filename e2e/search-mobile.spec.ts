@@ -15,7 +15,11 @@ import { test, expect, devices, type Page } from '@playwright/test';
  * - a barra de desenho empilhava Concluir/Desfazer/Cancelar um por linha,
  *   cobrindo a área do mapa onde se desenha;
  * - a página do imóvel tinha 12px de rolagem lateral (`row g-5`) e o
- *   formulário de contato não tinha rótulos nem autocomplete.
+ *   formulário de contato não tinha rótulos nem autocomplete;
+ * - "Comprar" abria SÓ o mapa: a lista ficava escondida e tocar num
+ *   agrupamento/pin dava zoom sem mostrar imóvel nenhum. Agora a busca abre
+ *   na lista e, no mapa, uma faixa de cartões mostra os imóveis da área, do
+ *   agrupamento ou do pin tocado.
  *
  * Mesmo esquema de home-mobile.spec.ts: só Chromium está instalado, então as
  * larguras de iPhone são emuladas em cima do perfil do Pixel 7. A tela de
@@ -44,8 +48,10 @@ for (const tela of telas) {
       const fimDaPagina = await page.locator('#mapPremiumPage').evaluate((el) => el.getBoundingClientRect().bottom);
       expect(fimDaPagina, 'a página da busca passa da altura da tela').toBeLessThanOrEqual(vh + 1);
 
-      await page.locator('#btnMobileToggle').tap();
+      // Abre direto na lista, com o primeiro cartão na tela.
       await expect(page.locator('#mapPremiumPage')).toHaveClass(/show-list/);
+      await expect(page.locator('.map-property-card').first()).toBeInViewport();
+      await expect(page.locator('#btnMobileToggle')).toHaveText(/Ver mapa/);
 
       const botoes = await page.locator('.map-chip-row > *').evaluateAll((els) =>
         els.map((el) => ({ texto: (el as HTMLElement).innerText.trim(), direita: el.getBoundingClientRect().right }))
@@ -67,7 +73,6 @@ for (const tela of telas) {
 
     test('o modal de filtros mostra "Aplicar filtros" sem precisar rolar', async ({ page }) => {
       await abrirBusca(page);
-      await page.locator('#btnMobileToggle').tap();
       await page.locator('#btnAdvancedFilters').tap();
       await expect(page.locator('#advancedFiltersModal')).toHaveClass(/show/);
 
@@ -77,16 +82,46 @@ for (const tela of telas) {
 
     test('a barra de desenho fica numa linha só, sem cobrir o mapa nem o botão da lista', async ({ page }) => {
       await abrirBusca(page);
+      await page.locator('#btnMobileToggle').tap();
       await page.locator('#btnStartDraw').tap();
       await expect(page.locator('#btnFinishDraw')).toBeVisible({ timeout: 15_000 });
 
       const caixas = await page.evaluate(() => {
         const barra = document.querySelector('.map-draw-toolbar')!.getBoundingClientRect();
         const botao = document.getElementById('btnMobileToggle')!.getBoundingClientRect();
-        return { altura: barra.height, fimBarra: barra.bottom, topoBotao: botao.top };
+        const faixa = document.getElementById('mapCardStrip')!;
+        const topoFaixa = faixa.hidden ? botao.top : faixa.getBoundingClientRect().top;
+        return { altura: barra.height, fimBarra: barra.bottom, topoBotao: Math.min(botao.top, topoFaixa) };
       });
       expect(caixas.altura, 'Concluir/Desfazer/Cancelar empilharam').toBeLessThanOrEqual(60);
-      expect(caixas.fimBarra, 'a barra de desenho encosta no botão "Ver lista"').toBeLessThanOrEqual(caixas.topoBotao);
+      expect(caixas.fimBarra, 'a barra de desenho encosta nos cartões ou no botão da lista').toBeLessThanOrEqual(caixas.topoBotao);
+    });
+
+    test('no mapa os imóveis aparecem em cartões, inclusive do agrupamento e do pin tocados', async ({ page }) => {
+      await abrirBusca(page);
+      await page.locator('#btnMobileToggle').tap();
+      await expect(page.locator('#mapPremiumPage')).not.toHaveClass(/show-list/);
+      await expect(page.locator('#btnMobileToggle')).toHaveText(/Lista \(\d+\)/);
+
+      const faixa = page.locator('#mapCardStrip');
+      await expect(faixa.locator('.map-strip-card').first()).toBeInViewport();
+
+      const agrupamento = page.locator('.premium-cluster-icon').first();
+      if (await agrupamento.count()) {
+        await agrupamento.tap();
+        await expect(page.locator('#mapPremiumPage'), 'tocar no agrupamento não troca de tela').not.toHaveClass(/show-list/);
+        await expect(faixa.locator('.map-strip-card').first()).toBeInViewport();
+      }
+
+      const pin = page.locator('.price-marker-pill').first();
+      if (await pin.count()) {
+        const id = (await pin.getAttribute('id'))!.replace('marker-pill-', '');
+        await pin.tap();
+        await expect(page.locator(`#strip-card-${id}`)).toBeInViewport({ ratio: 1 });
+      }
+
+      await page.locator('#btnMobileToggle').tap();
+      await expect(page.locator('#mapPremiumPage')).toHaveClass(/show-list/);
     });
 
     test('a página do imóvel não rola de lado e o formulário tem rótulos e autocomplete', async ({ page }) => {

@@ -712,9 +712,13 @@ body {
     100% { background-position: 0 50%; }
 }
 
+.navbar-spacer {
+    height: var(--navbar-h, 106px);
+}
+
 /* Premium map search */
 .map-premium-page {
-    height: calc(100vh - 106px);
+    height: calc(100vh - var(--navbar-h, 106px));
     min-height: 680px;
     display: grid;
     grid-template-columns: minmax(460px, 48vw) 1fr;
@@ -1007,8 +1011,8 @@ body {
        o body em overflow hidden, esse trecho ficava inalcançável — e o mapa
        rolava para baixo do cabeçalho, escondendo o botão de zoom "+". */
     .map-premium-page {
-        height: calc(100vh - 106px);
-        height: calc(100dvh - 106px);
+        height: calc(100vh - var(--navbar-h, 106px));
+        height: calc(100dvh - var(--navbar-h, 106px));
         min-height: 0;
         display: block;
         position: relative;
@@ -1122,4 +1126,101 @@ body {
    rola o mínimo para mostrá-lo e o deixava embaixo do cabeçalho. */
 html {
     scroll-padding-top: 116px;
+}
+
+/* Busca no celular: faixa de cartões sobre o mapa. Sem ela o modo mapa só
+   mostrava pins, e tocar num agrupamento dava zoom sem mostrar imóvel. */
+.map-card-strip {
+    display: none;
+}
+
+@media (max-width: 991px) {
+    .map-card-strip:not([hidden]) {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 74px;
+        z-index: 2;
+        display: flex;
+        gap: 10px;
+        padding: 4px 16px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        scroll-padding: 0 16px;
+        scrollbar-width: none;
+    }
+
+    .map-card-strip::-webkit-scrollbar {
+        display: none;
+    }
+
+    .map-strip-card,
+    .map-strip-more {
+        flex: 0 0 min(82vw, 330px);
+        scroll-snap-align: start;
+        display: flex;
+        gap: 10px;
+        min-height: 96px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        box-shadow: 0 10px 28px rgba(15, 23, 42, .18);
+        color: var(--ink);
+        text-decoration: none;
+    }
+
+    .map-strip-card img {
+        flex: 0 0 96px;
+        width: 96px;
+        height: 80px;
+        border-radius: 10px;
+        object-fit: cover;
+        background: var(--surface-soft);
+    }
+
+    .map-strip-body {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+    }
+
+    .map-strip-price {
+        font-size: 15px;
+        font-weight: 900;
+        color: var(--ink);
+    }
+
+    .map-strip-location {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .map-strip-specs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        font-size: 11px;
+        color: var(--ink-soft);
+    }
+
+    .map-strip-more {
+        flex-basis: 150px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 13px;
+        color: var(--accent-strong);
+        text-align: center;
+    }
+
+    /* Barra "Desenhar área" sobe acima da faixa de cartões. */
+    .map-premium-page.has-strip .leaflet-bottom.leaflet-left {
+        bottom: 186px !important;
+    }
 }
