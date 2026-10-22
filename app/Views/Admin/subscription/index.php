@@ -26,6 +26,33 @@
                     <?php endif; ?>
                 </div>
 
+                <?php if(empty($pendingSubscription) && isset($lastTransaction) && $lastTransaction && in_array($lastTransaction->type ?? null, ['FATURA_MENSAL', 'ADESAO'], true)): ?>
+                    <?php // Fatura mensal em aberto (mensalidade + leads) de uma assinatura ativa. ?>
+                    <div class="alert alert-warning border-0 shadow-sm mb-4">
+                        <div class="d-flex align-items-start">
+                            <i class="fa-solid fa-file-invoice-dollar fa-2x me-3 opacity-50 mt-1"></i>
+                            <div class="w-100">
+                                <h6 class="fw-bold mb-1">Fatura em aberto — R$ <?= number_format((float) $lastTransaction->amount, 2, ',', '.') ?>, vence em <?= ! empty($lastTransaction->due_date) ? date('d/m/Y', strtotime($lastTransaction->due_date)) : '-' ?></h6>
+                                <?php if (! empty($lastTransaction->description)): ?>
+                                    <p class="small mb-3"><?= nl2br(esc((string) $lastTransaction->description)) ?></p>
+                                <?php endif; ?>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <?php if (! empty($lastTransaction->invoice_url)): ?>
+                                        <a href="<?= esc($lastTransaction->invoice_url, 'attr') ?>" target="_blank" rel="noopener" class="btn btn-dark">
+                                            <i class="fas fa-external-link-alt me-2"></i> Pagar (PIX ou boleto)
+                                        </a>
+                                    <?php endif; ?>
+                                    <?php if (($lastTransaction->type ?? null) === 'FATURA_MENSAL'): ?>
+                                        <a href="<?= site_url('admin/minhas-cobrancas?fatura=' . (int) $lastTransaction->id) ?>" class="btn btn-outline-secondary">
+                                            <i class="fa-solid fa-users me-2"></i> Ver contatos cobrados
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <?php if(isset($pendingSubscription) && $pendingSubscription): ?>
                 <?php $openInvoiceStatus = isset($lastTransaction->status) ? $lastTransaction->status : $pendingSubscription->status; ?>
                 <div class="alert alert-warning border-0 shadow-sm mb-4">
@@ -51,11 +78,13 @@
                                     'PIX' => 'Pix',
                                     'BOLETO' => 'Boleto',
                                     'CREDIT_CARD' => 'Cartão de crédito',
+                                    'UNDEFINED' => 'PIX ou boleto',
                                 ];
                                 $paymentMethodIcons = [
                                     'PIX' => 'fa-qrcode',
                                     'BOLETO' => 'fa-barcode',
                                     'CREDIT_CARD' => 'fa-credit-card',
+                                    'UNDEFINED' => 'fa-money-bill-transfer',
                                 ];
                                 if(isset($lastTransaction)) {
                                     $invoiceUrl = $lastTransaction->invoice_url ?? '#';
@@ -118,7 +147,8 @@
                                     <i class="fas fa-external-link-alt me-2"></i> Pagar agora
                                 </a>
 
-                                <?php if(isset($lastTransaction) && $lastTransaction): ?>
+                                <?php // Cobrança da plataforma: o pagador já escolhe PIX ou boleto na página da fatura. ?>
+                                <?php if(isset($lastTransaction) && $lastTransaction && ($lastTransaction->payment_method ?? null) !== 'UNDEFINED'): ?>
                                     <button type="button"
                                             class="btn btn-outline-primary btn-change-payment-method"
                                             data-action="<?= site_url('admin/subscription/payment-method/' . $lastTransaction->id) ?>"

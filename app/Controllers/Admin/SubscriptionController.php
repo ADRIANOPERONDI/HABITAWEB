@@ -166,8 +166,9 @@ class SubscriptionController extends BaseController
         // Se temos uma transação pendente mas não temos pendingSubscription, 
         // tentamos vincular para a view mostrar o alerta corretamente
         if ($lastTransaction && !$pendingSubscription) {
-             // Only treat as subscription issue if NOT a Turbo/One-off type
-             if ($lastTransaction->type !== 'TURBO') {
+             // Only treat as subscription issue if NOT a Turbo/One-off type.
+             // Fatura mensal tem bloco próprio na tela (mensalidade + leads).
+             if (! in_array($lastTransaction->type, ['TURBO', \App\Services\MonthlyInvoiceService::TIPO], true)) {
                  $pendingSubscription = $subscription; // Use active sub as reference
                  $pendingPlan = $plan;
              }

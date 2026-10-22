@@ -205,8 +205,10 @@ class PaymentTransactionModel extends Model
      */
     public function getLastPendingTransactionByAccount($accountId)
     {
+        // Inclui a vencida (OVERDUE): é justamente a que a conta precisa
+        // pagar para não ser suspensa — antes ela sumia do alerta da tela.
         return $this->where('account_id', $accountId)
-                    ->where('status', 'PENDING')
+                    ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
                     ->groupStart()
                         ->whereIn('type', self::SUBSCRIPTION_TYPES)
                         ->orWhere('type', null)

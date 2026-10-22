@@ -227,4 +227,39 @@ final class MonthlyInvoiceTest extends HabitawebTestCase
 
         $this->assertSame([], FakePaymentGateway::$paymentsCreated);
     }
+
+    public function testPainelMostraAFaturaAbertaEOsContatosCobrados(): void
+    {
+        $this->ativarGateway();
+        [$tenant, $ids] = $this->conta(2);
+        $r = (new MonthlyInvoiceService())->emitir((int) $tenant['account']->id, self::COMPETENCIA);
+
+        $assinatura = html_entity_decode($this->actingAs($tenant['user'])->get('admin/subscription')->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $this->assertStringContainsString('Fatura em aberto — R$ 1.150,00, vence em 10/11/2026', $assinatura);
+        $this->assertStringContainsString('Leads recebidos (outubro/2026): 2 contatos', $assinatura);
+        $this->assertStringContainsString('Pagar (PIX ou boleto)', $assinatura);
+        $this->assertStringContainsString('minhas-cobrancas?fatura=' . $r['payment_transaction_id'], $assinatura);
+        $this->assertStringNotContainsString('btn btn-outline-primary btn-change-payment-method', $assinatura, 'sem botão de trocar forma: o pagador escolhe na fatura');
+
+        $faturas = html_entity_decode($this->actingAs($tenant['user'])->get('admin/subscription/invoices')->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $this->assertStringContainsString('Fatura mensal', $faturas);
+        $this->assertStringContainsString('PIX ou boleto', $faturas);
+
+        $contatos = html_entity_decode($this->actingAs($tenant['user'])->get('admin/minhas-cobrancas?fatura=' . $r['payment_transaction_id'])->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $this->assertStringContainsString('Contatos cobrados nesta fatura', $contatos);
+        $this->assertStringContainsString('Visitante 0', $contatos);
+        $this->assertStringContainsString('Visitante 1', $contatos);
+        $this->assertStringContainsString('Imovel Fatura', $contatos);
+    }
+
+    public function testFaturaDeOutraContaNaoAbre(): void
+    {
+        $this->ativarGateway();
+        [$dono] = $this->conta(1);
+        $r = (new MonthlyInvoiceService())->emitir((int) $dono['account']->id, self::COMPETENCIA);
+        [$outro] = $this->conta(0);
+
+        $this->actingAs($outro['user'])->get('admin/minhas-cobrancas?fatura=' . $r['payment_transaction_id'])
+            ->assertRedirectTo('admin/minhas-cobrancas');
+    }
 }

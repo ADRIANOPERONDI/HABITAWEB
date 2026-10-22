@@ -73,8 +73,16 @@ class LeadChargeModel extends Model
      */
     public function listFiltered(array $filters = [], int $perPage = 25): array
     {
-        $builder = $this->select('lead_charges.*, accounts.nome as account_name')
-            ->join('accounts', 'accounts.id = lead_charges.account_id', 'left');
+        // Nome do contato e imóvel do lead: o anunciante precisa ver QUAIS
+        // contatos geraram o valor cobrado, não só o número do lead.
+        $builder = $this->select('lead_charges.*, accounts.nome as account_name, leads.nome_visitante as lead_nome, properties.titulo as property_titulo')
+            ->join('accounts', 'accounts.id = lead_charges.account_id', 'left')
+            ->join('leads', 'leads.id = lead_charges.lead_id', 'left')
+            ->join('properties', 'properties.id = lead_charges.property_id', 'left');
+
+        if (! empty($filters['payment_transaction_id'])) {
+            $builder->where('lead_charges.payment_transaction_id', (int) $filters['payment_transaction_id']);
+        }
 
         if (! empty($filters['account_id'])) {
             $builder->where('lead_charges.account_id', (int) $filters['account_id']);
