@@ -269,7 +269,7 @@
                                     <i class="fa-solid fa-circle-check text-primary fs-6" title="Parceiro Verificado"></i>
                                 <?php endif; ?>
                             </div>
-                            <small class="text-muted text-uppercase fw-bold opacity-75" style="font-size: 10px;"><?= esc($property->account_type) ?></small>
+                            <small class="text-muted text-uppercase fw-bold opacity-75" style="font-size: 10px;"><?= esc(\App\Entities\Account::tipoLabel($property->account_type)) ?></small>
                             <?php if($property->account_creci): ?>
                                 <div class="x-small text-muted">CRECI: <strong><?= esc($property->account_creci) ?></strong></div>
                             <?php endif; ?>
@@ -286,9 +286,7 @@
                             // já que não existe nenhum número pra abrir).
                             $hasContactNumber = !empty($property->account_phone) || !empty($property->account_whatsapp);
                         ?>
-                        <?php if(($showContact ?? false) && $hasContactNumber): ?>
-                            <div class="mb-1"><i class="fa-solid fa-phone me-2"></i> <?= esc($property->account_phone ?: $property->account_whatsapp) ?></div>
-                        <?php endif; ?>
+                        <?php // Telefone também não aparece escrito: quem liga direto não vira lead. O contato é pelo formulário ou pelo botão do WhatsApp, que registram o lead (decisão do cliente). ?>
                         <a href="<?= site_url('parceiro/' . $property->account_id) ?>" class="text-primary fw-bold text-decoration-none d-block mt-2">
                             Ver Perfil Completo <i class="fas fa-arrow-right ms-1"></i>
                         </a>
@@ -319,8 +317,12 @@
                         $selos[] = ['classe' => 'text-bg-light border text-dark', 'icone' => 'fa-list-check', 'texto' => 'Anúncio completo',
                             'explica' => \App\Libraries\Listing\ListingCompleteness::description($completeness['residential'])];
                     }
-                    $selos[] = ['classe' => 'text-bg-light border text-dark', 'icone' => 'fa-headset', 'texto' => 'Atendimento rastreado',
-                        'explica' => 'Os contatos feitos pelo formulário ou pelo botão do WhatsApp desta página ficam registrados na plataforma.'];
+                    // Antes "Atendimento rastreado" (soava como "você está sendo
+                    // monitorado"); o cliente pediu "Contato direto com ..." conforme
+                    // o tipo do anunciante.
+                    $comArtigo = \App\Entities\Account::tipoComArtigo($property->account_type ?? null);
+                    $selos[] = ['classe' => 'text-bg-light border text-dark', 'icone' => 'fa-headset', 'texto' => 'Contato direto com ' . $comArtigo,
+                        'explica' => 'Sua mensagem pelo formulário ou pelo botão do WhatsApp desta página vai direto para ' . $comArtigo . ' responsável pelo anúncio.'];
                 ?>
                 <div class="border rounded-4 p-3 mb-4 bg-white">
                     <div class="d-flex align-items-center gap-2 mb-3">
