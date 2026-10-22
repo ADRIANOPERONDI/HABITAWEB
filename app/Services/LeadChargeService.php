@@ -89,6 +89,19 @@ class LeadChargeService
             return null;
         }
 
+        // Carência negociada: no período de isenção total a conta não paga
+        // lead (nem mensalidade). Mesmo tratamento da conta isenta — o lead
+        // continua registrado, só não gera cobrança.
+        $subscription = model(\App\Models\SubscriptionModel::class)
+            ->where('account_id', $accountId)
+            ->where('status', 'ACTIVE')
+            ->orderBy('id', 'DESC')
+            ->first();
+
+        if ((new LaunchRampService())->leadsExemptOn($subscription)) {
+            return null;
+        }
+
         $propertyId   = (int) ($lead->property_id ?? 0);
         $ref          = $propertyId > 0 ? $this->refModel->findByProperty($propertyId) : null;
         $providerCode = $ref?->provider_code;

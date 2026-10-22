@@ -17,6 +17,14 @@ use App\Models\PlanLaunchRampModel;
  * devolvem exatamente o comportamento de hoje (100%, preço cheio) — nenhuma
  * conta existente é afetada por este serviço até alguém explicitamente
  * marcar `ramp_started_at` nela.
+ *
+ * Carência negociada (revisão da área pública, item 11): a condição deixou de
+ * ser dada a todo cadastro e passou a ser concedida pelo administrador a quem
+ * fechou negócio, com dois prazos próprios da conta
+ * (`isencao_total_meses`: sem mensalidade e sem leads;
+ * `isencao_mensalidade_meses`: depois, sem mensalidade mas com leads). Com os
+ * prazos preenchidos, eles mandam; sem eles, vale a regra antiga das faixas
+ * globais (`plan_launch_ramps`), só para o que foi gravado antes.
  */
 class LaunchRampService
 {
@@ -47,11 +55,61 @@ class LaunchRampService
      */
     public function enrollmentDateForNewSignup(string $billingCycle): ?string
     {
-        if ($billingCycle !== 'MONTHLY') {
+        // Cadastro pelo site nunca entra na carência: ela é condição de
+        // negociação, concedida pelo administrador (grantNegotiatedTerms em
+        // PaymentService). Quem assina sozinho paga o plano desde o início.
+        return null;
+    }
+
+    /** A assinatura tem carência negociada (prazos próprios da conta)? */
+    public function hasNegotiatedTerms(?Subscription $subscription): bool
+    {
+        return $subscription !== null
+            && ! empty($subscription->ramp_started_at)
+            && $subscription->isencao_total_meses !== null;
+    }
+
+    /**
+     * Leads recebidos nesta data ficam sem cobrança? Só no período de isenção
+     * total de uma carência negociada.
+     */
+    public function leadsExemptOn(?Subscription $subscription, ?string $onDate = null): bool
+    {
+        if (! $this->hasNegotiatedTerms($subscription)) {
+            return false;
+        }
+
+        return $this->monthsAlive($subscription, $onDate) <= (int) $subscription->isencao_total_meses;
+    }
+
+    /**
+     * Datas da carência negociada, para o painel: quando os leads passam a
+     * ser cobrados e quando a mensalidade passa a ser cobrada. Null sem
+     * carência negociada.
+     *
+     * @return array{inicio: string, leads_a_partir: string, mensalidade_a_partir: string}|null
+     */
+    public function negotiatedSchedule(?Subscription $subscription): ?array
+    {
+        if (! $this->hasNegotiatedTerms($subscription)) {
             return null;
         }
 
-        return $this->rampModel->forMonth(1) !== null ? date('Y-m-d') : null;
+        $inicio = new \DateTimeImmutable((string) $subscription->ramp_started_at);
+        $total  = (int) $subscription->isencao_total_meses;
+        $mensal = (int) ($subscription->isencao_mensalidade_meses ?? 0);
+
+        return [
+            'inicio'               => $inicio->format('Y-m-d'),
+            'leads_a_partir'       => $inicio->modify("+{$total} months")->format('Y-m-d'),
+            'mensalidade_a_partir' => $inicio->modify('+' . ($total + $mensal) . ' months')->format('Y-m-d'),
+        ];
+    }
+
+    /** Meses, a partir do início, em que a mensalidade fica isenta. */
+    private function negotiatedFreeMonths(Subscription $subscription): int
+    {
+        return (int) $subscription->isencao_total_meses + (int) ($subscription->isencao_mensalidade_meses ?? 0);
     }
 
     /**
@@ -99,6 +157,10 @@ class LaunchRampService
             return 100;
         }
 
+        if ($this->hasNegotiatedTerms($subscription)) {
+            return $mesVida <= $this->negotiatedFreeMonths($subscription) ? 0 : 100;
+        }
+
         $faixa = $this->rampModel->forMonth($mesVida, $subscription->ramp_started_at);
 
         return $faixa['percentual'] ?? 100;
@@ -129,6 +191,19 @@ class LaunchRampService
         $mesVida = $this->monthsAlive($subscription, $onDate);
         if ($mesVida === null) {
             return null;
+        }
+
+        if ($this->hasNegotiatedTerms($subscription)) {
+            $mesesIsentos = $this->negotiatedFreeMonths($subscription);
+            if ($mesesIsentos <= 0 || $mesVida > $mesesIsentos) {
+                return null;
+            }
+
+            return [
+                'date'         => (new \DateTimeImmutable((string) $subscription->ramp_started_at))->modify("+{$mesesIsentos} months")->format('Y-m-d'),
+                'from_percent' => 0,
+                'to_percent'   => 100,
+            ];
         }
 
         // Mesma razão de percentFor(): valid_from/valid_to são da data de

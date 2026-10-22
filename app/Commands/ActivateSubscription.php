@@ -19,10 +19,10 @@ use CodeIgniter\CLI\CLI;
  * o painel e testar o resto (ex.: configurar a integração Simob) sem
  * precisar cadastrar cartão nem esperar o cliente pagar de verdade.
  *
- * Por padrão entra na rampa de lançamento (`ramp_started_at` = hoje —
- * ver `LaunchRampService`), os mesmos 6 meses de mensalidade R$0 de quem
- * se cadastra pelo checkout hoje (D1/P6): 6 meses grátis, 50% do mês 7 ao
- * 12, cheio a partir do mês 13. `--sem-rampa` cria a mesma assinatura
+ * Por padrão entra na carência negociada (`ramp_started_at` = hoje — ver
+ * `LaunchRampService`): 6 meses sem mensalidade e sem leads, mais 6 só com
+ * leads, plano cheio depois. `--isencao-total` e `--isencao-mensalidade`
+ * mudam os dois prazos. `--sem-rampa` cria a mesma assinatura
  * ACTIVE/R$0, mas SEM esse relógio — fica grátis indefinidamente até
  * alguém trocar o plano na mão (raro; normalmente não é o que se quer).
  *
@@ -35,11 +35,13 @@ class ActivateSubscription extends BaseCommand
     protected $group       = 'Assinaturas';
     protected $name        = 'assinatura:ativar';
     protected $description = 'Ativa manualmente uma assinatura gratuita (rampa de lancamento, por padrao) pra uma conta, sem passar pelo checkout/gateway.';
-    protected $usage       = 'assinatura:ativar --conta <email-ou-id-da-conta> --plano <CHAVE> [--sem-rampa]';
+    protected $usage       = 'assinatura:ativar --conta <email-ou-id-da-conta> --plano <CHAVE> [--isencao-total 6] [--isencao-mensalidade 6] [--sem-rampa]';
     protected $options     = [
-        '--conta'     => 'E-mail do usuario dono da conta, ou o ID da conta direto.',
-        '--plano'     => 'Chave do plano (PRATA, OURO, DIAMANTE...).',
-        '--sem-rampa' => 'Cria a assinatura ACTIVE/R$0 fora da rampa (fica gratis indefinidamente, sem data prevista pra virar paga).',
+        '--conta'               => 'E-mail do usuario dono da conta, ou o ID da conta direto.',
+        '--plano'               => 'Chave do plano (PRATA, OURO, DIAMANTE...).',
+        '--isencao-total'       => 'Meses sem mensalidade e sem cobranca de leads (padrao 6).',
+        '--isencao-mensalidade' => 'Meses seguintes sem mensalidade, com leads cobrados (padrao 6).',
+        '--sem-rampa'           => 'Cria a assinatura ACTIVE/R$0 fora da rampa (fica gratis indefinidamente, sem data prevista pra virar paga).',
     ];
 
     public function run(array $params)
@@ -74,12 +76,17 @@ class ActivateSubscription extends BaseCommand
         }
 
         $rampStartedAt = $semRampa ? null : date('Y-m-d');
+        $isencao       = $semRampa ? [] : [
+            'isencao_total_meses'       => (int) (CLI::getOption('isencao-total') ?? ($params['isencao-total'] ?? 6)),
+            'isencao_mensalidade_meses' => (int) (CLI::getOption('isencao-mensalidade') ?? ($params['isencao-mensalidade'] ?? 6)),
+        ];
 
         $result = (new PaymentService())->createFreeLocalSubscription(
             (int) $account->id,
             $plan,
             'MONTHLY',
-            $rampStartedAt
+            $rampStartedAt,
+            $isencao
         );
 
         if (empty($result['success'])) {
@@ -92,13 +99,13 @@ class ActivateSubscription extends BaseCommand
             'account_id'  => $account->id,
             'entity_type' => 'subscription',
             'entity_id'   => $result['local_id'],
-            'metadata'    => ['plan' => $plan->chave, 'ramp' => ! $semRampa],
+            'metadata'    => ['plan' => $plan->chave, 'ramp' => ! $semRampa] + $isencao,
         ]);
 
         CLI::write("Conta #{$account->id} ({$account->nome}) ativada no plano {$plan->nome}.", 'green');
         CLI::write($semRampa
             ? 'Fora da rampa — gratis indefinidamente ate alguem trocar o plano na mao.'
-            : 'Na rampa de lancamento — 6 meses gratis, 50% do mes 7 ao 12, cheio a partir do mes 13.', 'yellow');
+            : "Carencia negociada — {$isencao['isencao_total_meses']} meses sem mensalidade e sem leads, mais {$isencao['isencao_mensalidade_meses']} so com leads; plano cheio depois.", 'yellow');
 
         return EXIT_SUCCESS;
     }

@@ -121,4 +121,25 @@ final class SubscriptionPageTest extends HabitawebTestCase
         $response->assertSee('Usadas este mês');
         $response->assertSee('Rampa de lançamento: mês 3');
     }
+
+    /** Carência negociada: o tenant vê as datas da condição dele, não "mês X de Y". */
+    public function testMostraCondicaoEspecialDaCarenciaNegociada(): void
+    {
+        $tenant = (new TenantFactory())->create([], 'OURO');
+
+        model(SubscriptionModel::class)->update($tenant['subscription']->id, [
+            'ramp_started_at'           => '2026-09-05',
+            'ramp_percent_atual'        => 0,
+            'isencao_total_meses'       => 6,
+            'isencao_mensalidade_meses' => 6,
+        ]);
+
+        $html = html_entity_decode($this->actingAs($tenant['user'])->get('admin/subscription')->response()->getBody(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        $this->assertStringContainsString('Condição especial da sua imobiliária', $html);
+        $this->assertStringContainsString('sem mensalidade e sem cobrança de leads até 04/03/2027', $html);
+        $this->assertStringContainsString('de 05/03/2027 a 04/09/2027, só os leads são cobrados', $html);
+        $this->assertStringContainsString('a partir de 05/09/2027', $html);
+        $this->assertStringNotContainsString('Rampa de lançamento: mês', $html);
+    }
 }

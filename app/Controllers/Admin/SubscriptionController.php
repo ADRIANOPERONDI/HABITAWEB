@@ -129,7 +129,11 @@ class SubscriptionController extends BaseController
             $rampInfo = [
                 'mes_vida'      => $mesVida,
                 'mes_ate'       => $faixaAtual['mes_ate'] ?? null,
-                'percent_atual' => $faixaAtual['percentual'] ?? 100,
+                'percent_atual' => $rampService->percentFor($subscription),
+                // Carência negociada (prazos da conta): a tela mostra as datas
+                // da condição em vez do "mês X de Y" das faixas globais.
+                'carencia'      => $rampService->negotiatedSchedule($subscription),
+                'valor_cheio'   => (new \App\Services\PaymentService())->getPlanAmountForBillingCycle($plan, $billingCycle),
                 'valor_atual'   => $rampService->amountFor($plan, $billingCycle, $subscription),
                 'proxima_data'  => $proxima['date'] ?? null,
                 'proximo_valor' => $proxima !== null
@@ -364,7 +368,12 @@ class SubscriptionController extends BaseController
                 $accountId,
                 $targetPlan,
                 $billingCycle,
-                $activeSub->ramp_started_at ?? null
+                $activeSub->ramp_started_at ?? null,
+                [
+                    // A carência negociada acompanha a troca de plano.
+                    'isencao_total_meses'       => $activeSub->isencao_total_meses ?? null,
+                    'isencao_mensalidade_meses' => $activeSub->isencao_mensalidade_meses ?? null,
+                ]
             );
 
             return redirect()->to('admin/subscription')->with('message', "Plano alterado para {$targetPlan->nome} com sucesso!");

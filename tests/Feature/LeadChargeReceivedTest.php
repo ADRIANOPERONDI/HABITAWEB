@@ -100,6 +100,44 @@ final class LeadChargeReceivedTest extends HabitawebTestCase
         $this->assertGreaterThan(time(), strtotime((string) $charge->contest_deadline));
     }
 
+    private function carenciaNegociada(int $accountId, string $inicio): void
+    {
+        model(\App\Models\SubscriptionModel::class)
+            ->where('account_id', $accountId)
+            ->set(['ramp_started_at' => $inicio, 'isencao_total_meses' => 6, 'isencao_mensalidade_meses' => 6])
+            ->update();
+    }
+
+    /** Carência negociada: nos meses de isenção total o lead não gera cobrança. */
+    public function testLeadNaIsencaoTotalDaCarenciaNaoGeraCobranca(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $this->regra(['tipo_negocio' => 'VENDA', 'value' => 80]);
+        $this->carenciaNegociada((int) $tenant['account']->id, date('Y-m-d', strtotime('-2 months')));
+
+        $propertyId = $this->property($tenant['account']->id, 'VENDA');
+        $lead       = $this->lead($tenant['account']->id, $propertyId, 'VENDA');
+
+        $this->assertNull((new LeadChargeService())->onLeadReceived($lead));
+        $this->assertNull(model(LeadChargeModel::class)->findByLead((int) $lead->id));
+    }
+
+    /** Passada a isenção total (mês 7 em diante), o lead volta a ser cobrado — mesmo com a mensalidade ainda isenta. */
+    public function testLeadDepoisDaIsencaoTotalVoltaASerCobrado(): void
+    {
+        $tenant = (new TenantFactory())->create();
+        $this->regra(['tipo_negocio' => 'VENDA', 'value' => 80]);
+        $this->carenciaNegociada((int) $tenant['account']->id, date('Y-m-d', strtotime('-7 months')));
+
+        $propertyId = $this->property($tenant['account']->id, 'VENDA');
+        $lead       = $this->lead($tenant['account']->id, $propertyId, 'VENDA');
+
+        $id = (new LeadChargeService())->onLeadReceived($lead);
+
+        $this->assertNotNull($id);
+        $this->assertSame(80.0, model(LeadChargeModel::class)->find($id)->commission_value);
+    }
+
     public function testValorDeAluguelUsaARegraDeAluguel(): void
     {
         $tenant = (new TenantFactory())->create();

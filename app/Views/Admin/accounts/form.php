@@ -134,6 +134,36 @@
                         </form>
                     </div>
                 </div>
+
+                <?php // Carência negociada: só quem fechou negócio com a plataforma; cadastro pelo site não ganha (item 11 da revisão). ?>
+                <div class="card border-0 shadow-sm rounded-4 animate-fade-in mt-4 d-none" id="carencia-card">
+                    <div class="card-body p-4">
+                        <h6 class="fw-bold mb-1">Carência negociada</h6>
+                        <p class="text-muted small mb-3">Use só para a imobiliária com quem a condição foi negociada. Aplica o plano contratado a R$ 0, sem cobrança no gateway, durante a carência.</p>
+                        <form id="carencia-form">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" for="carencia-plan">Plano contratado</label>
+                                    <select class="form-select border-2 bg-light" id="carencia-plan" required></select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" for="carencia-inicio">Início da carência</label>
+                                    <input type="date" class="form-control border-2 bg-light" id="carencia-inicio" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" for="carencia-total">Meses sem mensalidade e sem leads</label>
+                                    <input type="number" min="0" max="36" class="form-control border-2 bg-light" id="carencia-total" value="6" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" for="carencia-leads">Meses seguintes só com leads</label>
+                                    <input type="number" min="0" max="36" class="form-control border-2 bg-light" id="carencia-leads" value="6" required>
+                                </div>
+                            </div>
+                            <p class="small text-muted mt-3 mb-3" id="carencia-preview"></p>
+                            <button type="submit" class="btn btn-primary rounded-pill fw-bold px-4">Aplicar carência</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -186,6 +216,7 @@ $(document).ready(function() {
     function loadSubscription() {
         $.get(`<?= site_url('admin/accounts') ?>/${accountId}/subscription`, function(data) {
             let html = '';
+            fillCarenciaForm(data);
             
             if (!data.subscription) {
                 html = `
@@ -242,11 +273,20 @@ $(document).ready(function() {
                         ? 'R$ ' + parseFloat(data.valor_hoje).toFixed(2).replace('.', ',')
                         : 'N/A';
 
+                    const c = data.carencia;
                     html += `
                         <div class="alert ${data.pendingRampCharge ? 'alert-warning' : 'alert-info'} border-0 rounded-4 shadow-sm p-4 mb-4">
-                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-gauge-high me-2"></i> Rampa de lançamento</h6>
+                            <h6 class="fw-bold mb-2"><i class="fa-solid fa-gauge-high me-2"></i> ${c ? 'Carência negociada' : 'Rampa de lançamento'}</h6>
+                            ${c ? `
+                                <p class="mb-1 small text-dark">
+                                    Início em ${fmtData(c.inicio)} · ${c.isencao_total_meses} meses sem mensalidade e sem leads · ${c.isencao_mensalidade_meses} meses só com leads
+                                </p>
+                                <p class="mb-1 small text-dark">
+                                    Leads cobrados a partir de <strong>${fmtData(c.leads_a_partir)}</strong> · mensalidade a partir de <strong>${fmtData(c.mensalidade_a_partir)}</strong>
+                                </p>
+                            ` : ''}
                             <p class="mb-0 small text-dark">
-                                Adesão em ${adesao} · percentual hoje: <strong>${data.percent_hoje}%</strong> · valor hoje: <strong>${valorHoje}</strong>
+                                ${c ? '' : `Adesão em ${adesao} · `}percentual hoje: <strong>${data.percent_hoje}%</strong> · valor hoje: <strong>${valorHoje}</strong>${c ? ` · leads hoje: <strong>${c.leads_isentos_hoje ? 'isentos' : 'cobrados'}</strong>` : ''}
                             </p>
                             ${data.pendingRampCharge ? `
                                 <div class="d-flex align-items-center gap-2 flex-wrap mt-3">
@@ -336,6 +376,72 @@ $(document).ready(function() {
             $('#subscription-container').html(html + pendingHtml);
         });
     }
+
+    function fmtData(iso) {
+        return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
+    }
+
+    // Data de hoje no fuso do navegador (toISOString() é UTC: à noite viraria amanhã).
+    function hojeLocal() {
+        const agora = new Date();
+        return new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    }
+
+    function somaMeses(iso, meses) {
+        const d = new Date(iso + 'T12:00:00');
+        d.setMonth(d.getMonth() + meses);
+        return d.toISOString().slice(0, 10);
+    }
+
+    function fillCarenciaForm(data) {
+        $('#carencia-card').removeClass('d-none');
+        const sub = data.subscription;
+        const c = data.carencia;
+        let opts = '<option value="">Selecione o plano contratado...</option>';
+        (data.plans || []).forEach(plan => {
+            opts += `<option value="${plan.id}" ${sub && sub.plan_id == plan.id ? 'selected' : ''}>${plan.nome}</option>`;
+        });
+        $('#carencia-plan').html(opts);
+        $('#carencia-inicio').val(c ? c.inicio : hojeLocal());
+        $('#carencia-total').val(c ? c.isencao_total_meses : 6);
+        $('#carencia-leads').val(c ? c.isencao_mensalidade_meses : 6);
+        previewCarencia();
+    }
+
+    function previewCarencia() {
+        const inicio = $('#carencia-inicio').val();
+        const total = parseInt($('#carencia-total').val(), 10) || 0;
+        const leads = parseInt($('#carencia-leads').val(), 10) || 0;
+        if (!inicio) { $('#carencia-preview').text(''); return; }
+        $('#carencia-preview').text(
+            `Leads cobrados a partir de ${fmtData(somaMeses(inicio, total))}; mensalidade a partir de ${fmtData(somaMeses(inicio, total + leads))}.`
+        );
+    }
+
+    $('#carencia-inicio, #carencia-total, #carencia-leads').on('input change', previewCarencia);
+
+    $('#carencia-form').on('submit', function(e) {
+        e.preventDefault();
+        Swal.fire({
+            title: 'Aplicar carência?',
+            text: 'A assinatura ativa desta conta será substituída pelo plano escolhido, a R$ 0 durante a carência. ' + $('#carencia-preview').text(),
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sim, aplicar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (!result.isConfirmed) return;
+            $.post(`<?= site_url('admin/accounts') ?>/${accountId}/subscription/carencia`, {
+                plan_id: $('#carencia-plan').val(),
+                inicio: $('#carencia-inicio').val(),
+                isencao_total_meses: $('#carencia-total').val(),
+                isencao_mensalidade_meses: $('#carencia-leads').val()
+            }, function(res) {
+                Swal.fire('Carência aplicada', res.success, 'success');
+                loadSubscription();
+            }).fail(err => Swal.fire('Erro', (err.responseJSON && err.responseJSON.error) || 'Não foi possível aplicar.', 'error'));
+        });
+    });
 
     // Actions
     window.suspendSub = function() {
