@@ -351,7 +351,7 @@ da janela de contestação, diária:
 ```
 
 Roda de madrugada, depois que o dia inteiro de contestações já aconteceu.
-Cada cobrança nasce PENDING com `contest_deadline` = recebimento + 7 dias; o
+Cada cobrança nasce PENDING com `contest_deadline` = recebimento + 15 dias (`LeadChargeService::CONTEST_WINDOW_DIAS`); o
 comando promove para APPROVED só quem passou do prazo sem o tenant contestar
 via `/admin/minhas-cobrancas`. Sem este cron, cobrança nenhuma chega a
 APPROVED e o fechamento de ciclo mensal não teria o que faturar.
@@ -386,7 +386,7 @@ um quita a cobrança). Linhas:
   prazo (`payment_method FREE` sem `ramp_started_at`) nunca é cobrada.
 - **Leads** APPROVED dos meses anteriores, com o crédito do plano de cada mês
   abatido (mesma regra do antigo fechamento de ciclo). Leads ainda na janela
-  de contestação (7 dias) entram na fatura do mês seguinte.
+  de contestação (15 dias) entram na fatura do mês seguinte.
 
 Idempotente (uma `FATURA_MENSAL` por conta e competência). Falha no gateway
 desfaz tudo (crédito e leads voltam a APPROVED) para a próxima execução.

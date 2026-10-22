@@ -22,7 +22,8 @@ use App\Models\PropertyModel;
 class LeadChargeService
 {
     /** Dias de janela para o tenant contestar antes da aprovação automática. */
-    public const CONTEST_WINDOW_DIAS = 7;
+    /** Prazo para a imobiliária contestar uma cobrança de lead (decisão do cliente: 15 dias). */
+    public const CONTEST_WINDOW_DIAS = 15;
 
     public function __construct(
         private ?LeadChargeModel $charges = null,
