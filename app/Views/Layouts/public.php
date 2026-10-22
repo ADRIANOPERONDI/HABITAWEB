@@ -249,7 +249,7 @@
                     </button>
 
                     <a href="<?= site_url('anuncie') ?>" class="btn btn-outline-primary rounded-pill px-4 fw-bold d-none d-md-block">
-                        Anunciar Grátis
+                        Anuncie seu imóvel
                     </a>
 
                     <?php if (auth()->loggedIn()): ?>

@@ -36,26 +36,6 @@
             </div>
         <?php endif; ?>
 
-        <?php if($rampBands !== []): ?>
-            <?php
-                $trechosRampa = [];
-                foreach ($rampBands as $banda) {
-                    $meses = $banda['mes_ate'] === null
-                        ? 'a partir do mês ' . $banda['mes_de']
-                        : ($banda['mes_de'] === $banda['mes_ate']
-                            ? 'no mês ' . $banda['mes_de']
-                            : 'nos meses ' . $banda['mes_de'] . '–' . $banda['mes_ate']);
-                    $valor = $banda['percentual'] === 0
-                        ? 'grátis'
-                        : ($banda['percentual'] === 100 ? 'valor cheio' : $banda['percentual'] . '% do valor');
-                    $trechosRampa[] = $meses . ' ' . $valor;
-                }
-            ?>
-            <div class="alert alert-success border-0 rounded-4 mt-2 mx-auto" style="max-width: 640px;">
-                <i class="fa-solid fa-gift me-1"></i>
-                <strong>Lançamento (ciclo mensal):</strong> <?= esc(implode(', ', $trechosRampa)) ?>.
-            </div>
-        <?php endif; ?>
     </div>
 
     <div class="row justify-content-center">
