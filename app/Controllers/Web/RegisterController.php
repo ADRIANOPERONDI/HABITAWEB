@@ -29,7 +29,7 @@ class RegisterController extends BaseController
             'nome' => 'required|min_length[3]',
             'email' => 'required|valid_email|is_unique[auth_identities.secret]|professional_email',
             'password' => 'required|min_length[8]|strong_password',
-            'tipo_conta' => 'required|in_list[IMOBILIARIA,CORRETOR,PF]',
+            'tipo_conta' => 'required|in_list[IMOBILIARIA,CONSTRUTORA,CORRETOR,PF]',
             'tipo_documento' => 'required|in_list[CPF,CNPJ]',
             'documento' => 'required|valid_documento[tipo_documento]',
         ];
