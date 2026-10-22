@@ -48,6 +48,8 @@
                                         // que não tinha plan_name virava "Assinatura" na tela,
                                         // inclusive fatura de leads e turbinada avulsa.
                                         $tipoLabel = match ($t->type ?? null) {
+                                            'FATURA_MENSAL'    => 'Fatura mensal',
+                                            'ADESAO'           => 'Adesão',
                                             'LEAD_INVOICE'     => 'Fatura de leads',
                                             'TURBO'            => 'Turbinada',
                                             'UPGRADE_PRORATA'  => 'Pró-rata (upgrade)',
@@ -55,6 +57,11 @@
                                         };
                                     ?>
                                     <span class="badge bg-light text-dark border"><?= esc($tipoLabel) ?></span>
+                                    <?php if (in_array($t->type ?? null, ['FATURA_MENSAL', 'ADESAO'], true) && ! empty($t->description)): ?>
+                                        <?php // Linhas da fatura (mensalidade + leads), sem a primeira, que é só o título. ?>
+                                        <?php $linhas = array_slice(explode("\n", (string) $t->description), ($t->type === 'FATURA_MENSAL' ? 1 : 0)); ?>
+                                        <div class="small text-muted mt-1"><?= nl2br(esc(implode("\n", $linhas))) ?></div>
+                                    <?php endif; ?>
                                     <div class="small text-muted mt-1">Ref: <?= substr($t->gateway_transaction_id ?? 'N/A', 0, 8) ?>...</div>
                                 </td>
                                 <td>
@@ -63,6 +70,8 @@
                                         $label = 'Cartão';
                                         if($t->payment_method == 'PIX') { $icon = 'fa-qrcode'; $label = 'PIX'; }
                                         if($t->payment_method == 'BOLETO') { $icon = 'fa-barcode'; $label = 'Boleto'; }
+                                        // UNDEFINED = o pagador escolhe na página da fatura (PIX ou boleto).
+                                        if($t->payment_method == 'UNDEFINED') { $icon = 'fa-money-bill-transfer'; $label = 'PIX ou boleto'; }
                                     ?>
                                     <span class="badge bg-light text-secondary border">
                                         <i class="fa-solid <?= $icon ?> me-1"></i> <?= $label ?>
@@ -100,7 +109,12 @@
                                     ?>
                                     <span class="badge <?= $statusClass ?> rounded-pill px-3"><?= $statusLabel ?></span>
                                 </td>
-                                <td class="pe-3 text-end">
+                                <td class="pe-3 text-end text-nowrap">
+                                    <?php if (in_array($t->type ?? null, ['FATURA_MENSAL', 'LEAD_INVOICE'], true)): ?>
+                                        <a href="<?= site_url('admin/minhas-cobrancas?fatura=' . (int) $t->id) ?>" class="btn btn-sm btn-light border" title="Contatos cobrados nesta fatura">
+                                            <i class="fa-solid fa-users text-muted"></i> Contatos
+                                        </a>
+                                    <?php endif; ?>
                                     <?php if (! empty($t->invoice_url)): ?>
                                         <a href="<?= esc($t->invoice_url, 'attr') ?>" target="_blank" rel="noopener noreferrer"
                                            class="btn btn-sm btn-light border" title="Ver fatura">

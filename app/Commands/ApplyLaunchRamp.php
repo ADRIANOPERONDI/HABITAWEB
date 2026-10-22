@@ -150,7 +150,10 @@ class ApplyLaunchRamp extends BaseCommand
                         'metadata'    => ['de' => (int) $percentGravado, 'para' => $percentAtual],
                     ]);
                     $resumo['acao_manual']++;
-                    CLI::error("  conta {$subscription->account_id}: {$percentGravado}% -> {$percentAtual}% — requer criacao manual da assinatura no gateway (admin/subscription)");
+                    // Com a fatura única mensal (cobrancas:emitir-faturas) a
+                    // mensalidade entra sozinha na próxima fatura do dia 1 —
+                    // o registro fica para acompanhamento, não como pendência.
+                    CLI::write("  conta {$subscription->account_id}: {$percentGravado}% -> {$percentAtual}% — mensalidade entra na proxima fatura mensal (cobrancas:emitir-faturas)", 'yellow');
 
                     continue;
                 }

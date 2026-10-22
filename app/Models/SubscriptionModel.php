@@ -22,6 +22,8 @@ class SubscriptionModel extends Model
         'ramp_started_at', 'ramp_percent_atual', 'valor',
         // Carência negociada pelo administrador (ver LaunchRampService).
         'isencao_total_meses', 'isencao_mensalidade_meses',
+        // Fatura única mensal: até quando a mensalidade já está paga.
+        'mensalidade_paga_ate',
     ];
 
     protected bool $allowEmptyInserts = false;

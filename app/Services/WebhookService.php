@@ -190,7 +190,12 @@ class WebhookService
         ]);
 
         // 4. Update Subscription
-        if ($subscriptionId) {
+        // Cobrança da plataforma (adesão / fatura mensal) não tem recorrência
+        // nativa: quem ativa e registra o período pago é settleTransaction();
+        // gravar data_fim aqui faria a assinatura expirar (SubscriptionCheck).
+        $cobrancaDaPlataforma = in_array($transaction['type'] ?? null, \App\Models\PaymentTransactionModel::PLATFORM_BILLING_TYPES, true);
+
+        if ($subscriptionId && ! $cobrancaDaPlataforma) {
             $nextBillingDate = $this->calculateNextBillingDate((int) $subscriptionId, $data);
             $this->subscriptionModel->update($subscriptionId, [
                 'status' => 'ACTIVE',

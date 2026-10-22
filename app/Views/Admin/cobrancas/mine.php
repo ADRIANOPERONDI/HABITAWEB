@@ -34,7 +34,21 @@
     <?php endif; ?>
 </div>
 
-<form method="get" class="row g-2 align-items-end mb-3">
+<?php if (! empty($fatura)): ?>
+    <div class="alert alert-info border-0 rounded-3 d-flex flex-wrap align-items-center gap-2 mb-3">
+        <i class="fa-solid fa-file-invoice-dollar"></i>
+        <div class="flex-grow-1">
+            <strong>Contatos cobrados nesta fatura</strong> — <?= $brl($fatura['amount']) ?>,
+            vencimento <?= ! empty($fatura['due_date']) ? date('d/m/Y', strtotime((string) $fatura['due_date'])) : '-' ?>
+            <?php if (! empty($fatura['description'])): ?>
+                <div class="small mt-1"><?= nl2br(esc((string) $fatura['description'])) ?></div>
+            <?php endif; ?>
+        </div>
+        <a href="<?= site_url('admin/minhas-cobrancas') ?>" class="btn btn-sm btn-outline-secondary">Ver todos os períodos</a>
+    </div>
+<?php endif; ?>
+
+<form method="get" class="row g-2 align-items-end mb-3<?= ! empty($fatura) ? ' d-none' : '' ?>">
     <div class="col-auto">
         <label class="form-label small text-muted mb-1">Período</label>
         <select name="periodo" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -112,7 +126,10 @@
                                     ?>
                             </td>
                             <td class="small">
-                                <a href="<?= site_url('admin/leads/' . $c->lead_id) ?>">#<?= (int) $c->lead_id ?></a>
+                                <a href="<?= site_url('admin/leads/' . $c->lead_id) ?>">#<?= (int) $c->lead_id ?><?= ! empty($c->lead_nome) ? ' — ' . esc($c->lead_nome) : '' ?></a>
+                                <?php if (! empty($c->property_titulo)): ?>
+                                    <div class="text-muted"><?= esc($c->property_titulo) ?></div>
+                                <?php endif; ?>
                             </td>
                             <td><span class="badge bg-light text-dark"><?= esc((string) $c->tipo_negocio) ?></span></td>
                             <td class="text-end fw-bold"><?= $brl($c->commission_value) ?></td>

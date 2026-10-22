@@ -242,8 +242,26 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
     private function runCloseCycleCommand(string $args = ''): void
     {
         ob_start();
-        command('leads:fechar-ciclo ' . $args);
+        command('leads:fechar-ciclo --legado ' . $args);
         ob_end_clean();
+    }
+
+    /**
+     * Leads agora vão na fatura única (`cobrancas:emitir-faturas`): sem
+     * --legado o comando antigo não cobra nada — o cron antigo das 03:15
+     * cobraria os leads em separado antes da fatura única.
+     */
+    public function testSemLegadoOComandoAntigoNaoCobra(): void
+    {
+        $this->ativarGatewayFake();
+        [, $chargeIds] = $this->contaComCargas(80.0, 1, periodo: date('Y-m-01', strtotime('-1 month')));
+
+        ob_start();
+        command('leads:fechar-ciclo');
+        ob_end_clean();
+
+        $this->assertSame(LeadChargeModel::STATUS_APPROVED, model(LeadChargeModel::class)->find($chargeIds[0])->status);
+        $this->assertSame([], FakePaymentGateway::$paymentsCreated);
     }
 
     /**

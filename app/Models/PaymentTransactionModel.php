@@ -32,8 +32,15 @@ class PaymentTransactionModel extends Model
      * pelo webhook PAYMENT_CREATED (WebhookService::handlePaymentCreated).
      * Ficava de fora: renovação em atraso nunca suspendia a conta nem
      * recebia aviso de vencimento.
+     *
+     * ADESAO (primeira mensalidade, paga na compra) e FATURA_MENSAL (fatura
+     * única com mensalidade + leads, MonthlyInvoiceService) são as cobranças
+     * da assinatura emitidas pela própria plataforma.
      */
-    public const SUBSCRIPTION_TYPES = ['SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE', 'RECURRING_CHARGE'];
+    public const SUBSCRIPTION_TYPES = ['SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE', 'RECURRING_CHARGE', 'ADESAO', 'FATURA_MENSAL'];
+
+    /** Cobranças da assinatura emitidas pela plataforma (sem recorrência nativa no gateway). */
+    public const PLATFORM_BILLING_TYPES = ['ADESAO', 'FATURA_MENSAL'];
 
     /**
      * Dias de atraso a partir dos quais a conta fica SUSPENSA: anúncios fora
@@ -198,8 +205,10 @@ class PaymentTransactionModel extends Model
      */
     public function getLastPendingTransactionByAccount($accountId)
     {
+        // Inclui a vencida (OVERDUE): é justamente a que a conta precisa
+        // pagar para não ser suspensa — antes ela sumia do alerta da tela.
         return $this->where('account_id', $accountId)
-                    ->where('status', 'PENDING')
+                    ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
                     ->groupStart()
                         ->whereIn('type', self::SUBSCRIPTION_TYPES)
                         ->orWhere('type', null)

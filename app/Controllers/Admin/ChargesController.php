@@ -185,9 +185,22 @@ class ChargesController extends BaseController
             ]);
         }
 
-        $data = $this->service->statementFor($accountId, $periodo);
+        // ?fatura=ID: contatos cobrados numa fatura (link "Ver contatos" da
+        // lista de faturas). Só fatura da própria conta.
+        $fatura   = null;
+        $faturaId = (int) ($this->request->getGet('fatura') ?? 0);
+        if ($faturaId > 0) {
+            $fatura = model(\App\Models\PaymentTransactionModel::class)
+                ->where('id', $faturaId)->where('account_id', $accountId)->first();
+            if (! $fatura) {
+                return redirect()->to('admin/minhas-cobrancas')->with('error', 'Fatura não encontrada.');
+            }
+        }
+
+        $data = $this->service->statementFor($accountId, $periodo, 25, $fatura ? (int) $fatura['id'] : null);
 
         return view('Admin/cobrancas/mine', [
+            'fatura'           => $fatura,
             'commissions'      => $data['items'],
             'pager'            => $data['pager'],
             'totals'           => $this->service->totalsByStatus(['account_id' => $accountId, 'periodo' => $periodo]),

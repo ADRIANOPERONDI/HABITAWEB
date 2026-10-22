@@ -26,12 +26,24 @@ class LeadsCloseCycle extends BaseCommand
     protected $options     = [
         '--periodo' => 'Mes de competencia a fechar (default: mes anterior).',
         '--dry-run' => 'Nao grava nada, so lista o que fecharia.',
+        '--legado'  => 'Gera a fatura de leads SEPARADA (modelo antigo). Sem isto o comando nao cobra nada.',
     ];
 
     public function run(array $params)
     {
         $periodoExplicito = CLI::getOption('periodo');
         $dryRun           = CLI::getOption('dry-run') !== null;
+
+        // Leads agora entram na fatura única mensal, junto com a mensalidade
+        // (`cobrancas:emitir-faturas`, decisão do cliente). Rodar este
+        // comando no cron antigo (03:15, antes da fatura única) cobraria os
+        // leads em separado — por isso ele só cobra com --legado explícito.
+        if (! $dryRun && CLI::getOption('legado') === null && ! array_key_exists('legado', $params)) {
+            CLI::write('Leads agora sao cobrados na fatura unica mensal: use `php spark cobrancas:emitir-faturas`.', 'yellow');
+            CLI::write('Para gerar a fatura de leads separada (modelo antigo), rode com --legado.', 'yellow');
+
+            return;
+        }
         $chargeModel      = model(LeadChargeModel::class);
 
         if ($periodoExplicito !== null) {

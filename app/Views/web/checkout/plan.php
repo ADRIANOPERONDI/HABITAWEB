@@ -24,20 +24,7 @@
                                 Mensal
                             </label>
 
-                            <?php if(isset($plan->preco_trimestral) && $plan->preco_trimestral > 0): ?>
-                            <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_quarterly" value="QUARTERLY" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_quarterly">
-                                Trimestral
-                            </label>
-                            <?php endif; ?>
-
-                            <?php if(isset($plan->preco_semestral) && $plan->preco_semestral > 0): ?>
-                            <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_semiannually" value="SEMIANNUALLY" autocomplete="off">
-                            <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_semiannually">
-                                Semestral
-                            </label>
-                            <?php endif; ?>
-
+                            <?php // Só mensal e anual: são os ciclos que a fatura única mensal sabe cobrar. ?>
                             <?php if(isset($plan->preco_anual) && $plan->preco_anual > 0): ?>
                             <input type="radio" class="btn-check cycle-selector" name="billing_cycle_display" id="cycle_yearly" value="YEARLY" autocomplete="off">
                             <label class="btn btn-outline-primary rounded-pill small px-3 py-2 fw-bold" for="cycle_yearly">
@@ -83,6 +70,15 @@
                         <span class="fw-bold text-success fs-4" id="total_display">R$ <?= number_format($plan->preco_mensal, 2, ',', '.') ?></span>
                     </div>
                     
+                    <?php // Pay to use: a adesão é paga hoje; depois, fatura única todo dia 1 (mensalidade + leads), vencendo dia 10. ?>
+                    <?php foreach ($adesao as $ciclo => $a): if (! $a) continue; ?>
+                        <div class="alert alert-light border rounded-4 small mt-3 mb-0 js-adesao <?= $ciclo === 'MONTHLY' ? '' : 'd-none' ?>" data-ciclo="<?= $ciclo ?>">
+                            <strong>Hoje você paga R$ <?= number_format($a['valor'], 2, ',', '.') ?></strong>,
+                            referente a <?= date('d/m/Y', strtotime($a['inicio'])) ?> a <?= date('d/m/Y', strtotime($a['fim'])) ?><?= $ciclo === 'MONTHLY' ? ' (proporcional aos dias que faltam no mês)' : '' ?>.
+                            Depois, uma fatura por mês com a mensalidade e os leads do mês anterior, vencendo no dia 10.
+                        </div>
+                    <?php endforeach; ?>
+
                     <div class="mt-4 small text-muted">
                         <i class="fas fa-lock me-1"></i> Ambiente seguro
                     </div>
@@ -104,7 +100,7 @@
                         
                         <!-- Payment Methods Grid -->
                         <div class="row g-3 mb-4">
-                            <div class="col-4">
+                            <div class="col-6">
                                 <input type="radio" class="btn-check" name="billing_type" id="method_pix" value="PIX" checked autocomplete="off">
                                 <label class="payment-card d-flex flex-column align-items-center justify-content-center p-3 rounded-4 border w-100 h-100 position-relative" for="method_pix">
                                     <i class="fas fa-qrcode fa-2x mb-2 text-primary"></i>
@@ -114,21 +110,11 @@
                                     </div>
                                 </label>
                             </div>
-                            <div class="col-4">
+                            <div class="col-6">
                                 <input type="radio" class="btn-check" name="billing_type" id="method_boleto" value="BOLETO" autocomplete="off">
                                 <label class="payment-card d-flex flex-column align-items-center justify-content-center p-3 rounded-4 border w-100 h-100 position-relative" for="method_boleto">
                                     <i class="fas fa-barcode fa-2x mb-2 text-secondary"></i>
                                     <span class="fw-bold small">Boleto</span>
-                                    <div class="check-icon position-absolute top-0 end-0 m-2 text-success d-none">
-                                        <i class="fas fa-check-circle"></i>
-                                    </div>
-                                </label>
-                            </div>
-                            <div class="col-4">
-                                <input type="radio" class="btn-check" name="billing_type" id="method_cc" value="CREDIT_CARD" autocomplete="off">
-                                <label class="payment-card d-flex flex-column align-items-center justify-content-center p-3 rounded-4 border w-100 h-100 position-relative" for="method_cc">
-                                    <i class="fas fa-credit-card fa-2x mb-2 text-warning"></i>
-                                    <span class="fw-bold small text-center lh-sm">Cartão</span>
                                     <div class="check-icon position-absolute top-0 end-0 m-2 text-success d-none">
                                         <i class="fas fa-check-circle"></i>
                                     </div>
@@ -170,25 +156,14 @@
                             <!-- PIX Info -->
                             <div class="payment-info" id="info_pix">
                                 <div class="alert alert-info border-0 rounded-4">
-                                    <i class="fas fa-bolt me-2"></i> Pagamento aprovado na hora. Liberação imediata!
+                                    <i class="fas fa-bolt me-2"></i> PIX compensa na hora: o painel libera assim que o pagamento é confirmado.
                                 </div>
                             </div>
 
                             <!-- Boleto Info -->
                             <div class="payment-info d-none" id="info_boleto">
                                 <div class="alert alert-warning border-0 rounded-4">
-                                    <i class="fas fa-clock me-2"></i> Pode levar até 1 dia útil para compensar.
-                                </div>
-                            </div>
-                            
-                            <!-- Credit Card Info (Redirection) -->
-                            <div class="payment-info d-none" id="info_cc">
-                                <div class="alert alert-success border-0 rounded-4">
-                                    <h6 class="alert-heading fw-bold"><i class="fas fa-shield-alt me-2"></i>Ambiente Seguro</h6>
-                                    <p class="mb-0">
-                                        Para sua segurança, você será redirecionado para a página de pagamento criptografada do nosso parceiro <strong>Asaas</strong>.
-                                        Lá você poderá inserir os dados do seu cartão com total segurança.
-                                    </p>
+                                    <i class="fas fa-clock me-2"></i> O boleto pode levar até 1 dia útil para compensar; o painel libera quando o pagamento é confirmado.
                                 </div>
                             </div>
 
@@ -216,7 +191,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const radios = document.querySelectorAll('input[name="billing_type"]');
     const pixInfo = document.getElementById('info_pix');
     const boletoInfo = document.getElementById('info_boleto');
-    const ccInfo = document.getElementById('info_cc');
     const form = document.getElementById('paymentForm');
     const btn = form.querySelector('button[type="submit"]');
 
@@ -224,11 +198,9 @@ document.addEventListener('DOMContentLoaded', function() {
         radio.addEventListener('change', function() {
             pixInfo.classList.add('d-none');
             boletoInfo.classList.add('d-none');
-            ccInfo.classList.add('d-none');
             
             if(this.value === 'PIX') pixInfo.classList.remove('d-none');
             if(this.value === 'BOLETO') boletoInfo.classList.remove('d-none');
-            if(this.value === 'CREDIT_CARD') ccInfo.classList.remove('d-none');
         });
     });
 
@@ -281,6 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
             currentBasePrice = prices[this.value];
             updateTotalDisplay();
             updateRampBanner(this.value);
+            document.querySelectorAll('.js-adesao').forEach(el => el.classList.toggle('d-none', el.dataset.ciclo !== this.value));
 
             // Re-validate coupon if one is already applied
             if (hiddenCoupon.value) {

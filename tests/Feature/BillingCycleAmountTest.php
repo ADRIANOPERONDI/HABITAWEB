@@ -95,12 +95,14 @@ final class BillingCycleAmountTest extends HabitawebTestCase
         $this->withoutCsrf();
 
         $tenant = (new TenantFactory())->create();
-        $plan   = $this->makePlan(['preco_mensal' => 990.00, 'preco_trimestral' => 0.00]);
+        // Checkout só vende mensal e anual (fatura única mensal); um plano sem
+        // preço anual não pode ser assinado no anual.
+        $plan   = $this->makePlan(['preco_mensal' => 990.00, 'preco_anual' => 0.00]);
 
         $response = $this->actingAs($tenant['user'])->post('checkout/process', [
             'plan_id'       => $plan->id,
             'billing_type'  => 'PIX',
-            'billing_cycle' => 'QUARTERLY',
+            'billing_cycle' => 'YEARLY',
         ]);
 
         $response->assertSessionHas('error', 'Este plano não está disponível na periodicidade escolhida.');
