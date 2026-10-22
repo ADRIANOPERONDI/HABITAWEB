@@ -121,7 +121,7 @@ class PartnerController extends BaseController
             'team'       => (new \App\Services\AccountService())->getPublicTeam((int) $partner->id),
             'aba'        => $aba,
             'showContact' => $showContact,
-            'title'      => $partner->nome . ' - ' . ($partner->tipo_conta === 'IMOBILIARIA' ? 'Imobiliária' : 'Corretor') . ' Parceiro'
+            'title'      => $partner->nome . ' - ' . \App\Entities\Account::tipoLabel($partner->tipo_conta) . ' Parceiro'
         ]);
     }
 }

@@ -55,7 +55,9 @@ final class ListingBadgesTest extends HabitawebTestCase
 
         $this->assertStringContainsString('Anúncio completo', $html);
         $this->assertStringContainsString('pelo menos 5 fotos, área, quartos e banheiros', $html);
-        $this->assertMatchesRegularExpression('/data-bs-toggle="popover"[^>]*data-bs-content="Os contatos feitos pelo formulário/', $html);
+        $this->assertMatchesRegularExpression('/data-bs-toggle="popover"[^>]*data-bs-content="Sua mensagem pelo formulário/', $html);
+        $this->assertStringContainsString('Contato direto com a imobiliária', $html);
+        $this->assertStringNotContainsString('Atendimento rastreado', $html);
         // A inicialização não pode depender do bloco do WhatsApp, que só é
         // renderizado quando o anunciante libera contato.
         $this->assertStringContainsString('new bootstrap.Popover(el)', $html);
@@ -69,5 +71,20 @@ final class ListingBadgesTest extends HabitawebTestCase
     public function testImovelSobConsultaNaoGanhaOSelo(): void
     {
         $this->assertStringNotContainsString('Anúncio completo', $this->html($this->imovel(['preco' => 0], 6)));
+    }
+
+    /** O selo de contato diz com quem o visitante fala, conforme o tipo da conta. */
+    public function testSeloDeContatoUsaOTipoDaConta(): void
+    {
+        $esperado = [
+            'CONSTRUTORA' => 'Contato direto com a construtora',
+            'CORRETOR'    => 'Contato direto com o corretor',
+            'PF'          => 'Contato direto com o proprietário',
+        ];
+        foreach ($esperado as $tipo => $texto) {
+            $this->accountId = (int) (new TenantFactory())->create(['tipo_conta' => $tipo])['account']->id;
+            $html = $this->html($this->imovel([], 1));
+            $this->assertStringContainsString($texto, $html, $tipo);
+        }
     }
 }

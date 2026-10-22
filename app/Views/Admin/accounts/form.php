@@ -51,6 +51,7 @@
                                         <option value="PF" <?= old('tipo_conta', $account->tipo_conta) == 'PF' ? 'selected' : '' ?>>Pessoa Física (Anunciante)</option>
                                         <option value="CORRETOR" <?= old('tipo_conta', $account->tipo_conta) == 'CORRETOR' ? 'selected' : '' ?>>Corretor Autônomo</option>
                                         <option value="IMOBILIARIA" <?= old('tipo_conta', $account->tipo_conta) == 'IMOBILIARIA' ? 'selected' : '' ?>>Imobiliária</option>
+                                        <option value="CONSTRUTORA" <?= old('tipo_conta', $account->tipo_conta) == 'CONSTRUTORA' ? 'selected' : '' ?>>Construtora</option>
                                     </select>
                                 </div>
 

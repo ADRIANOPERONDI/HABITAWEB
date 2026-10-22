@@ -341,7 +341,7 @@ class AccountService
 
             // 3. Assign Group
             $group = 'user';
-            if ($data['tipo_conta'] === 'IMOBILIARIA') {
+            if (in_array($data['tipo_conta'], ['IMOBILIARIA', 'CONSTRUTORA'], true)) {
                 $group = 'imobiliaria_admin';
             } elseif ($data['tipo_conta'] === 'CORRETOR') {
                 $group = 'imobiliaria_corretor';
