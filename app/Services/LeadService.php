@@ -11,6 +11,9 @@ use CodeIgniter\Config\Factories;
 
 class LeadService
 {
+    /** Dias, a partir do primeiro contato, em que a mesma pessoa no mesmo imóvel é o mesmo lead. */
+    public const JANELA_LEAD_REPETIDO_DIAS = 30;
+
     protected LeadModel $leadModel;
     protected LeadEventModel $leadEventModel;
     protected PropertyModel $propertyModel;
@@ -49,14 +52,22 @@ class LeadService
             ];
         }
 
-        // Verifica se já existe lead desse visitante para este imóvel recentemente (opcional, para evitar spam)
-        // Por simplificação, vamos criar sempre ou buscar pelo email/telefone para o mesmo imóvel
-        
+        // Contato repetido (regra comercial, item 11 da revisão): a mesma
+        // pessoa (mesmo e-mail) no mesmo imóvel dentro de 30 dias do primeiro
+        // contato é o MESMO lead — atualiza, não cobra de novo. Passados os
+        // 30 dias, é lead novo (e nova cobrança). E-mail comparado sem caixa
+        // e sem espaços: "Fulano@X.com " e "fulano@x.com" são a mesma pessoa.
+        if (!empty($data['email_visitante'])) {
+            $data['email_visitante'] = mb_strtolower(trim((string) $data['email_visitante']));
+        }
+
         $existingLead = null;
         if (!empty($data['email_visitante']) && !empty($data['property_id'])) {
             $existingLead = $this->leadModel
                 ->where('property_id', $data['property_id'])
-                ->where('email_visitante', $data['email_visitante'])
+                ->where('LOWER(TRIM(email_visitante))', $data['email_visitante'])
+                ->where('created_at >=', date('Y-m-d H:i:s', strtotime('-' . self::JANELA_LEAD_REPETIDO_DIAS . ' days')))
+                ->orderBy('created_at', 'DESC')
                 ->first();
         } elseif (!empty($data['property_id']) && ($data['nome_visitante'] ?? '') === 'Visitante WhatsApp') {
             // Deduplicação para silent tracking (cliques repetidos do mesmo dispositivo/visitante)
@@ -119,6 +130,17 @@ class LeadService
         if ($this->leadModel->save($lead)) {
             $leadId = $lead->id ?? $this->leadModel->getInsertID();
             $savedLead = $this->leadModel->find($leadId);
+
+            // Contato repetido dentro da janela: o lead é o mesmo (sem nova
+            // cobrança), mas a nova mensagem fica no histórico do lead em vez
+            // de só sobrescrever a anterior sem rastro.
+            if ($existingLead) {
+                $this->registerEvent((int) $leadId, 'lead.contato_repetido', [
+                    'mensagem'  => $data['mensagem'] ?? null,
+                    'tipo'      => $data['tipo_lead'] ?? null,
+                    'timestamp' => date('Y-m-d H:i:s'),
+                ]);
+            }
             
             // Incrementa contador de leads no imóvel
             if (!$existingLead) {
