@@ -250,6 +250,38 @@ final class PlanCheckoutTest extends HabitawebTestCase
     }
 
     /**
+     * Pay to use (decisão do cliente): assinatura pelo site cobra a primeira
+     * mensalidade na hora — vencimento hoje — e o painel só libera depois do
+     * pagamento confirmado. Antes a carência de 3 dias do plano jogava o
+     * vencimento para frente e liberava o painel sem pagar.
+     */
+    public function testAssinaturaPeloSiteCobraNaHoraESoLiberaDepoisDePagar(): void
+    {
+        $this->ativarGatewayFake();
+        FakePaymentGateway::$subscriptionsCreated = [];
+
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
+        $this->assertSame(0, (int) $plan->carencia_dias, 'planos do catálogo sem carência de dias');
+
+        // Cadastro novo: ainda não tem assinatura nenhuma.
+        \Config\Database::connect()->table('subscriptions')->where('account_id', $tenant['account']->id)->delete();
+
+        $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
+            'plan_id'       => (string) $plan->id,
+            'billing_type'  => 'PIX',
+            'billing_cycle' => 'MONTHLY',
+        ]))->assertRedirectTo('admin/subscription');
+
+        $this->assertSame(date('Y-m-d'), FakePaymentGateway::$subscriptionsCreated[0]['data']['next_due_date'], 'primeira mensalidade vence hoje');
+
+        $sub = model(SubscriptionModel::class)->where('account_id', $tenant['account']->id)->orderBy('id', 'DESC')->first();
+        $this->assertSame('PENDING', $sub->status, 'só ativa quando o pagamento confirmar');
+
+        $this->actingAs($tenant['user'])->get('admin/dashboard')->assertRedirectTo('admin/subscription');
+    }
+
+    /**
      * P6: o ciclo anual nunca entra na rampa (evita pró-rata sobre um valor
      * de 12 meses pago de uma vez, ou "anual a R$ 0"). Segue o fluxo pago
      * normal de sempre.

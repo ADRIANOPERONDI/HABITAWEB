@@ -18,6 +18,7 @@ class FakePaymentGateway implements GatewayInterface
 {
     public static array $paymentsCreated = [];
     public static array $subscriptionUpdates = [];
+    public static array $subscriptionsCreated = [];
 
     public function configure(array $config): void
     {
@@ -40,6 +41,8 @@ class FakePaymentGateway implements GatewayInterface
 
     public function createSubscription(string $customerId, string $planId, array $data): array
     {
+        self::$subscriptionsCreated[] = ['customer_id' => $customerId, 'plan_id' => $planId, 'data' => $data];
+
         return [
             'subscription_id'    => 'fake_sub_' . uniqid(),
             'status'             => 'ACTIVE',

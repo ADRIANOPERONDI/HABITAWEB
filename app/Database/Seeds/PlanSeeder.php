@@ -88,7 +88,7 @@ class PlanSeeder extends Seeder
                 'limite_api_requests_dia' => 5000,
                 'preco_mensal'            => 990.00,
                 'preco_anual'             => 9900.00,
-                'carencia_dias'           => 3,
+                'carencia_dias'           => 0,
                 'features'                => [],
             ],
             [
@@ -104,7 +104,7 @@ class PlanSeeder extends Seeder
                 'limite_api_requests_dia' => 20000,
                 'preco_mensal'            => 1690.00,
                 'preco_anual'             => 16900.00,
-                'carencia_dias'           => 3,
+                'carencia_dias'           => 0,
                 'features'                => [
                     PlanFeature::PAINEL_COMPLETO   => true,
                     PlanFeature::EXPOSICAO_BUSCA   => true,
@@ -124,7 +124,7 @@ class PlanSeeder extends Seeder
                 'limite_api_requests_dia' => 50000,
                 'preco_mensal'            => 2490.00,
                 'preco_anual'             => 24900.00,
-                'carencia_dias'           => 3,
+                'carencia_dias'           => 0,
                 'features'                => [
                     PlanFeature::PAINEL_COMPLETO      => true,
                     PlanFeature::EXPOSICAO_BUSCA      => true,

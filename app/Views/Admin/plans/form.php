@@ -88,8 +88,8 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Carência (Dias)</label>
-                            <input type="number" name="carencia_dias" class="form-control" value="<?= old('carencia_dias', $plan->carencia_dias ?? '3') ?>" required>
-                            <div class="form-text">P/ a 1ª Fatura.</div>
+                            <input type="number" name="carencia_dias" class="form-control" min="0" value="<?= old('carencia_dias', $plan->carencia_dias ?? '0') ?>" required>
+                            <div class="form-text">Dias até vencer a 1ª fatura, com painel liberado antes de pagar. Padrão 0: paga antes de usar.</div>
                         </div>
                     </div>
 
