@@ -286,9 +286,7 @@
                             // já que não existe nenhum número pra abrir).
                             $hasContactNumber = !empty($property->account_phone) || !empty($property->account_whatsapp);
                         ?>
-                        <?php if(($showContact ?? false) && $hasContactNumber): ?>
-                            <div class="mb-1"><i class="fa-solid fa-phone me-2"></i> <?= esc($property->account_phone ?: $property->account_whatsapp) ?></div>
-                        <?php endif; ?>
+                        <?php // Telefone também não aparece escrito: quem liga direto não vira lead. O contato é pelo formulário ou pelo botão do WhatsApp, que registram o lead (decisão do cliente). ?>
                         <a href="<?= site_url('parceiro/' . $property->account_id) ?>" class="text-primary fw-bold text-decoration-none d-block mt-2">
                             Ver Perfil Completo <i class="fas fa-arrow-right ms-1"></i>
                         </a>

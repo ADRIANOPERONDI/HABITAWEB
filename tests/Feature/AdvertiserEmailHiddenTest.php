@@ -36,6 +36,8 @@ final class AdvertiserEmailHiddenTest extends HabitawebTestCase
             $html = $this->get($uri)->response()->getBody();
             $this->assertStringNotContainsString($email, $html, $uri);
             $this->assertStringNotContainsString('mailto:', $html, $uri);
+            $this->assertStringNotContainsString('href="tel:', $html, $uri);
+            $this->assertStringNotContainsString('fa-phone me-2', $html, $uri);
         }
     }
 }

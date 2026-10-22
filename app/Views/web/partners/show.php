@@ -44,11 +44,7 @@
                         </a>
                     <?php endif; ?>
 
-                    <?php if(($showContact ?? false) && !empty($partner->telefone)): ?>
-                        <a href="tel:<?= $partner->telefone ?>" class="btn btn-outline-dark rounded-pill px-4">
-                            <i class="fas fa-phone me-2"></i> <?= esc($partner->telefone) ?>
-                        </a>
-                    <?php endif; ?>
+                    <?php // Sem telefone público: ligação direta não vira lead (decisão do cliente). ?>
 
                     <?php // Sem e-mail público: contato por fora do site não vira lead (item 11 da revisão). ?>
                 </div>
