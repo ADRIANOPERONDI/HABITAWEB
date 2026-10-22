@@ -27,8 +27,13 @@ class PaymentTransactionModel extends Model
      * pendente" — uma fatura de TURBO ou de LEAD_INVOICE vencida não pode
      * derrubar o site do tenant nem parecer que a assinatura está em risco:
      * é uma cobrança à parte, não a mensalidade.
+     *
+     * RECURRING_CHARGE é a renovação mensal criada pela Asaas e registrada
+     * pelo webhook PAYMENT_CREATED (WebhookService::handlePaymentCreated).
+     * Ficava de fora: renovação em atraso nunca suspendia a conta nem
+     * recebia aviso de vencimento.
      */
-    public const SUBSCRIPTION_TYPES = ['SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE'];
+    public const SUBSCRIPTION_TYPES = ['SUBSCRIPTION', 'UPGRADE_PRORATA', 'TOKENIZATION_CHARGE', 'RECURRING_CHARGE'];
 
     /**
      * Dias de atraso a partir dos quais a conta fica SUSPENSA: anúncios fora

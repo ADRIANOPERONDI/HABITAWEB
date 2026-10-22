@@ -1623,10 +1623,18 @@ class PaymentService
             $this->clearSubscriptionCaches((int) $subscription->account_id);
         }
 
-        // 1. Limpar outras transações PENDENTES para esta conta
+        // 1. Limpar outras transações PENDENTES de MENSALIDADE desta conta
+        // (cobranças de assinatura anteriores que ficaram para trás).
         // Proteção: NUNCA cancelar transações PENDENTES que pertencem a ESTA mesma assinatura que estamos ativando.
+        // Só tipos de mensalidade: fatura de leads e turbinada não têm
+        // subscription_id e eram canceladas aqui junto — a fatura continuava
+        // aberta na Asaas, mas sumia do sistema e o pagamento não dava baixa.
         $this->transactionModel->where('account_id', $subscription->account_id)
                               ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+                              ->groupStart()
+                                  ->whereIn('type', \App\Models\PaymentTransactionModel::SUBSCRIPTION_TYPES)
+                                  ->orWhere('type', null)
+                              ->groupEnd()
                               ->groupStart()
                                   ->where('subscription_id !=', $subscription->id)
                                   ->orWhere('subscription_id IS NULL')

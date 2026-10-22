@@ -89,4 +89,47 @@ final class OverdueAccountsCacheTest extends HabitawebTestCase
         $this->assertFalse($model->isAccountBlockedByOverdue($accountId));
         $this->assertNotContains($accountId, $model->getOverdueAccountIds());
     }
+
+    /** Renovação criada pela Asaas (RECURRING_CHARGE) em atraso suspende como a mensalidade. */
+    public function testRenovacaoRecorrenteEmAtrasoSuspende(): void
+    {
+        $accountId = (int) (new TenantFactory())->create()['account']->id;
+
+        $model = new PaymentTransactionModel();
+        $model->insert([
+            'account_id'             => $accountId,
+            'gateway'                => 'asaas',
+            'gateway_transaction_id' => 'recurring_overdue_' . uniqid(),
+            'amount'                 => 990.00,
+            'status'                 => 'OVERDUE',
+            'type'                   => 'RECURRING_CHARGE',
+            'due_date'               => date('Y-m-d', strtotime('-10 days')),
+        ]);
+
+        $this->assertTrue($model->isAccountBlockedByOverdue($accountId));
+    }
+
+    /**
+     * Ativar a assinatura (pagamento confirmado via sync) cancelava localmente
+     * as faturas de leads e de turbinada em aberto — elas continuavam na
+     * Asaas, mas o pagamento delas nunca mais dava baixa.
+     */
+    public function testAtivarAssinaturaNaoCancelaFaturaDeLeadsNemTurbinada(): void
+    {
+        $tenant    = (new TenantFactory())->create();
+        $accountId = (int) $tenant['account']->id;
+        model(\App\Models\SubscriptionModel::class)->update($tenant['subscription']->id, ['asaas_subscription_id' => 'sub_ativar_' . uniqid()]);
+        $sub = model(\App\Models\SubscriptionModel::class)->find($tenant['subscription']->id);
+
+        $model = new PaymentTransactionModel();
+        $lead  = $model->insert(['account_id' => $accountId, 'gateway' => 'asaas', 'gateway_transaction_id' => 'lead_' . uniqid(), 'amount' => 80, 'status' => 'PENDING', 'type' => 'LEAD_INVOICE'], true);
+        $turbo = $model->insert(['account_id' => $accountId, 'gateway' => 'asaas', 'gateway_transaction_id' => 'turbo_' . uniqid(), 'amount' => 50, 'status' => 'PENDING', 'type' => 'TURBO'], true);
+        $velha = $model->insert(['account_id' => $accountId, 'gateway' => 'asaas', 'gateway_transaction_id' => 'velha_' . uniqid(), 'amount' => 990, 'status' => 'PENDING', 'type' => 'SUBSCRIPTION'], true);
+
+        (new \App\Services\PaymentService())->activateSubscriptionByAsaasId((string) $sub->asaas_subscription_id);
+
+        $this->assertSame('PENDING', $model->find($lead)['status']);
+        $this->assertSame('PENDING', $model->find($turbo)['status']);
+        $this->assertSame('CANCELLED', $model->find($velha)['status'], 'mensalidade antiga de outra assinatura continua sendo limpa');
+    }
 }
