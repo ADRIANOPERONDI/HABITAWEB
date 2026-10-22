@@ -189,6 +189,10 @@ final class LeadChargeCloseCycleTest extends HabitawebTestCase
         $this->assertSame('invoiced_charged', $resultado['status']);
         $this->assertSame(160.0, $resultado['charged']);
         $this->assertSame(0.0, $resultado['credit_applied']);
+
+        // Vencimento gravado: é o que permite o aviso de vencimento por e-mail.
+        $fatura = model(\App\Models\PaymentTransactionModel::class)->find($resultado['payment_transaction_id']);
+        $this->assertSame(date('Y-m-d', strtotime('+3 days')), substr((string) $fatura['due_date'], 0, 10));
     }
 
     public function testSemCobrancaAprovadaNoPeriodoNaoFazNada(): void
