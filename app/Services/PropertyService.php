@@ -651,6 +651,70 @@ class PropertyService
     }
 
     /**
+     * Vitrine "Destaques Recomendados" da home: primeiro os destaques pagos
+     * (getFeaturedProperties, mesma ordem de sempre) e, se não chegarem a
+     * $limit, completa com os imóveis públicos mais recentes. Sem isso, um dia
+     * sem destaque contratado deixava a seção com "Novos imóveis em breve" num
+     * site cheio de imóveis. Nenhum imóvel aparece duas vezes.
+     */
+    public function getHomeFeaturedProperties(int $limit = 8): array
+    {
+        $featured = $this->getFeaturedProperties($limit);
+        $faltam   = $limit - count($featured);
+
+        if ($faltam <= 0) {
+            return $featured;
+        }
+
+        return array_merge(
+            $featured,
+            $this->getRecentPublicProperties($faltam, array_map(static fn ($p) => (int) $p->id, $featured))
+        );
+    }
+
+    /**
+     * Imóveis públicos mais recentes, com capa, fora da lista $excludeIds.
+     */
+    public function getRecentPublicProperties(int $limit, array $excludeIds = []): array
+    {
+        $builder = $this->propertyModel->builder();
+        $builder->select('properties.*, accounts.is_verified as account_verified')
+                ->join('accounts', 'accounts.id = properties.account_id', 'left')
+                ->where('properties.status', 'ACTIVE')
+                ->orderBy('properties.created_at', 'DESC')
+                ->orderBy('properties.id', 'DESC');
+
+        if ($excludeIds !== []) {
+            $builder->whereNotIn('properties.id', $excludeIds);
+        }
+
+        $this->publicVisibility->apply($builder);
+
+        $properties = $builder->get($limit)->getResult(\App\Entities\Property::class);
+
+        if (empty($properties)) {
+            return [];
+        }
+
+        $medias = Factories::models(\App\Models\PropertyMediaModel::class)
+            ->whereIn('property_id', array_column($properties, 'id'))
+            ->findAll();
+
+        $mediaMap = [];
+        foreach ($medias as $media) {
+            if (!isset($mediaMap[$media->property_id]) || $media->principal) {
+                $mediaMap[$media->property_id] = $media->url;
+            }
+        }
+
+        foreach ($properties as $property) {
+            $property->cover_image = $mediaMap[$property->id] ?? null;
+        }
+
+        return $properties;
+    }
+
+    /**
      * Retorna o POOL de imóveis patrocinados (destaque ou turbo ativos),
      * ordenado por recência — substitui o antigo getSponsoredProperties com
      * ORDER BY RANDOM(): RANDOM() força ordenação completa a cada requisição

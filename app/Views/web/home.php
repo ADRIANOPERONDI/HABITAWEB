@@ -94,7 +94,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4 px-2">
             <div>
                 <h2 class="section-title">Destaques Recomendados</h2>
-                <p class="section-subtitle mb-0">Imóveis verificados com alta qualidade visual.</p>
+                <p class="section-subtitle mb-0">Imóveis em destaque e os anúncios mais recentes.</p>
             </div>
             <a href="<?= site_url('imoveis') ?>" class="btn btn-link text-dark fw-bold text-decoration-none text-nowrap">
                 Ver todos <i class="fa-solid fa-chevron-right ms-1"></i>
@@ -176,46 +176,43 @@
 </section>
 
 <!-- Partners / Agencies Section -->
+<?php // Só imobiliárias com vitrine no plano (AccountService::getFeaturedPartners). Sem nenhuma, a seção some. ?>
+<?php if (! empty($partners)): ?>
 <section class="py-5 border-top bg-light">
     <div class="container">
         <div class="text-center mb-5">
-            <h2 class="section-title">Nossos Parceiros</h2>
-            <p class="section-subtitle">As melhores imobiliárias e corretores estão aqui</p>
+            <h2 class="section-title">Parceiros em destaque</h2>
+            <p class="section-subtitle">Conheça as imobiliárias em destaque na plataforma.</p>
         </div>
         
         <div class="row g-4 justify-content-center">
-            <?php if(empty($partners)): ?>
-                <div class="col-12 text-center opacity-50">
-                    <p>Conheça nossos parceiros em breve.</p>
-                </div>
-            <?php else: ?>
-                <?php foreach($partners as $partner): ?>
-                <div class="col-6 col-md-3 col-lg-2">
-                    <a href="<?= partner_url($partner) ?>" class="text-decoration-none">
-                        <div class="partner-card animate-fade-in bg-white shadow-sm h-100 p-3 rounded-4 position-relative">
-                            <?php if($partner->is_verified): ?>
-                                <div class="position-absolute top-0 end-0 m-2 text-primary" title="Parceiro Verificado">
-                                    <i class="fa-solid fa-circle-check fs-6"></i>
-                                </div>
-                            <?php endif; ?>
-                            <?php if (!empty($partner->logo)): ?>
-                                <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
-                            <?php else: ?>
-                                <?php // Logo não é obrigatório no cadastro. Sem ele, saía <img src=""> (ícone de
-                                      // imagem quebrada); a inicial do nome no mesmo círculo de 80px mantém a grade
-                                      // alinhada — padrão de web/partners/index.php. ?>
-                                <div class="partner-logo partner-logo-fallback mb-2 d-inline-flex align-items-center justify-content-center text-primary fw-bold fs-3" aria-hidden="true"><?= esc(mb_strtoupper(mb_substr(trim((string) $partner->nome), 0, 1))) ?></div>
-                            <?php endif; ?>
-                            <div class="small fw-bold text-dark text-truncate d-block"><?= esc($partner->nome) ?></div>
-                            <span class="xsmall text-muted text-uppercase" style="font-size: 10px;"><?= esc($partner->tipo_conta) ?></span>
-                        </div>
-                    </a>
-                </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+            <?php foreach($partners as $partner): ?>
+            <div class="col-6 col-md-3 col-lg-2">
+                <a href="<?= partner_url($partner) ?>" class="text-decoration-none">
+                    <div class="partner-card animate-fade-in bg-white shadow-sm h-100 p-3 rounded-4 position-relative">
+                        <?php if($partner->is_verified): ?>
+                            <div class="position-absolute top-0 end-0 m-2 text-primary" title="Parceiro Verificado">
+                                <i class="fa-solid fa-circle-check fs-6"></i>
+                            </div>
+                        <?php endif; ?>
+                        <?php if (!empty($partner->logo)): ?>
+                            <img src="<?= media_url($partner->logo) ?>" alt="<?= esc($partner->nome) ?>" class="partner-logo mb-2" loading="lazy" decoding="async">
+                        <?php else: ?>
+                            <?php // Logo não é obrigatório no cadastro. Sem ele, saía <img src=""> (ícone de
+                                  // imagem quebrada); a inicial do nome no mesmo círculo de 80px mantém a grade
+                                  // alinhada — padrão de web/partners/index.php. ?>
+                            <div class="partner-logo partner-logo-fallback mb-2 d-inline-flex align-items-center justify-content-center text-primary fw-bold fs-3" aria-hidden="true"><?= esc(mb_strtoupper(mb_substr(trim((string) $partner->nome), 0, 1))) ?></div>
+                        <?php endif; ?>
+                        <div class="small fw-bold text-dark text-truncate d-block"><?= esc($partner->nome) ?></div>
+                        <span class="xsmall text-muted text-uppercase" style="font-size: 10px;"><?= esc($partner->tipo_conta) ?></span>
+                    </div>
+                </a>
+            </div>
+            <?php endforeach; ?>
         </div>
     </div>
 </section>
+<?php endif; ?>
 
 <!-- Call to Action Section -->
 <section class="py-5">
