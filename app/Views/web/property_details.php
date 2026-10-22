@@ -277,9 +277,7 @@
                     </div>
 
                     <div class="bg-light p-3 rounded-4 x-small text-muted">
-                        <?php if($property->account_email): ?>
-                            <div class="mb-1"><i class="fa-solid fa-envelope me-2"></i> <?= esc($property->account_email) ?></div>
-                        <?php endif; ?>
+                        <?php // Sem e-mail do anunciante: o contato passa pelo formulário/WhatsApp, que é o que vira lead (decisão do cliente, item 11 da revisão). ?>
                         <?php
                             // !empty(), não ?? — conta sem telefone/whatsapp preenchido
                             // grava string vazia, não null, então ?? nunca cai no
