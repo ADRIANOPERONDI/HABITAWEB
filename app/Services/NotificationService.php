@@ -131,27 +131,36 @@ class NotificationService
     /**
      * Notifica um anunciante sobre um novo Lead
      */
+    /**
+     * @return array{email: bool|null} null = aviso por e-mail desligado ou
+     *                                  conta sem e-mail (nada a entregar)
+     */
     public function notifyNewLead(array $leadData, array $anuncianteData)
     {
         if (app_setting('notify.leads', '1') !== '1') {
-            return;
+            return ['email' => null];
         }
 
-        $subject = "Novo Lead Recebido: " . $leadData['nome'];
-        
+        // Dados do visitante entram escapados: vêm de um formulário público e
+        // iam crus para o HTML do e-mail da imobiliária.
+        $e = static fn ($v) => esc((string) ($v ?? ''));
+        $subject = 'Novo Lead Recebido: ' . (string) ($leadData['nome'] ?? '');
+
         $emailBody = "
             <h2>Você recebeu um novo contato!</h2>
-            <p><strong>Nome:</strong> {$leadData['nome']}</p>
-            <p><strong>E-mail:</strong> {$leadData['email']}</p>
-            <p><strong>Telefone:</strong> {$leadData['telefone']}</p>
-            <p><strong>Mensagem:</strong><br>{$leadData['mensagem']}</p>
+            " . (! empty($leadData['imovel']) ? '<p><strong>Imóvel:</strong> ' . $e($leadData['imovel']) . '</p>' : '') . "
+            <p><strong>Nome:</strong> {$e($leadData['nome'])}</p>
+            <p><strong>E-mail:</strong> {$e($leadData['email'])}</p>
+            <p><strong>Telefone:</strong> {$e($leadData['telefone'])}</p>
+            <p><strong>Mensagem:</strong><br>" . nl2br($e($leadData['mensagem'])) . "</p>
             <hr>
             <p>Acesse seu painel administrativo para responder e gerenciar este lead.</p>
         ";
 
         // Envia E-mail
+        $emailEnviado = null;
         if (!empty($anuncianteData['email'])) {
-            $this->sendEmail($anuncianteData['email'], $subject, $emailBody);
+            $emailEnviado = $this->sendEmail($anuncianteData['email'], $subject, $emailBody);
         }
 
         // PERSISTE NO BANCO (se tiver user_id no anuncianteData, assumindo que sim pois vem de Account/User)
@@ -178,6 +187,8 @@ class NotificationService
             $waMessage = "*Novo Lead no Portal!* \n\n*Nome:* {$leadData['nome']}\n*Fone:* {$leadData['telefone']}\n*Mensagem:* {$leadData['mensagem']}";
             $this->sendWhatsApp($anuncianteData['telefone'], $waMessage);
         }
+
+        return ['email' => $emailEnviado];
     }
 
     /**
