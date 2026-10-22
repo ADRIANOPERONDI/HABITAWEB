@@ -49,6 +49,7 @@
                             <?php 
                                 $badgeClass = match($acc->tipo_conta) {
                                     'IMOBILIARIA' => 'bg-primary',
+                                    'CONSTRUTORA' => 'bg-dark',
                                     'CORRETOR' => 'bg-info text-dark',
                                     'PF' => 'bg-secondary',
                                     default => 'bg-light text-muted'

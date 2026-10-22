@@ -84,6 +84,7 @@
                             <select name="tipo_conta" class="form-select form-select-lg bg-light border-0" required>
                                 <option value="" disabled selected>Selecione...</option>
                                 <option value="IMOBILIARIA" <?= old('tipo_conta') == 'IMOBILIARIA' ? 'selected' : '' ?>>Imobiliária (PJ)</option>
+                                <option value="CONSTRUTORA" <?= old('tipo_conta') == 'CONSTRUTORA' ? 'selected' : '' ?>>Construtora (PJ)</option>
                                 <option value="CORRETOR" <?= old('tipo_conta') == 'CORRETOR' ? 'selected' : '' ?>>Corretor (CRECI)</option>
                                 <option value="PF" <?= old('tipo_conta') == 'PF' ? 'selected' : '' ?>>Proprietário (PF)</option>
                             </select>

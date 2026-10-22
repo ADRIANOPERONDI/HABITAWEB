@@ -24,8 +24,8 @@
             <div class="col-md-9">
                 <div class="d-flex align-items-center gap-3 mb-2">
                     <h1 class="fw-bold text-dark mb-0"><?= esc($partner->nome) ?></h1>
-                    <?php if($partner->tipo_conta == 'IMOBILIARIA'): ?>
-                        <span class="badge bg-primary rounded-pill px-3">Imobiliária</span>
+                    <?php if(in_array($partner->tipo_conta, ['IMOBILIARIA', 'CONSTRUTORA'], true)): ?>
+                        <span class="badge bg-primary rounded-pill px-3"><?= esc(\App\Entities\Account::tipoLabel($partner->tipo_conta)) ?></span>
                     <?php elseif($partner->tipo_conta == 'CORRETOR'): ?>
                         <span class="badge bg-secondary rounded-pill px-3">Corretor</span>
                     <?php else: ?>
@@ -44,11 +44,7 @@
                         </a>
                     <?php endif; ?>
 
-                    <?php if(($showContact ?? false) && !empty($partner->telefone)): ?>
-                        <a href="tel:<?= $partner->telefone ?>" class="btn btn-outline-dark rounded-pill px-4">
-                            <i class="fas fa-phone me-2"></i> <?= esc($partner->telefone) ?>
-                        </a>
-                    <?php endif; ?>
+                    <?php // Sem telefone público: ligação direta não vira lead (decisão do cliente). ?>
 
                     <?php // Sem e-mail público: contato por fora do site não vira lead (item 11 da revisão). ?>
                 </div>

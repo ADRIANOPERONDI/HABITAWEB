@@ -54,8 +54,8 @@
                                         </div>
                                     <?php endif; ?>
                                     
-                                    <?php if($partner->tipo_conta == 'IMOBILIARIA'): ?>
-                                        <span class="position-absolute bottom-0 end-0 badge bg-primary rounded-pill border border-2 border-white" title="Imobiliária">
+                                    <?php if(in_array($partner->tipo_conta, ['IMOBILIARIA', 'CONSTRUTORA'], true)): ?>
+                                        <span class="position-absolute bottom-0 end-0 badge bg-primary rounded-pill border border-2 border-white" title="<?= esc(\App\Entities\Account::tipoLabel($partner->tipo_conta), 'attr') ?>">
                                             <i class="fas fa-building"></i>
                                         </span>
                                     <?php elseif($partner->tipo_conta == 'CORRETOR'): ?>
