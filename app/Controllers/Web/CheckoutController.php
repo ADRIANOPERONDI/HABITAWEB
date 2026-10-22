@@ -59,11 +59,18 @@ class CheckoutController extends BaseController
         // a view mostra o preço cheio normalmente.
         $rampPreview = $this->rampPreviewFor($plan);
 
+        $paymentService = new \App\Services\PaymentService();
+
         return view('web/checkout/plan', [
             'plan' => $plan,
             'user' => $user,
             'account' => $account,
             'rampPreview' => $rampPreview,
+            // O que se paga HOJE (adesão) em cada ciclo — mensal é proporcional ao resto do mês.
+            'adesao' => [
+                'MONTHLY' => $paymentService->adesaoPeriodo($plan, 'MONTHLY'),
+                'YEARLY'  => (float) ($plan->preco_anual ?? 0) > 0 ? $paymentService->adesaoPeriodo($plan, 'YEARLY') : null,
+            ],
         ]);
     }
 
@@ -114,8 +121,9 @@ class CheckoutController extends BaseController
 
         $rules = [
             'plan_id' => 'required|integer',
-            'billing_type' => 'required|in_list[PIX,BOLETO,CREDIT_CARD]',
-            'billing_cycle' => 'required|in_list[MONTHLY,QUARTERLY,SEMIANNUALLY,YEARLY]',
+            // Cartão fica para uma segunda etapa (decisão do cliente): só PIX e boleto.
+            'billing_type' => 'required|in_list[PIX,BOLETO]',
+            'billing_cycle' => 'required|in_list[MONTHLY,YEARLY]',
         ];
 
         if (!$this->validate($rules)) {
@@ -146,8 +154,6 @@ class CheckoutController extends BaseController
             );
         }
 
-        $gracePeriodDays = (int) $plan->carencia_dias;
-
         // A rampa decide o valor ANTES de qualquer chamada ao gateway (D1):
         // Asaas não aceita assinatura de R$0, e criar uma "de mentirinha"
         // (R$0,01) mentiria na fatura do cliente. Só MONTHLY entra (P6) —
@@ -173,49 +179,23 @@ class CheckoutController extends BaseController
             return redirect()->to('admin/subscription')->with('success', $mensagem);
         }
 
+        // Cobrança pela plataforma (fatura única mensal): adesão paga agora,
+        // proporcional ao resto do mês, e daí em diante a fatura do dia 1 com
+        // mensalidade + leads, vencendo dia 10. O painel libera quando a
+        // adesão for paga.
         try {
-            log_message('debug', '[Checkout] Processando pagamento para conta ' . $user->account_id);
-            if ($billingType === 'CREDIT_CARD') {
-                log_message('debug', '[Checkout] Iniciando fluxo de Tokenização para Cartão.');
-                // Tokenization Flow: Capture token for future self-managed recurrence
-                $result = $this->paymentService->initiateTokenizationPayment(
-                    $user->account_id,
-                    $planId,
-                    $billingType,
-                    $billingCycle,
-                    $gracePeriodDays,
-                    $couponCode,
-                    $rampStartedAt
-                );
-            } else {
-                log_message('debug', '[Checkout] Iniciando Assinatura Nativa (PIX/Boleto).');
-                // Native Subscription: Asaas manages recurrence for boleto/pix
-                $result = $this->paymentService->initializeSubscription(
-                    $user->account_id,
-                    $planId,
-                    $billingType,
-                    [], // No card data yet for redirect flow
-                    $couponCode,
-                    $billingCycle,
-                    $gracePeriodDays,
-                    $rampStartedAt
-                );
-            }
-
-            log_message('debug', '[Checkout] Redirecionando. Tipo: ' . $billingType);
-
-            // Conditional Redirection based on Payment Method
-            if (in_array($billingType, ['PIX', 'BOLETO'])) {
-                return redirect()->to('admin/subscription')->with('success', 'Fatura gerada! Efetue o pagamento para liberar o acesso.');
-            }
-
-            // For Credit Card (Tokenization URL) or default
-            return redirect()->to('checkout/success')->with('subscription', $result);
-
+            $resultado = $this->paymentService->startPlatformSubscription($user->account_id, $plan, $billingType, $billingCycle, $couponCode);
         } catch (\Exception $e) {
             log_message('error', '[Checkout] Erro no processamento: ' . $e->getMessage());
+
             return redirect()->back()->withInput()->with('error', 'Erro ao processar: ' . $e->getMessage());
         }
+
+        $mensagem = 'Cobrança de adesão gerada: R$ ' . number_format($resultado['valor'], 2, ',', '.')
+            . ' (' . date('d/m/Y', strtotime($resultado['inicio'])) . ' a ' . date('d/m/Y', strtotime($resultado['fim'])) . ').'
+            . ' Pague por PIX ou boleto para liberar o painel.';
+
+        return redirect()->to('admin/subscription')->with('success', $mensagem);
     }
 
     /**

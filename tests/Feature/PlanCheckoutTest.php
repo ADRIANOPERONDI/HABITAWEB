@@ -218,75 +218,13 @@ final class PlanCheckoutTest extends HabitawebTestCase
     }
 
     /**
-     * Cadastro pelo site não ganha a carência (item 11 da revisão): ela é
-     * condição de negociação concedida pelo administrador. O checkout mensal
-     * segue o fluxo pago normal, com gateway, mesmo com faixas de rampa
-     * configuradas. Antes (D1) todo checkout mensal entrava na rampa a R$ 0.
+     * Pay to use pela plataforma (fatura única mensal): o checkout não cria
+     * mais recorrência na Asaas. Gera a cobrança de ADESÃO vencendo hoje —
+     * proporcional ao resto do mês —, a assinatura fica PENDING e o painel
+     * só libera quando o pagamento confirma. Mesmo com faixas de rampa
+     * configuradas, cadastro pelo site não ganha carência.
      */
-    public function testCheckoutMensalPeloSiteNaoEntraNaCarenciaECobraNoGateway(): void
-    {
-        $this->ativarGatewayFake();
-        $this->seedRampaMesUmZeroPorCento();
-
-        $tenant = (new TenantFactory())->create([], 'PRATA');
-        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
-
-        $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
-            'plan_id'       => (string) $plan->id,
-            'billing_type'  => 'PIX',
-            'billing_cycle' => 'MONTHLY',
-        ]));
-
-        $novaSub = model(SubscriptionModel::class)
-            ->where('account_id', $tenant['account']->id)
-            ->where('payment_method !=', 'FREE')
-            ->orderBy('id', 'DESC')
-            ->first();
-
-        $this->assertNotNull($novaSub, 'checkout mensal deveria ter criado uma assinatura paga');
-        $this->assertNull($novaSub->ramp_started_at, 'cadastro pelo site não entra na carência');
-        $this->assertNotNull($novaSub->asaas_subscription_id, 'segue o fluxo pago normal, com gateway');
-        $this->assertGreaterThan(0, (float) $novaSub->valor);
-    }
-
-    /**
-     * Pay to use (decisão do cliente): assinatura pelo site cobra a primeira
-     * mensalidade na hora — vencimento hoje — e o painel só libera depois do
-     * pagamento confirmado. Antes a carência de 3 dias do plano jogava o
-     * vencimento para frente e liberava o painel sem pagar.
-     */
-    public function testAssinaturaPeloSiteCobraNaHoraESoLiberaDepoisDePagar(): void
-    {
-        $this->ativarGatewayFake();
-        FakePaymentGateway::$subscriptionsCreated = [];
-
-        $tenant = (new TenantFactory())->create([], 'PRATA');
-        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
-        $this->assertSame(0, (int) $plan->carencia_dias, 'planos do catálogo sem carência de dias');
-
-        // Cadastro novo: ainda não tem assinatura nenhuma.
-        \Config\Database::connect()->table('subscriptions')->where('account_id', $tenant['account']->id)->delete();
-
-        $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
-            'plan_id'       => (string) $plan->id,
-            'billing_type'  => 'PIX',
-            'billing_cycle' => 'MONTHLY',
-        ]))->assertRedirectTo('admin/subscription');
-
-        $this->assertSame(date('Y-m-d'), FakePaymentGateway::$subscriptionsCreated[0]['data']['next_due_date'], 'primeira mensalidade vence hoje');
-
-        $sub = model(SubscriptionModel::class)->where('account_id', $tenant['account']->id)->orderBy('id', 'DESC')->first();
-        $this->assertSame('PENDING', $sub->status, 'só ativa quando o pagamento confirmar');
-
-        $this->actingAs($tenant['user'])->get('admin/dashboard')->assertRedirectTo('admin/subscription');
-    }
-
-    /**
-     * P6: o ciclo anual nunca entra na rampa (evita pró-rata sobre um valor
-     * de 12 meses pago de uma vez, ou "anual a R$ 0"). Segue o fluxo pago
-     * normal de sempre.
-     */
-    public function testCheckoutAnualNaoEntraNaRampa(): void
+    public function testCheckoutMensalGeraAdesaoProporcionalESoLiberaDepoisDePagar(): void
     {
         $this->ativarGatewayFake();
         $this->seedRampaMesUmZeroPorCento();
@@ -294,26 +232,90 @@ final class PlanCheckoutTest extends HabitawebTestCase
 
         $tenant = (new TenantFactory())->create([], 'PRATA');
         $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
+        \Config\Database::connect()->table('subscriptions')->where('account_id', $tenant['account']->id)->delete();
 
         $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
-            'plan_id'       => (string) $plan->id,
-            'billing_type'  => 'PIX',
-            'billing_cycle' => 'YEARLY',
+            'plan_id' => (string) $plan->id, 'billing_type' => 'PIX', 'billing_cycle' => 'MONTHLY',
+        ]))->assertRedirectTo('admin/subscription');
+
+        $this->assertCount(1, FakePaymentGateway::$paymentsCreated, 'uma cobrança avulsa, sem recorrência');
+        $cobranca = FakePaymentGateway::$paymentsCreated[0];
+        $restantes = (int) date('t') - (int) date('j') + 1;
+        $this->assertSame(round(990 * $restantes / (int) date('t'), 2), $cobranca['amount'], 'proporcional aos dias que faltam no mês');
+        $this->assertSame(date('Y-m-d'), $cobranca['data']['due_date'], 'vence hoje');
+        $this->assertSame('UNDEFINED', $cobranca['data']['billing_type'], 'pagador escolhe PIX ou boleto');
+
+        $sub = model(SubscriptionModel::class)->where('account_id', $tenant['account']->id)->orderBy('id', 'DESC')->first();
+        $this->assertSame('PENDING', $sub->status);
+        $this->assertNull($sub->asaas_subscription_id, 'sem recorrência nativa na Asaas');
+        $this->assertNull($sub->ramp_started_at, 'cadastro pelo site não entra na carência');
+
+        $this->actingAs($tenant['user'])->get('admin/dashboard')->assertRedirectTo('admin/subscription');
+
+        // Pagou: assinatura ativa, mensalidade paga até o fim do mês, painel liberado.
+        $tx = model(\App\Models\PaymentTransactionModel::class)->where('subscription_id', $sub->id)->first();
+        $this->assertSame('ADESAO', $tx['type']);
+        (new \App\Services\WebhookService())->processEvent('fake', [
+            'event_type' => 'PAYMENT_CONFIRMED', 'reference_id' => $tx['gateway_transaction_id'], 'status' => 'CONFIRMED', 'data' => [],
+        ]);
+
+        $sub = model(SubscriptionModel::class)->find($sub->id);
+        $this->assertSame('ACTIVE', $sub->status);
+        $this->assertSame(date('Y-m-t'), substr((string) $sub->mensalidade_paga_ate, 0, 10));
+        $this->assertNull($sub->data_fim);
+        $this->actingAs($tenant['user'])->get('admin/dashboard')->assertOK();
+    }
+
+    /** Anual: preço anual cheio na adesão, cobrindo até o fim do 12º mês. */
+    public function testCheckoutAnualCobraOAnoInteiroNaAdesao(): void
+    {
+        $this->ativarGatewayFake();
+        FakePaymentGateway::$paymentsCreated = [];
+
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
+
+        $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
+            'plan_id' => (string) $plan->id, 'billing_type' => 'BOLETO', 'billing_cycle' => 'YEARLY',
         ]));
 
-        // payment_method != 'FREE' já exclui a assinatura original do
-        // TenantFactory (payment_method NULL) — sobra só a criada agora.
-        $novaSub = model(SubscriptionModel::class)
-            ->where('account_id', $tenant['account']->id)
-            ->where('payment_method !=', 'FREE')
-            ->orderBy('id', 'DESC')
-            ->first();
+        $this->assertSame((float) $plan->preco_anual, FakePaymentGateway::$paymentsCreated[0]['amount']);
+        $tx = model(\App\Models\PaymentTransactionModel::class)->where('account_id', $tenant['account']->id)->where('type', 'ADESAO')->first();
+        $meta = json_decode((string) $tx['metadata'], true);
+        $this->assertSame(date('Y-m-t', strtotime(date('Y-m-01') . ' +11 months')), $meta['fim']);
+    }
 
-        $this->assertNotNull($novaSub, 'checkout anual deveria ter criado uma assinatura paga');
-        $this->assertNull($novaSub->ramp_started_at, 'ciclo anual nunca entra na rampa');
-        // PIX/BOLETO passam por initializeSubscription() -> createSubscription()
-        // no gateway (fluxo normal) — diferente do mes gratis, que nunca
-        // chega nem a pedir um customer_id.
-        $this->assertNotNull($novaSub->asaas_subscription_id, 'ciclo anual segue o fluxo pago normal, com gateway');
+    /** Cartão fica para uma segunda etapa: o checkout recusa. */
+    public function testCheckoutRecusaCartao(): void
+    {
+        $this->ativarGatewayFake();
+        FakePaymentGateway::$paymentsCreated = [];
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
+
+        $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
+            'plan_id' => (string) $plan->id, 'billing_type' => 'CREDIT_CARD', 'billing_cycle' => 'MONTHLY',
+        ]));
+
+        $this->assertSame([], FakePaymentGateway::$paymentsCreated);
+    }
+
+    /** Uma segunda tentativa de adesão não paga cancela a anterior em vez de acumular cobranças. */
+    public function testNovaTentativaCancelaAdesaoAnteriorNaoPaga(): void
+    {
+        $this->ativarGatewayFake();
+        $tenant = (new TenantFactory())->create([], 'PRATA');
+        $plan   = model(PlanModel::class)->where('chave', 'PRATA')->first();
+
+        foreach (['PIX', 'BOLETO'] as $tipo) {
+            $this->actingAs($tenant['user'])->post('checkout/process', $this->withCsrf([
+                'plan_id' => (string) $plan->id, 'billing_type' => $tipo, 'billing_cycle' => 'MONTHLY',
+            ]));
+        }
+
+        $adesoes = model(\App\Models\PaymentTransactionModel::class)->where('account_id', $tenant['account']->id)->where('type', 'ADESAO')->orderBy('id', 'ASC')->findAll();
+        $this->assertCount(2, $adesoes);
+        $this->assertSame('CANCELLED', $adesoes[0]['status']);
+        $this->assertSame('PENDING', $adesoes[1]['status']);
     }
 }

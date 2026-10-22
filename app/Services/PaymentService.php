@@ -689,6 +689,126 @@ class PaymentService
     }
 
     /**
+     * Valor e período da adesão (primeira mensalidade, paga na compra —
+     * "pay to use"). Mensal: proporcional aos dias que faltam no mês, até o
+     * último dia dele; a partir do mês seguinte a mensalidade vem na fatura
+     * única do dia 1 (MonthlyInvoiceService). Anual: preço anual cheio,
+     * cobrindo até o fim do 12º mês.
+     *
+     * @return array{valor: float, inicio: string, fim: string}
+     */
+    public function adesaoPeriodo($plan, string $billingCycle, ?string $hoje = null): array
+    {
+        $dia    = new \DateTimeImmutable($hoje ?? 'today');
+        $inicio = $dia->format('Y-m-d');
+
+        if ($this->normalizeBillingCycle($billingCycle) === 'YEARLY') {
+            return [
+                'valor'  => round($this->getPlanAmountForBillingCycle($plan, 'YEARLY'), 2),
+                'inicio' => $inicio,
+                'fim'    => $dia->modify('first day of this month')->modify('+11 months')->modify('last day of this month')->format('Y-m-d'),
+            ];
+        }
+
+        $diasNoMes = (int) $dia->format('t');
+        $restantes = $diasNoMes - (int) $dia->format('j') + 1;
+
+        return [
+            'valor'  => round((float) $plan->preco_mensal * $restantes / $diasNoMes, 2),
+            'inicio' => $inicio,
+            'fim'    => $dia->modify('last day of this month')->format('Y-m-d'),
+        ];
+    }
+
+    /**
+     * Assinatura pelo site, cobrada pela plataforma (sem recorrência nativa
+     * na Asaas): cria a assinatura PENDING e a cobrança de adesão vencendo
+     * hoje, paga por PIX ou boleto à escolha do pagador. O painel só libera
+     * quando o pagamento confirma (settleTransaction → ADESAO). Tentativas
+     * anteriores não pagas são canceladas para não acumular cobranças.
+     *
+     * @return array{local_id: int, transaction_id: int, payment_url: ?string, valor: float, inicio: string, fim: string}
+     */
+    public function startPlatformSubscription(int $accountId, $plan, string $billingType, string $billingCycle, ?string $couponCode = null): array
+    {
+        if (! $this->activeGateway) {
+            throw new \Exception('Serviço de pagamento indisponível.');
+        }
+
+        $billingCycle = $this->normalizeBillingCycle($billingCycle) === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+        $periodo      = $this->adesaoPeriodo($plan, $billingCycle);
+        $cupom        = $this->validateCoupon($couponCode, $periodo['valor'], $accountId);
+        $valor        = round((float) $cupom['final_value'], 2);
+
+        $this->cancelarAdesoesPendentes($accountId);
+
+        $customerId = $this->ensureGatewayCustomer($accountId, $this->activeGateway);
+        $descricao  = 'Adesão Habitaweb — plano ' . $plan->nome . ' (' . date('d/m/Y', strtotime($periodo['inicio'])) . ' a ' . date('d/m/Y', strtotime($periodo['fim'])) . ')'
+            . (! empty($cupom['coupon']) ? ' — cupom ' . $cupom['coupon']->code : '');
+
+        $payment = $this->activeGateway->createPayment($customerId, $valor, [
+            'billing_type'       => 'UNDEFINED',
+            'description'        => $descricao,
+            'external_reference' => 'ADESAO_' . $accountId . '_' . time(),
+            'due_date'           => date('Y-m-d'),
+        ]);
+
+        $localId = (int) $this->subscriptionModel->insert([
+            'account_id'        => $accountId,
+            'plan_id'           => $plan->id,
+            'status'            => 'PENDING',
+            'data_inicio'       => date('Y-m-d'),
+            'data_fim'          => null,
+            'valor'             => $this->getPlanAmountForBillingCycle($plan, $billingCycle),
+            'payment_method'    => $billingType,
+            'billing_cycle'     => $billingCycle,
+            'asaas_customer_id' => $customerId,
+        ], true);
+
+        $txId = (int) $this->transactionModel->insert([
+            'account_id'             => $accountId,
+            'subscription_id'        => $localId,
+            'gateway'                => $this->activeGateway->getCode(),
+            'gateway_transaction_id' => $payment['payment_id'] ?? null,
+            'gateway_customer_id'    => $customerId,
+            'amount'                 => $valor,
+            'currency'               => 'BRL',
+            'status'                 => 'PENDING',
+            'payment_method'         => 'UNDEFINED',
+            'type'                   => 'ADESAO',
+            'due_date'               => date('Y-m-d'),
+            'description'            => $descricao,
+            'invoice_url'            => $payment['payment_url'] ?? null,
+            'metadata'               => json_encode(['inicio' => $periodo['inicio'], 'fim' => $periodo['fim'], 'plano' => $plan->nome, 'ciclo' => $billingCycle], JSON_UNESCAPED_UNICODE),
+        ], true);
+
+        return ['local_id' => $localId, 'transaction_id' => $txId, 'payment_url' => $payment['payment_url'] ?? null] + $periodo + ['valor' => $valor];
+    }
+
+    /** Adesões ainda não pagas de tentativas anteriores: cancela no gateway e localmente. */
+    private function cancelarAdesoesPendentes(int $accountId): void
+    {
+        $pendentes = $this->transactionModel->where('account_id', $accountId)
+            ->where('type', 'ADESAO')
+            ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'OVERDUE'])
+            ->findAll();
+
+        foreach ($pendentes as $tx) {
+            try {
+                if (! empty($tx['gateway_transaction_id'])) {
+                    $this->activeGateway->cancelPayment((string) $tx['gateway_transaction_id']);
+                }
+            } catch (\Throwable $e) {
+                log_message('error', '[PaymentService] Falha ao cancelar adesão antiga ' . $tx['id'] . ': ' . $e->getMessage());
+            }
+            $this->transactionModel->update($tx['id'], ['status' => 'CANCELLED']);
+            if (! empty($tx['subscription_id'])) {
+                $this->subscriptionModel->where('id', $tx['subscription_id'])->where('status', 'PENDING')->set(['status' => 'CANCELLED'])->update();
+            }
+        }
+    }
+
+    /**
      * Cliente da conta no gateway: reusa o da assinatura mais recente ou cria
      * na hora e grava nela. Não usa getOrCreateCustomer(), que devolve null
      * quando há assinatura sem cliente (conta em carência, que nunca pagou
