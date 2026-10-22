@@ -506,6 +506,56 @@ class LeadChargeService
         ];
     }
 
+    /**
+     * Separa, para a fatura única mensal, as cobranças APROVADAS da conta de
+     * todo período anterior a `$antesDe`: abate o crédito de cada período
+     * (o crédito vale só para o próprio mês, como no fechamento de ciclo) e
+     * expira a sobra. Quem chama marca as cobranças como faturadas
+     * (`markInvoiced`) depois de criar a cobrança — e roda isto dentro da
+     * mesma transação de banco, para desfazer o consumo de crédito se o
+     * gateway falhar.
+     *
+     * @return array{charge_ids: list<int>, quantidade: int, total: float, credito: float, restante: float, periodos: list<string>}
+     */
+    public function reserveForInvoice(int $accountId, string $antesDe, ?LeadCreditService $creditService = null): array
+    {
+        $creditService ??= new LeadCreditService();
+
+        $periodos = array_values(array_unique(array_map(
+            static fn (array $p) => $p['periodo'],
+            array_filter($this->charges->approvedAccountPeriods($antesDe), static fn (array $p) => $p['account_id'] === $accountId)
+        )));
+
+        $ids = [];
+        $total = 0.0;
+        $credito = 0.0;
+
+        foreach ($periodos as $periodo) {
+            $charges = $this->charges->approvedForPeriod($accountId, $periodo);
+            if ($charges === []) {
+                continue;
+            }
+
+            $doPeriodo = round(array_sum(array_map(static fn ($c) => (float) $c->commission_value, $charges)), 2);
+            $usado     = $creditService->consume($accountId, $periodo, $doPeriodo, 'fatura_mensal');
+            $this->distribuirCreditoPorCobranca($charges, $usado);
+            $creditService->expireRemaining($accountId, $periodo);
+
+            $ids      = array_merge($ids, array_map(static fn ($c) => (int) $c->id, $charges));
+            $total   += $doPeriodo;
+            $credito += $usado;
+        }
+
+        return [
+            'charge_ids' => $ids,
+            'quantidade' => count($ids),
+            'total'      => round($total, 2),
+            'credito'    => round($credito, 2),
+            'restante'   => round(max(0, $total - $credito), 2),
+            'periodos'   => $periodos,
+        ];
+    }
+
     /** Distribui o crédito consumido entre as cobranças, primeira-a-primeira, só para auditoria. */
     private function distribuirCreditoPorCobranca(array $charges, float $creditoDisponivel): void
     {
@@ -533,36 +583,7 @@ class LeadChargeService
      */
     private function cobrarNoGateway(int $accountId, string $periodo, float $amount, \App\PaymentGateways\GatewayInterface $gateway): int
     {
-        $accountModel = model(\App\Models\AccountModel::class);
-        $account      = $accountModel->find($accountId);
-
-        $subscription = model(\App\Models\SubscriptionModel::class)
-            ->where('account_id', $accountId)
-            ->orderBy('id', 'DESC')
-            ->first();
-
-        $customerId = $subscription->asaas_customer_id ?? null;
-
-        if (empty($customerId)) {
-            $customerId = $gateway->createCustomer([
-                'name'               => $account->nome,
-                'email'              => $account->email,
-                'document'           => preg_replace('/\D/', '', (string) ($account->documento ?? '')),
-                'phone'              => preg_replace('/\D/', '', (string) ($account->whatsapp ?? $account->telefone ?? '')),
-                'external_reference' => (string) $accountId,
-            ]);
-
-            // Sem gravar aqui, toda cobrança de lead futura desta conta
-            // criaria um customer novo no gateway — a assinatura em rampa
-            // gratuita (Fase 6) chega até aqui sem nenhum, já que nunca
-            // pagou mensalidade nenhuma.
-            if ($subscription !== null) {
-                model(\App\Models\SubscriptionModel::class)->update(
-                    (int) $subscription->id,
-                    ['asaas_customer_id' => $customerId]
-                );
-            }
-        }
+        $customerId = (new PaymentService())->ensureGatewayCustomer($accountId, $gateway);
 
         $description = "Cobrança de leads recebidos — competência {$periodo}";
         $dueDate     = date('Y-m-d', strtotime('+3 days'));

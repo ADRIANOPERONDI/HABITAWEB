@@ -689,6 +689,36 @@ class PaymentService
     }
 
     /**
+     * Cliente da conta no gateway: reusa o da assinatura mais recente ou cria
+     * na hora e grava nela. Não usa getOrCreateCustomer(), que devolve null
+     * quando há assinatura sem cliente (conta em carência, que nunca pagou
+     * nada) — justamente quem recebe a primeira fatura.
+     */
+    public function ensureGatewayCustomer(int $accountId, \App\PaymentGateways\GatewayInterface $gateway): string
+    {
+        $account      = $this->accountModel->find($accountId);
+        $subscription = $this->subscriptionModel->where('account_id', $accountId)->orderBy('id', 'DESC')->first();
+
+        $customerId = $subscription->asaas_customer_id ?? null;
+
+        if (empty($customerId)) {
+            $customerId = $gateway->createCustomer([
+                'name'               => $account->nome,
+                'email'              => $account->email,
+                'document'           => preg_replace('/\D/', '', (string) ($account->documento ?? '')),
+                'phone'              => preg_replace('/\D/', '', (string) ($account->whatsapp ?? $account->telefone ?? '')),
+                'external_reference' => (string) $accountId,
+            ]);
+
+            if ($subscription !== null) {
+                $this->subscriptionModel->update((int) $subscription->id, ['asaas_customer_id' => $customerId]);
+            }
+        }
+
+        return (string) $customerId;
+    }
+
+    /**
      * Valor total do ciclo — não o valor mensal equivalente.
      *
      * O `??` que havia aqui não protegia nada: as colunas preco_trimestral,
@@ -1728,6 +1758,51 @@ class PaymentService
         if (($tx['type'] ?? null) === 'LEAD_INVOICE') {
             (new LeadChargeService())->markPaidByTransaction((int) $tx['id']);
         }
+
+        if (($tx['type'] ?? null) === MonthlyInvoiceService::TIPO) {
+            (new MonthlyInvoiceService($this))->settle($tx);
+        }
+
+        if (($tx['type'] ?? null) === 'ADESAO') {
+            $this->activatePlatformSubscription($tx);
+        }
+    }
+
+    /**
+     * Primeira mensalidade (adesão) paga: a assinatura criada no checkout
+     * vira ACTIVE, com a mensalidade paga até o fim do período cobrado. As
+     * demais assinaturas ativas da conta (plano anterior) saem — só agora,
+     * para quem nunca paga a adesão não perder o plano que já tinha.
+     * `data_fim` fica NULL: quem vigia o atraso é a fatura mensal, não uma
+     * data de expiração (SubscriptionCheck expiraria a conta todo dia 1).
+     */
+    private function activatePlatformSubscription(array $tx): void
+    {
+        $subscriptionId = (int) ($tx['subscription_id'] ?? 0);
+        if ($subscriptionId === 0) {
+            return;
+        }
+
+        $meta = is_string($tx['metadata'] ?? null) ? json_decode($tx['metadata'], true) : (array) ($tx['metadata'] ?? []);
+        $sub  = $this->subscriptionModel->find($subscriptionId);
+        if (! $sub) {
+            return;
+        }
+
+        $this->subscriptionModel->where('account_id', $sub->account_id)
+            ->where('id !=', $subscriptionId)
+            ->where('status', 'ACTIVE')
+            ->set(['status' => 'INACTIVE'])
+            ->update();
+
+        $this->subscriptionModel->update($subscriptionId, [
+            'status'               => 'ACTIVE',
+            'data_inicio'          => $sub->data_inicio ?? date('Y-m-d'),
+            'data_fim'             => null,
+            'mensalidade_paga_ate' => $meta['fim'] ?? null,
+        ]);
+
+        $this->clearSubscriptionCaches((int) $sub->account_id);
     }
 
     /**
