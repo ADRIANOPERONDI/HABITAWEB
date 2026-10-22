@@ -301,7 +301,28 @@
                     $hasPhotos = !empty($medias);
                     $hasLocation = !empty($property->latitude) && !empty($property->longitude);
                     $hasDescription = !empty(trim((string) ($property->descricao ?? '')));
-                    $isComplete = $hasPhotos && $hasLocation && $hasDescription;
+                    // Selo "Anúncio completo": regra por tipo de imóvel (ListingCompleteness).
+                    $completeness = \App\Libraries\Listing\ListingCompleteness::evaluate($property, count($medias ?? []));
+                    $isComplete = $completeness['complete'];
+
+                    // Cada selo explica o que significa ao tocar/clicar (popover). <a tabindex>
+                    // em vez de <button>: é o que o Bootstrap exige para o popover
+                    // "focus" abrir e fechar no Safari do iPhone.
+                    $selos = [];
+                    if ($property->is_verified) {
+                        $selos[] = ['classe' => 'text-bg-primary', 'icone' => 'fa-check-double', 'texto' => 'Imóvel verificado',
+                            'explica' => 'A equipe da plataforma conferiu a documentação e a autenticidade deste imóvel.'];
+                    }
+                    if ($property->account_verified) {
+                        $selos[] = ['classe' => 'text-bg-success', 'icone' => 'fa-circle-check', 'texto' => 'Anunciante verificado',
+                            'explica' => 'O anunciante enviou seus documentos e foi aprovado na verificação da plataforma. Não se refere ao imóvel.'];
+                    }
+                    if ($isComplete) {
+                        $selos[] = ['classe' => 'text-bg-light border text-dark', 'icone' => 'fa-list-check', 'texto' => 'Anúncio completo',
+                            'explica' => \App\Libraries\Listing\ListingCompleteness::description($completeness['residential'])];
+                    }
+                    $selos[] = ['classe' => 'text-bg-light border text-dark', 'icone' => 'fa-headset', 'texto' => 'Atendimento rastreado',
+                        'explica' => 'Os contatos feitos pelo formulário ou pelo botão do WhatsApp desta página ficam registrados na plataforma.'];
                 ?>
                 <div class="border rounded-4 p-3 mb-4 bg-white">
                     <div class="d-flex align-items-center gap-2 mb-3">
@@ -313,18 +334,23 @@
                             <div class="x-small text-muted">Sinais verificados pelo portal antes do contato.</div>
                         </div>
                     </div>
-                    <div class="d-flex flex-wrap gap-2 mb-3">
-                        <?php if($property->is_verified): ?>
-                            <span class="badge rounded-pill text-bg-primary"><i class="fa-solid fa-check-double me-1"></i> Imóvel verificado</span>
-                        <?php endif; ?>
-                        <?php if($property->account_verified): ?>
-                            <span class="badge rounded-pill text-bg-success"><i class="fa-solid fa-circle-check me-1"></i> Anunciante verificado</span>
-                        <?php endif; ?>
-                        <?php if($isComplete): ?>
-                            <span class="badge rounded-pill text-bg-light border text-dark"><i class="fa-solid fa-list-check me-1"></i> Anúncio completo</span>
-                        <?php endif; ?>
-                        <span class="badge rounded-pill text-bg-light border text-dark"><i class="fa-solid fa-headset me-1"></i> Atendimento rastreado</span>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <?php foreach ($selos as $selo): ?>
+                            <a tabindex="0" role="button" class="badge rounded-pill text-decoration-none js-selo <?= $selo['classe'] ?>"
+                               data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top"
+                               data-bs-title="<?= esc($selo['texto'], 'attr') ?>" data-bs-content="<?= esc($selo['explica'], 'attr') ?>">
+                                <i class="fa-solid <?= $selo['icone'] ?> me-1" aria-hidden="true"></i> <?= esc($selo['texto']) ?>
+                                <i class="fa-solid fa-circle-info ms-1 opacity-50" aria-hidden="true"></i>
+                            </a>
+                        <?php endforeach; ?>
                     </div>
+                    <div class="x-small text-muted mb-3">Toque em um selo para ver o que ele significa.</div>
+                    <script>
+                    // Roda antes do bootstrap.bundle (o layout o carrega no fim do body).
+                    document.addEventListener('DOMContentLoaded', () => {
+                        document.querySelectorAll('.js-selo[data-bs-toggle="popover"]').forEach(el => new bootstrap.Popover(el));
+                    });
+                    </script>
                     <?php if(!$hasPhotos || !$hasLocation || !$hasDescription): ?>
                         <div class="alert alert-warning py-2 px-3 mb-3 x-small">
                             <i class="fa-solid fa-triangle-exclamation me-1"></i>
