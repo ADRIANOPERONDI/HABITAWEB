@@ -712,9 +712,13 @@ body {
     100% { background-position: 0 50%; }
 }
 
+.navbar-spacer {
+    height: var(--navbar-h, 106px);
+}
+
 /* Premium map search */
 .map-premium-page {
-    height: calc(100vh - 106px);
+    height: calc(100vh - var(--navbar-h, 106px));
     min-height: 680px;
     display: grid;
     grid-template-columns: minmax(460px, 48vw) 1fr;
@@ -1007,8 +1011,8 @@ body {
        o body em overflow hidden, esse trecho ficava inalcançável — e o mapa
        rolava para baixo do cabeçalho, escondendo o botão de zoom "+". */
     .map-premium-page {
-        height: calc(100vh - 106px);
-        height: calc(100dvh - 106px);
+        height: calc(100vh - var(--navbar-h, 106px));
+        height: calc(100dvh - var(--navbar-h, 106px));
         min-height: 0;
         display: block;
         position: relative;
