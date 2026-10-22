@@ -226,6 +226,59 @@ class NotificationService
     }
 
     /**
+     * Aviso de vencimento/atraso de uma fatura (BillingReminderService): e-mail
+     * para a conta e notificação no painel para os usuários dela.
+     *
+     * @param string $etapa Uma das chaves de BillingReminderService::ETAPAS.
+     * @param bool   $suspende A fatura suspende a conta se ficar em atraso
+     *                         (mensalidade sim; fatura de leads ainda não).
+     * @return bool e-mail enviado
+     */
+    public function notifyBillingReminder(object $account, object $fatura, string $etapa, bool $suspende): bool
+    {
+        $dias       = \App\Models\PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO;
+        $vencimento = date('d/m/Y', strtotime((string) $fatura->due_date));
+        $valor      = 'R$ ' . number_format((float) $fatura->amount, 2, ',', '.');
+
+        [$assunto, $titulo, $texto] = match ($etapa) {
+            'antes_3'    => ["Sua fatura de {$valor} vence em {$vencimento}", 'Fatura próxima do vencimento',
+                "A fatura de {$valor} vence em {$vencimento}. Pague até lá para manter seus anúncios no ar."],
+            'vence_hoje' => ["Sua fatura de {$valor} vence hoje", 'Fatura vence hoje',
+                "A fatura de {$valor} vence hoje ({$vencimento})."],
+            'atraso_1'   => ["Fatura de {$valor} em atraso", 'Fatura em atraso',
+                "A fatura de {$valor}, vencida em {$vencimento}, ainda não foi paga."
+                . ($suspende ? " Com {$dias} dias de atraso seus anúncios saem do ar e você deixa de receber novos contatos." : '')],
+            'atraso_4'   => ['Seus anúncios saem do ar amanhã', 'Anúncios saem do ar amanhã',
+                "A fatura de {$valor}, vencida em {$vencimento}, continua em aberto. Se não for paga hoje, amanhã seus anúncios saem do ar e você deixa de receber novos contatos."],
+            'suspensa'   => ['Seus anúncios foram suspensos por atraso', 'Anúncios suspensos',
+                "A fatura de {$valor}, vencida em {$vencimento}, está com mais de {$dias} dias de atraso: seus anúncios saíram do ar e você não está recebendo novos contatos. Assim que o pagamento for confirmado, tudo volta automaticamente."],
+            default      => throw new \InvalidArgumentException("Etapa de aviso desconhecida: {$etapa}"),
+        };
+
+        $html = view('emails/billing_reminder', [
+            'account'    => $account,
+            'titulo'     => $titulo,
+            'texto'      => $texto,
+            'valor'      => $valor,
+            'vencimento' => $vencimento,
+            'descricao'  => (string) ($fatura->description ?? ''),
+            'faturaUrl'  => (string) ($fatura->invoice_url ?? ''),
+            'atrasada'   => in_array($etapa, ['atraso_1', 'atraso_4', 'suspensa'], true),
+        ]);
+
+        $usuarios = db_connect()->table('users')->select('id')->where('account_id', $account->id)->get()->getResult();
+        foreach ($usuarios as $usuario) {
+            $this->saveNotification((int) $usuario->id, $titulo, $texto, $etapa === 'antes_3' || $etapa === 'vence_hoje' ? 'warning' : 'danger', site_url('admin/subscription'), (int) $account->id);
+        }
+
+        if (empty($account->email)) {
+            return false;
+        }
+
+        return $this->sendEmail((string) $account->email, $assunto, $html);
+    }
+
+    /**
      * Notifica usuário que está próximo do limite de imóveis
      * 
      * @param object $user Usuário (Shield)
