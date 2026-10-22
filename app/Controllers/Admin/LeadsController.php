@@ -58,7 +58,36 @@ class LeadsController extends BaseController
             'crmStatus' => $this->crmStatusFor($data['leads']),
             // Cobrança por lead (D3), mesma lógica de lote.
             'charges'   => $this->chargesFor($data['leads']),
+            // Resultado do aviso por e-mail à imobiliária (lead_events), por lead.
+            'emailStatus' => $this->emailStatusFor($data['leads']),
         ]);
+    }
+
+    /**
+     * Último resultado do aviso por e-mail de cada lead: true enviado, false
+     * falhou. Lead sem registro (aviso desligado, conta sem e-mail ou lead
+     * anterior a este registro) fica de fora.
+     *
+     * @return array<int, bool>
+     */
+    private function emailStatusFor(array $leads): array
+    {
+        $ids = array_filter(array_map(static fn ($lead) => (int) ($lead->id ?? 0), $leads));
+        if ($ids === []) {
+            return [];
+        }
+
+        $rows = db_connect()->table('lead_events')->select('lead_id, payload')
+            ->where('evento', 'notificacao.email')->whereIn('lead_id', $ids)
+            ->orderBy('id', 'ASC')->get()->getResult();
+
+        $status = [];
+        foreach ($rows as $row) {
+            $payload = json_decode((string) $row->payload, true);
+            $status[(int) $row->lead_id] = (bool) ($payload['enviado'] ?? false);
+        }
+
+        return $status;
     }
 
     /**

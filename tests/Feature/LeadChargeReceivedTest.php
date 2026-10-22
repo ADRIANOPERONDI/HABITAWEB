@@ -98,6 +98,8 @@ final class LeadChargeReceivedTest extends HabitawebTestCase
         $this->assertSame(date('Y-m-01'), $charge->periodo);
         $this->assertNotNull($charge->contest_deadline);
         $this->assertGreaterThan(time(), strtotime((string) $charge->contest_deadline));
+        // Prazo de contestação decidido pelo cliente: 15 dias.
+        $this->assertSame(date('Y-m-d', strtotime('+15 days')), substr((string) $charge->contest_deadline, 0, 10));
     }
 
     private function carenciaNegociada(int $accountId, string $inicio): void

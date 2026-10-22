@@ -20,7 +20,7 @@
     <p class="text-muted small mb-2">
         Cada lead recebido nos seus imóveis gera uma cobrança. Você tem
         <strong><?= \App\Services\LeadChargeService::CONTEST_WINDOW_DIAS ?> dias</strong> pra contestar antes de ela
-        ser aprovada automaticamente; só depois de aprovada ela entra na fatura do fechamento do mês.
+        ser aprovada automaticamente; aprovada, ela entra na fatura mensal seguinte, junto com a mensalidade (vencimento dia 10).
     </p>
     <?php if ($regrasPlataforma !== []): ?>
         <?php

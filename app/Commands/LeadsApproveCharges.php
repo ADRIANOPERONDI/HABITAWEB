@@ -8,7 +8,7 @@ use CodeIgniter\CLI\CLI;
 
 /**
  * Aprovação automática das cobranças de lead cujo prazo de contestação
- * (7 dias) já passou sem o tenant contestar. Cron diário — sem isto,
+ * (LeadChargeService::CONTEST_WINDOW_DIAS, 15 dias) já passou sem o tenant contestar. Cron diário — sem isto,
  * `markInvoiced()` nunca teria PENDING nenhuma vencida para promover, e o
  * fechamento de ciclo (`leads:fechar-ciclo`) nunca encontraria APPROVED
  * para faturar.

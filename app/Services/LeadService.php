@@ -18,6 +18,16 @@ class LeadService
     protected LeadEventModel $leadEventModel;
     protected PropertyModel $propertyModel;
 
+    private ?NotificationService $notificationService = null;
+
+    /** Troca o serviço de aviso (testes simulam falha de entrega com ele). */
+    public function setNotificationService(NotificationService $service): self
+    {
+        $this->notificationService = $service;
+
+        return $this;
+    }
+
     public function __construct()
     {
         $this->leadModel      = Factories::models(LeadModel::class);
@@ -153,7 +163,7 @@ class LeadService
                 
                 // --- NOTIFICAÇÃO ---
                 try {
-                    $notificationService = new \App\Services\NotificationService();
+                    $notificationService = $this->notificationService ?? new NotificationService();
                     $accountModel = model('App\Models\AccountModel');
                     $anunciante = $accountModel->find($savedLead->account_id_anunciante);
 
@@ -162,15 +172,28 @@ class LeadService
                             'nome'     => $savedLead->nome_visitante,
                             'email'    => $savedLead->email_visitante,
                             'telefone' => $savedLead->telefone_visitante,
-                            'mensagem' => $savedLead->mensagem
+                            'mensagem' => $savedLead->mensagem,
+                            'imovel'   => '#' . $property->id . ' — ' . $property->titulo,
                         ];
                         
                         $anuncianteNotifyData = [
+                            // Sem o id da conta, a notificação dentro do painel
+                            // nunca era gravada (notifyNewLead só grava com ele).
+                            'id'       => $anunciante->id,
                             'email'    => $anunciante->email,
                             'telefone' => $anunciante->telefone ?? $anunciante->whatsapp
                         ];
 
-                        $notificationService->notifyNewLead($leadNotifyData, $anuncianteNotifyData);
+                        $entrega = $notificationService->notifyNewLead($leadNotifyData, $anuncianteNotifyData);
+
+                        // Resultado do aviso por e-mail fica no histórico do lead:
+                        // falha de entrega precisa aparecer como falha, não sumir.
+                        if (is_array($entrega) && $entrega['email'] !== null) {
+                            $this->registerEvent((int) $leadId, 'notificacao.email', [
+                                'enviado' => (bool) $entrega['email'],
+                                'destino' => (string) $anunciante->email,
+                            ]);
+                        }
                     }
                 } catch (\Exception $e) {
                     log_message('error', 'Erro ao processar notificação de lead: ' . $e->getMessage());
