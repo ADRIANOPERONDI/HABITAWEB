@@ -565,12 +565,13 @@ class LeadChargeService
         }
 
         $description = "Cobrança de leads recebidos — competência {$periodo}";
+        $dueDate     = date('Y-m-d', strtotime('+3 days'));
 
         $payment = $gateway->createPayment((string) $customerId, $amount, [
             'billing_type'       => 'UNDEFINED',
             'description'        => $description,
             'external_reference' => "LEAD_INVOICE_{$accountId}_{$periodo}",
-            'due_date'           => date('Y-m-d', strtotime('+3 days')),
+            'due_date'           => $dueDate,
         ]);
 
         $transactionModel = model(\App\Models\PaymentTransactionModel::class);
@@ -584,6 +585,9 @@ class LeadChargeService
             'status'                 => 'PENDING',
             'payment_method'         => 'UNDEFINED',
             'type'                   => 'LEAD_INVOICE',
+            // Sem o vencimento gravado, a fatura de leads nunca recebia aviso
+            // de vencimento (BillingReminderService filtra por due_date).
+            'due_date'               => $dueDate,
             'description'            => $description,
             'invoice_url'            => $payment['payment_url'] ?? null,
             'metadata'               => json_encode(['account_id' => $accountId, 'periodo' => $periodo]),
