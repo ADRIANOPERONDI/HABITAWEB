@@ -97,7 +97,8 @@ generation, upload migration, cleanup, password/account maintenance,
 integration sync/outbox (`integration:sync`, `integration:outbox`), and the
 commercial-model commands from the pricing restructuring — lead-charge
 lifecycle (`leads:aprovar-cobrancas`, `leads:fechar-ciclo`,
-`creditos:conceder`), launch-ramp transitions (`assinaturas:aplicar-rampa`)
+`creditos:conceder`), launch-ramp transitions (`assinaturas:aplicar-rampa`), due-date/overdue
+e-mail reminders (`cobrancas:avisar-vencimento`, `BillingReminderService`)
 and the one-time legacy-plan migration (`planos:migrar-comercial`). The
 `e2e:setup` command is test-only: it requires the Playwright marker and
 refuses every database except `habitaweb_test`.

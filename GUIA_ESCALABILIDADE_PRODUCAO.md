@@ -411,6 +411,23 @@ ACTIVE que participa da rampa. Duas transições, tratadas de forma diferente:
 relatório que o cliente usa para prever caixa. Rode-o manualmente antes de
 confiar no cron pela primeira vez, igual ao `leads:fechar-ciclo`.
 
+**Avisos de vencimento por e-mail** — diária, mesma instância worker:
+
+```cron
+0 8 * * * cd /var/www/habitaweb && php spark cobrancas:avisar-vencimento >> writable/logs/avisos-vencimento.log 2>&1
+```
+
+Para cada fatura em aberto (mensalidade e fatura de leads) manda o aviso da
+etapa em que ela está: 3 dias antes, no dia, 1 dia de atraso, véspera da
+suspensão e suspensão (5 dias, `PaymentTransactionModel::DIAS_ATRASO_SUSPENSAO`).
+Fatura de leads não recebe os avisos de suspensão (ainda não suspende).
+Cada fatura recebe cada aviso uma vez só (tabela `billing_reminders`), então
+rodar duas vezes no dia não duplica; se o cron falhar um dia, o próximo manda
+o aviso da etapa atual. Também cria a notificação no painel dos usuários da
+conta. Depende do sendmail local (`mail.sendmail_path`); sem ele o aviso fica
+só no painel e a coluna `email_enviado` registra a falha.
+`--dry-run` lista o que enviaria sem enviar nem registrar.
+
 ### 3.5 `app.baseURL`
 
 Em produção, `app.baseURL` no `.env` de **todas** as instâncias deve ser a URL
