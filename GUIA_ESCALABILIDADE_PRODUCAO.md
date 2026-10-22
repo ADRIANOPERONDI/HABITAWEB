@@ -365,24 +365,44 @@ qualquer fechamento de ciclo:
 
 Idempotente (índice único parcial em `lead_credit_ledger`): rodar de novo no
 mesmo mês não duplica a concessão. Precisa rodar **antes** de
-`leads:fechar-ciclo` consumir o crédito do mês.
+`cobrancas:emitir-faturas` consumir o crédito do mês.
 
-**Fechamento de ciclo de lead** — dia 1, depois da concessão de crédito:
+**Fatura única mensal (mensalidade + leads)** — dia 1, depois da concessão de
+crédito e da aprovação diária:
 
 ```cron
-15 3 1 * * cd /var/www/habitaweb && php spark leads:fechar-ciclo >> writable/logs/leads-fechar-ciclo.log 2>&1
+30 3 1 * * cd /var/www/habitaweb && php spark cobrancas:emitir-faturas >> writable/logs/faturas-mensais.log 2>&1
 ```
 
-Fecha o **mês anterior** (default do comando): soma as cobranças APPROVED por
-conta, abate o crédito do próprio período, cobra o restante no gateway e
-marca tudo INVOICED — o gatilho que finalmente dá um chamador para
-`LeadChargeService::markInvoiced()`. Sem gateway configurado, a conta fica
-como está (ainda APPROVED) para a próxima execução tentar de novo — nunca
-fatura sem cobrança real por trás. `--dry-run` lista o que fecharia sem
-gravar nada; rode-o manualmente antes de confiar no cron pela primeira vez.
-O retorno do pagamento fecha o ciclo pelo webhook do gateway
-(`payment_transactions.type = 'LEAD_INVOICE'` → `markPaidByTransaction`),
-mesmo caminho que já existe para turbinada paga.
+Uma cobrança por conta (`MonthlyInvoiceService`), vencendo dia 10 (próximo
+dia útil, `App\Libraries\Billing\BusinessDay`), paga por PIX ou boleto
+(`billing_type UNDEFINED`: o pagador escolhe na página da fatura e pagar por
+um quita a cobrança). Linhas:
+
+- **Mensalidade do mês** (pré-paga) — só para assinatura cobrada pela
+  plataforma (sem `asaas_subscription_id`), com valor > 0 depois da carência
+  negociada, e se `subscriptions.mensalidade_paga_ate` ainda não cobre o mês.
+  Anual: o ano inteiro quando o período pago vence. Assinatura gratuita sem
+  prazo (`payment_method FREE` sem `ramp_started_at`) nunca é cobrada.
+- **Leads** APPROVED dos meses anteriores, com o crédito do plano de cada mês
+  abatido (mesma regra do antigo fechamento de ciclo). Leads ainda na janela
+  de contestação (7 dias) entram na fatura do mês seguinte.
+
+Idempotente (uma `FATURA_MENSAL` por conta e competência). Falha no gateway
+desfaz tudo (crédito e leads voltam a APPROVED) para a próxima execução.
+Pagamento confirmado (webhook ou sync) → leads PAID e `mensalidade_paga_ate`
+avança; atraso > 5 dias suspende como a mensalidade (FATURA_MENSAL está em
+`SUBSCRIPTION_TYPES`). `--dry-run` mostra o que cobraria — **rode antes da
+primeira vez em produção** e confira a lista de contas com mensalidade:
+qualquer assinatura ativa cobrada pela plataforma entra.
+
+A **adesão** (primeira mensalidade, no checkout pelo site) é proporcional ao
+resto do mês e vence no dia da compra; o painel libera quando ela é paga.
+
+> **`leads:fechar-ciclo` saiu do cron.** Sem `--legado` ele não cobra nada
+> (só avisa) — se ficou no crontab antigo das 03:15, é inofensivo, mas
+> remova a linha. Com `--legado` gera a fatura de leads separada do modelo
+> anterior.
 
 **Rampa de lançamento por coorte (Fase 6)** — diária, mesma instância worker:
 

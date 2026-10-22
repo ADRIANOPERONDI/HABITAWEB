@@ -154,9 +154,24 @@ truth for plan-gated features (constants in `App\Entities\PlanFeature`) —
 always go through it rather than reading `plans.features` directly. Property
 listings are billed by **lead received**, not by closed deal
 (`App\Services\LeadChargeService`, `lead_charges`/`lead_charge_rules`
-tables); `spark leads:aprovar-cobrancas` and `spark leads:fechar-ciclo`
-(cron, see `GUIA_ESCALABILIDADE_PRODUCAO.md` §3.4) turn approved charges
-into gateway invoices monthly.
+tables); `spark leads:aprovar-cobrancas` approves them daily.
+
+**Single monthly invoice** (`App\Services\MonthlyInvoiceService`, `spark
+cobrancas:emitir-faturas`, cron day 1 — `GUIA_ESCALABILIDADE_PRODUCAO.md` §3.4):
+one gateway charge per account (`payment_transactions.type = 'FATURA_MENSAL'`,
+`billing_type UNDEFINED` = PIX or boleto) with the month's mensalidade plus
+the previous months' approved leads (plan credit deducted), due on day 10 or
+the next business day (`App\Libraries\Billing\BusinessDay`). The site
+checkout no longer creates an Asaas native subscription: it charges an
+`ADESAO` (pro-rata to month end, due today) and the subscription stays
+PENDING until paid (pay to use). `subscriptions.mensalidade_paga_ate` tracks
+how far the mensalidade is paid; platform-billed subscriptions keep
+`data_fim` NULL so `SubscriptionCheck` never expires them — overdue
+suspension handles non-payment. `PaymentService::settleTransaction()` applies
+the effects of a paid `FATURA_MENSAL`/`ADESAO`. Subscriptions that still have
+an Asaas native recurrence (`asaas_subscription_id`) keep paying the
+mensalidade there; their monthly invoice carries only leads.
+`spark leads:fechar-ciclo` (separate lead invoice) only runs with `--legado`.
 
 **Launch ramp** (`App\Services\LaunchRampService`, `plan_launch_ramps`
 table): a subscription's mensalidade can start free and ramp up over its
